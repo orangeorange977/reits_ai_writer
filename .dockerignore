@@ -1,0 +1,22 @@
+# 构建镜像时排除的内容（步骤 3.7）
+.git
+.gitignore
+.env
+.env.example
+workspace/
+# 只排除根目录的部署数据卷（backend/data 预置项目数据必须进镜像）
+/data/
+scripts/
+deploy/
+docker-compose.yml
+Dockerfile
+.dockerignore
+__pycache__/
+*.pyc
+*.log
+.deps_installed
+run.bat
+启动网站.bat
+使用说明-请先读我.txt
+修改步骤.md
+问题核实报告.md
