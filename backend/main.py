@@ -3,6 +3,8 @@ REIT-AI 法律文件生成系统 - FastAPI应用入口
 """
 import os
 import sys
+import time
+from collections import deque
 from pathlib import Path
 
 # 确保 app/ 目录在 sys.path 中，使 backend 作为包可被导入（支持子模块的相对导入）
@@ -27,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 
-from backend.config import APP_HOST, APP_PORT
+from backend.config import APP_HOST, APP_PORT, CORS_ORIGINS, AI_RATE_LIMIT_PER_MINUTE
 from backend.database.db import init_database, load_preset_projects, ensure_admin_user
 from backend.routers import projects_router, folders_router
 from backend.routers.auth import router as auth_router
@@ -43,14 +45,17 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# 配置CORS中间件（本地开发用，允许所有来源）
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# 配置CORS中间件（步骤 3.6：收紧）
+# 同源部署（前端由本服务同端口托管）时浏览器不发跨域请求，默认不挂 CORS；
+# 只有显式配置 CORS_ORIGINS 白名单时才挂载，彻底去掉 allow_origins=["*"]。
+if CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
 
 # 前端静态文件禁用浏览器缓存（本地开发环境）：
@@ -64,6 +69,38 @@ async def _no_cache_static(request, call_next):
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
     return response
+
+
+# ===== AI 接口每用户限流（步骤 3.6：防 Kimi key 被刷）=====
+# 只限高成本 AI 入口：章节生成 run、AI 辅助写作两个接口；内存滑动窗口，
+# 单 worker 部署下够用；必须在 auth 中间件内层才能读到 request.state.user。
+_ai_calls: dict = {}   # user_id -> deque[时间戳]
+
+
+def _is_ai_burst(path: str, method: str) -> bool:
+    if method != "POST":
+        return False
+    if path in ("/api/skills/ai-edit", "/api/skills/ai-compose"):
+        return True
+    return path.startswith("/api/skills/chapter/") and path.endswith("/run")
+
+
+@app.middleware("http")
+async def ai_rate_limit_middleware(request, call_next):
+    if AI_RATE_LIMIT_PER_MINUTE > 0 and _is_ai_burst(request.url.path, request.method):
+        user = getattr(request.state, "user", None) or {}
+        uid = user.get("sub", "anon")
+        now = time.time()
+        window = _ai_calls.setdefault(uid, deque())
+        while window and now - window[0] > 60:
+            window.popleft()
+        if len(window) >= AI_RATE_LIMIT_PER_MINUTE:
+            return JSONResponse(
+                {"detail": f"AI 调用过于频繁，请稍后再试（限 {AI_RATE_LIMIT_PER_MINUTE} 次/分钟）"},
+                status_code=429,
+            )
+        window.append(now)
+    return await call_next(request)
 
 
 # ===== 全局登录鉴权（步骤 3.2）=====

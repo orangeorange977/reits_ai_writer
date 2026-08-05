@@ -63,9 +63,17 @@ OUTPUT_DIR = APP_DIR / "output"
 # 数据库路径
 DATABASE_PATH = APP_DIR / "backend" / "database" / "reits.db"
 
-# 服务配置
-APP_HOST = "127.0.0.1"
-APP_PORT = 8000
+# 服务配置（步骤 3.6：环境化）
+# 本地体验默认 127.0.0.1:8000；服务器部署时设 APP_HOST=0.0.0.0（由 Nginx 反代对外）
+APP_HOST = os.environ.get("APP_HOST", "127.0.0.1").strip() or "127.0.0.1"
+APP_PORT = int(os.environ.get("APP_PORT", "8000") or 8000)
+
+# CORS 白名单（步骤 3.6）：逗号分隔的允许来源，如 "https://reit.example.com"。
+# 留空=不挂 CORS 中间件（前后端同源部署时浏览器不发跨域请求，最安全）。
+CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+
+# AI 接口限流（步骤 3.6）：每用户每分钟最多调用次数（防 Kimi key 被刷），0=不限
+AI_RATE_LIMIT_PER_MINUTE = int(os.environ.get("AI_RATE_LIMIT_PER_MINUTE", "10") or 0)
 
 # 模板目录
 TEMPLATES_DIR = APP_DIR / "backend" / "templates"
