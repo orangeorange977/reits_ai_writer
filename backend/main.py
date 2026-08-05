@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-# 确保 app/ 目录在 sys.path 中，使 backend 作为包可被导入（支持 generators 等子模块的相对导入）
+# 确保 app/ 目录在 sys.path 中，使 backend 作为包可被导入（支持子模块的相对导入）
 _APP_DIR = str(Path(__file__).parent.parent)
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse
 
 from backend.config import APP_HOST, APP_PORT
 from backend.database.db import init_database, load_preset_projects
-from backend.routers import projects_router, chapters_router, folders_router, generate_router
+from backend.routers import projects_router, folders_router
 from backend.routers.enhancements import router as enhancements_router
 from backend.routers.packs import router as packs_router
 from backend.routers.skills import router as skills_router
@@ -72,8 +72,6 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 # 注册路由模块（必须在静态文件挂载和通配符路由之前）
 app.include_router(projects_router, prefix="/api")
-app.include_router(chapters_router, prefix="/api")
-app.include_router(generate_router, prefix="/api")
 app.include_router(folders_router, prefix="/api")
 app.include_router(enhancements_router, prefix="/api")
 app.include_router(packs_router, prefix="/api")

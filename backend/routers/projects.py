@@ -1,17 +1,15 @@
 """项目管理路由
 
-提供项目的CRUD操作和数据源扫描功能。
+提供项目的CRUD操作（新管线：项目↔模板包绑定，章节生成走 skills 路由）。
 """
 
 import logging
-from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.database.db import get_db, is_preset_project
-from backend.generators import NDRCGenerator
 from backend.services import pack_service
 
 logger = logging.getLogger(__name__)
@@ -184,49 +182,6 @@ async def delete_project(project_id: int):
     except Exception as e:
         logger.error(f"删除项目失败: {e}")
         raise HTTPException(status_code=500, detail=f"删除项目失败: {e}")
-    finally:
-        await db.close()
-
-
-@router.post("/projects/{project_id}/scan")
-async def scan_project_data_sources(project_id: int):
-    """扫描项目数据源文件夹，识别可用文件和章节匹配情况"""
-    db = await get_db()
-    try:
-        # 获取项目信息
-        cursor = await db.execute(
-            "SELECT id, name, data_source_path FROM projects WHERE id = ?",
-            (project_id,)
-        )
-        row = await cursor.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail=f"项目不存在: ID={project_id}")
-
-        data_source_path = row[2]
-
-        # 验证路径
-        if not Path(data_source_path).exists():
-            raise HTTPException(status_code=400, detail=f"数据源路径不存在: {data_source_path}")
-
-        # 调用NDRCGenerator扫描
-        generator = NDRCGenerator(data_source_path)
-        scan_result = generator.scan_data_sources()
-
-        # 更新项目状态
-        await db.execute(
-            "UPDATE projects SET status = 'scanned', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (project_id,)
-        )
-        await db.commit()
-
-        logger.info(f"项目扫描完成: ID={project_id}, 找到{scan_result['total_files']}个文件")
-        return scan_result
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"扫描项目数据源失败: {e}")
-        raise HTTPException(status_code=500, detail=f"扫描数据源失败: {e}")
     finally:
         await db.close()
 

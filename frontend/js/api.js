@@ -154,95 +154,14 @@ const API = {
         return this.delete(`/projects/${id}`);
     },
 
-    // ===== 章节管理 =====
+    // ===== 已生成文档列表（新管线）=====
 
     /**
-     * 获取项目所有章节列表
-     * @param {number} projectId - 项目ID
-     * @returns {Promise<Array>} 章节列表
+     * 获取当前项目已生成的各章 Word 文档列表（文档管理页数据源）
+     * @returns {Promise<object>} {documents: [{chapter,title,filename,size_formatted,updated_at}]}
      */
-    async getChapters(projectId) {
-        return this.get(`/projects/${projectId}/chapters`);
-    },
-
-    /**
-     * 获取章节详情
-     * @param {number} projectId - 项目ID
-     * @param {string} chapterId - 章节ID（如 'chapter1'）
-     * @returns {Promise<object>} 章节详情
-     */
-    async getChapterDetail(projectId, chapterId) {
-        return this.get(`/projects/${projectId}/chapters/${chapterId}`);
-    },
-
-    /**
-     * 更新章节数据
-     * @param {number} projectId - 项目ID
-     * @param {string} chapterId - 章节ID
-     * @param {object} fields - 字段键值对 {field_id: value}
-     * @returns {Promise<object>} 更新结果
-     */
-    async updateChapterData(projectId, chapterId, fields) {
-        return this.put(`/projects/${projectId}/chapters/${chapterId}/data`, {
-            fields: fields,
-        });
-    },
-
-    /**
-     * 触发章节数据提取
-     * @param {number} projectId - 项目ID
-     * @param {string} chapterId - 章节ID
-     * @returns {Promise<object>} 提取结果
-     */
-    async extractChapter(projectId, chapterId) {
-        return this.post(`/projects/${projectId}/chapters/${chapterId}/extract`);
-    },
-
-    // ===== 文档生成 =====
-
-    /**
-     * 触发文档生成
-     * @param {number} projectId - 项目ID
-     * @param {Array|null} chapterIds - 要生成的章节ID列表，null=全部
-     * @returns {Promise<object>} 生成启动结果
-     */
-    async generateDocument(projectId, chapterIds = null) {
-        return this.post(`/projects/${projectId}/generate`, {
-            chapter_ids: chapterIds,
-        });
-    },
-
-    /**
-     * 获取生成状态
-     * @param {number} projectId - 项目ID
-     * @returns {Promise<object>} 生成状态 {status, progress_percent, chapters_completed, ...}
-     */
-    async getGenerateStatus(projectId) {
-        return this.get(`/projects/${projectId}/generate/status`);
-    },
-
-    /**
-     * 下载最新生成的文档
-     * @param {number} projectId - 项目ID
-     */
-    async downloadDocument(projectId) {
-        // 直接打开下载链接
-        const url = `${API_BASE}/projects/${projectId}/download`;
-        const link = document.createElement('a');
-        link.href = url;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    },
-
-    /**
-     * 获取已生成文档列表
-     * @param {number} projectId - 项目ID
-     * @returns {Promise<object>} {project_id, documents: [...], total}
-     */
-    async getDocuments(projectId) {
-        return this.get(`/projects/${projectId}/documents`);
+    async getDocuments() {
+        return this.get('/skills/documents', { project_id: this._currentProjectId() });
     },
 
     // ===== 文件夹浏览 =====

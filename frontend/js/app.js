@@ -15,7 +15,6 @@ let currentPage = 'overview';
 let currentProjectId = null;
 let currentChapter = 'chapter1';
 // 章节结构改由项目绑定的模板包提供（PACK_CHAPTERS），此处不再缓存旧管线章节数据
-let generationPollingTimer = null;
 // 最近一次从后端拉到的项目列表，供项目信息栏等展示真实数据用
 let _projectsCache = [];
 
@@ -398,6 +397,8 @@ async function loadChapters() {
         renderChapterStepper();
         // 默认展示第一章（走 Kimi 生成 + Word 式编辑视图）
         await renderChapterEditor(1);
+        // 底部整体进度条：按各章是否有内容计算（新管线）
+        await updateChapterProgress();
     } catch (error) {
         console.warn('[REIT-AI] 加载章节列表失败:', error.message);
     }
@@ -468,30 +469,11 @@ function renderChapterStepper() {
 }
 
 /**
- * 选择章节
- * @param {number} chapterNum - 章节编号（1-7）
+ * 选择章节：全部走 Kimi 生成 + Word 式编辑视图（章节结构随项目绑定的模板包）
+ * @param {number} chapterNum - 章节编号（由包 chapters.json 定义）
  */
-// 已接入"Kimi 生成 + Word 式编辑"新流程的章节（1~7 全部放开）
-const WIRED_CHAPTERS = new Set([1, 2, 3, 4, 5, 6, 7]);
-
 async function selectChapter(chapterNum) {
-    // 已接入新流程的章节：走 Kimi 生成 + Word 式编辑视图
-    if (WIRED_CHAPTERS.has(chapterNum)) {
-        await renderChapterEditor(chapterNum);
-        return;
-    }
-
-    // 其余章节暂走旧的字段表单视图
-    const chapterId = `chapter${chapterNum}`;
-    currentChapter = chapterId;
-
-    const titleEl = document.getElementById('chapterDetailTitle');
-    if (titleEl) {
-        titleEl.textContent = _chapterTitle(chapterNum);
-    }
-
-    // 加载章节详情
-    await loadChapterDetail(chapterId);
+    await renderChapterEditor(chapterNum);
 }
 
 let _summaryData = null;
@@ -738,38 +720,7 @@ async function importSummaryExcel(input) {
     }
 }
 
-/**
- * 加载章节详情
- */
-async function loadChapterDetail(chapterId) {
-    if (!currentProjectId) return;
-
-    const container = document.getElementById('chapterDetail');
-    if (!container) return;
-
-    try {
-        const detail = await API.getChapterDetail(currentProjectId, chapterId);
-
-        // 保留层级结构传递给渲染函数
-        renderChapterDetail(container, {
-            title: detail.title,
-            status: detail.status === 'extracted' ? 'done' : (detail.status === 'extracting' ? 'current' : ''),
-            sections: detail.sections || [],
-        });
-    } catch (error) {
-        console.warn('[REIT-AI] 加载章节详情失败:', error.message);
-        showToast('加载章节详情失败', 'error');
-    }
-}
-
-/**
- * 预览章节
- */
-function previewChapter() {
-    navigate('chapter-edit');
-}
-
-// ===== 章节：Kimi 生成 + Word 式可编辑区（1~7 通用） =====
+// ===== 章节：Kimi 生成 + Word 式可编辑区（章节结构随包） =====
 
 let _kimiTimer = null;
 let _previewOn = false;      // Word 预览默认关闭，由按钮开启
@@ -1644,181 +1595,64 @@ async function _pickDiagramTemplate(cb) {
 }
 
 /**
- * 编辑字段
+ * 底部整体进度：当前项目绑定包中有内容的章节占比（source 非 template 视为有内容）
  */
-function editField(btn) {
-    const fieldItem = btn.closest('.field-item');
-    const valueEl = fieldItem.querySelector('.field-value');
-    const currentValue = valueEl.textContent;
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = currentValue === '（待提取）' ? '' : currentValue;
-    input.className = 'form-input';
-    input.style.cssText = 'padding:4px 8px;font-size:13px;';
-
-    input.addEventListener('blur', function () {
-        valueEl.textContent = this.value || currentValue;
-        valueEl.style.display = '';
-        this.remove();
-        btn.style.display = '';
-    });
-
-    input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') this.blur();
-        if (e.key === 'Escape') {
-            valueEl.textContent = currentValue;
-            valueEl.style.display = '';
-            this.remove();
-            btn.style.display = '';
-        }
-    });
-
-    valueEl.style.display = 'none';
-    btn.style.display = 'none';
-    fieldItem.insertBefore(input, btn);
-    input.focus();
-    input.select();
-}
-
-/**
- * 生成全部章节
- */
-async function generateAll() {
-    if (!currentProjectId) {
-        showToast('请先选择或创建项目', 'warning');
-        return;
-    }
-
-    try {
-        const result = await API.generateDocument(currentProjectId, null);
-        showToast('文档生成已启动，请等待完成...', 'warning');
-        startProgressPolling();
-    } catch (error) {
-        showToast('启动生成失败: ' + error.message, 'error');
-    }
-}
-
-/**
- * 生成选中章节
- */
-async function generateSelected() {
-    if (!currentProjectId) {
-        showToast('请先选择或创建项目', 'warning');
-        return;
-    }
-
-    try {
-        const result = await API.generateDocument(currentProjectId, [currentChapter]);
-        showToast(`章节 ${currentChapter} 生成已启动...`, 'warning');
-        startProgressPolling();
-    } catch (error) {
-        showToast('启动生成失败: ' + error.message, 'error');
-    }
-}
-
-/**
- * 开始轮询生成进度
- */
-function startProgressPolling() {
-    if (generationPollingTimer) {
-        clearInterval(generationPollingTimer);
-    }
-
-    generationPollingTimer = setInterval(async () => {
-        try {
-            const status = await API.getGenerateStatus(currentProjectId);
-            updateProgressUI(status);
-
-            if (status.status === 'completed' || status.status === 'error') {
-                clearInterval(generationPollingTimer);
-                generationPollingTimer = null;
-
-                if (status.status === 'completed') {
-                    showToast('文档生成完成！');
-                } else {
-                    showToast('文档生成失败: ' + (status.message || '未知错误'), 'error');
-                }
-            }
-        } catch (error) {
-            console.warn('[REIT-AI] 进度查询失败:', error.message);
-        }
-    }, 2000);
-}
-
-/**
- * 更新进度UI
- */
-function updateProgressUI(status) {
+async function updateChapterProgress() {
     const fill = document.getElementById('progressFill');
     const label = document.getElementById('progressPercent');
+    if (!fill || !label) return;
 
-    if (fill && status.progress_percent !== undefined) {
-        fill.style.width = status.progress_percent + '%';
-    }
-    if (label && status.progress_percent !== undefined) {
-        label.textContent = status.progress_percent + '%';
-    }
-}
-
-// ===== 章节编辑页面功能 =====
-
-function resetChapterEdit() {
-    showToast('已重置编辑内容', 'warning');
-    // 重新加载章节数据
-    if (currentProjectId && currentChapter) {
-        loadChapterDetail(currentChapter);
-    }
-}
-
-async function saveChapterEdit() {
-    if (!currentProjectId || !currentChapter) {
-        showToast('无法保存：未选择项目或章节', 'error');
+    const chapters = PACK_CHAPTERS || [];
+    if (!currentProjectId || chapters.length === 0) {
+        fill.style.width = '0%';
+        label.textContent = '0%';
         return;
     }
 
-    // 收集编辑器表单中的数据
-    const formBody = document.getElementById('editorForm');
-    if (!formBody) return;
-
-    const inputs = formBody.querySelectorAll('input, textarea');
-    const fields = {};
-    inputs.forEach((input, index) => {
-        const label = input.closest('.form-group')?.querySelector('label')?.textContent || `field_${index}`;
-        fields[label] = input.value;
-    });
-
-    try {
-        await API.updateChapterData(currentProjectId, currentChapter, fields);
-        showToast('章节内容已保存');
-    } catch (error) {
-        showToast('保存失败: ' + error.message, 'error');
-    }
+    const results = await Promise.all(chapters.map(async (ch) => {
+        try {
+            const d = await API.getChapterContent(ch.n);
+            return !!(d && d.source && d.source !== 'template');
+        } catch (e) {
+            return false;
+        }
+    }));
+    const done = results.filter(Boolean).length;
+    const percent = Math.round(done / chapters.length * 100);
+    fill.style.width = percent + '%';
+    label.textContent = percent + '%';
 }
 
 // ===== 文档管理页面功能 =====
 
 /**
- * 加载文档列表
+ * 加载文档列表（新管线：列出当前项目已生成的各章 Word）
  */
 async function loadDocuments() {
-    if (!currentProjectId) return;
+    const tbody = document.querySelector('#docTable tbody');
+    if (!tbody) return;
+
+    if (!currentProjectId) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-muted" style="text-align:center;padding:24px">请先选择项目</td></tr>';
+        return;
+    }
 
     try {
-        const result = await API.getDocuments(currentProjectId);
-        const tbody = document.querySelector('#docTable tbody');
-        if (tbody && result.documents) {
-            if (result.documents.length > 0) {
-                renderDocTable(tbody, result.documents.map(doc => ({
-                    id: doc.filename,
-                    name: doc.filename,
-                    type: 'docx',
-                    time: doc.created_at || '-',
-                    size: doc.size_formatted || '-',
-                    status: '已完成',
-                })));
-            }
+        const result = await API.getDocuments();
+        const docs = (result && result.documents) || [];
+        if (docs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-muted" style="text-align:center;padding:24px">暂无已生成文档（请先在材料生成页预览/生成章节）</td></tr>';
+            return;
         }
+        tbody.innerHTML = docs.map(doc => `
+            <tr>
+                <td><strong>${_escHtmlAttr(doc.title)}</strong><br><span class="text-muted text-sm">${_escHtmlAttr(doc.filename)}</span></td>
+                <td>${_escHtmlAttr(doc.updated_at)}</td>
+                <td>${_escHtmlAttr(doc.size_formatted)}</td>
+                <td><span class="badge badge-success">已完成</span></td>
+                <td><button class="btn btn-primary btn-sm" onclick="API.downloadChapterDocx(${doc.chapter})">下载</button></td>
+            </tr>
+        `).join('');
     } catch (error) {
         console.warn('[REIT-AI] 加载文档列表失败:', error.message);
     }
@@ -1829,32 +1663,9 @@ function switchDocTab(tab) {
         item.classList.remove('active');
     });
     event.target.classList.add('active');
-    // 根据tab过滤（当前简化处理，后续可扩展）
+    // 新管线文档列表无 tab 维度差异（无历史版本概念），统一重新拉取
     if (currentProjectId) {
         loadDocuments();
-    }
-}
-
-function downloadDoc(docId) {
-    if (!currentProjectId) {
-        showToast('未选择项目', 'warning');
-        return;
-    }
-    API.downloadDocument(currentProjectId);
-    showToast('开始下载文档...');
-}
-
-function regenerateDoc(docId) {
-    if (!currentProjectId) {
-        showToast('未选择项目', 'warning');
-        return;
-    }
-    generateAll();
-}
-
-function deleteDoc(docId) {
-    if (confirm('确定要删除此文档吗？')) {
-        showToast('文档删除功能暂不支持', 'warning');
     }
 }
 

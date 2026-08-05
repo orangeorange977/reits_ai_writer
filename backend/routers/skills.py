@@ -6,7 +6,9 @@ GET  /skills/ch1/status  前端轮询，拿到 running / done(+data) / error
 """
 import asyncio
 import logging
+import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
@@ -477,3 +479,27 @@ async def chapter_download(n: int, project_id: str = ""):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
+
+
+@router.get("/documents")
+async def list_documents(project_id: str = ""):
+    """列出该项目已生成的各章 Word 文档（文档管理页数据源，替代旧管线 /projects/{id}/documents）。"""
+    pack_id = await _project_pack_id(project_id)
+    chapters = skill_runner.chapters_for(pack_id)
+    out_dir = skill_runner.chapter_docx_path(1, project_id or None).parent
+    docs = []
+    for f in sorted(out_dir.glob("ch*_output.docx")):
+        m = re.match(r"ch(\d+)_output\.docx$", f.name)
+        if not m:
+            continue
+        n = int(m.group(1))
+        st = f.stat()
+        docs.append({
+            "chapter": n,
+            "title": chapters.get(n, {}).get("title", f"第{n}章"),
+            "filename": f.name,
+            "size": st.st_size,
+            "size_formatted": f"{st.st_size / 1024:.1f} KB" if st.st_size < 1024 * 1024 else f"{st.st_size / 1024 / 1024:.1f} MB",
+            "updated_at": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        })
+    return {"documents": docs}
