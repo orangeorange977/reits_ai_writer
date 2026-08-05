@@ -5,7 +5,7 @@
 // 页面标题映射
 const PAGE_TITLES = {
     'overview': '系统概览',
-    'ndrc': '发改委材料生成',
+    'ndrc': '材料生成',
     'documents': '文档管理',
     'settings': '系统设置'
 };
@@ -14,10 +14,20 @@ const PAGE_TITLES = {
 let currentPage = 'overview';
 let currentProjectId = null;
 let currentChapter = 'chapter1';
-let chaptersData = [];
+// 章节结构改由项目绑定的模板包提供（PACK_CHAPTERS），此处不再缓存旧管线章节数据
 let generationPollingTimer = null;
 // 最近一次从后端拉到的项目列表，供项目信息栏等展示真实数据用
 let _projectsCache = [];
+
+// 当前项目绑定的模板包（来自 /api/packs/{id}）：章节结构随包走，不再写死七章
+let PACK_INFO = null;      // manifest：{id, name, version, material_label, ...}
+let PACK_CHAPTERS = [];    // [{n, title}, ...]（按 n 升序）
+
+/** 第 n 章标题：优先用绑定包的 chapters.json，包未加载时落回内置兼容表 */
+function _chapterTitle(n) {
+    const c = (PACK_CHAPTERS || []).find(ch => ch.n === n);
+    return (c && c.title) || CHAPTER_TITLES[n] || '';
+}
 
 // 系统设置页里几个"选择文件"路径框：选中即通过 localStorage 自动保存，刷新页面后自动恢复
 const SETTINGS_PATH_INPUT_IDS = ['settingOutputPath', 'settingTemplatePath', 'settingNdrcMaterialPath'];
@@ -63,10 +73,12 @@ function navigate(pageId) {
         activeNav.classList.add('active');
     }
 
-    // 更新页面标题
+    // 更新页面标题（材料生成页优先用项目绑定模板包的名称）
     const titleEl = document.getElementById('pageTitle');
-    if (titleEl && PAGE_TITLES[pageId]) {
-        titleEl.textContent = PAGE_TITLES[pageId];
+    if (titleEl) {
+        let t = PAGE_TITLES[pageId];
+        if (pageId === 'ndrc' && PACK_INFO && PACK_INFO.name) t = PACK_INFO.name;
+        if (t) titleEl.textContent = t;
     }
 
     currentPage = pageId;
@@ -376,14 +388,14 @@ function selectLocalFile(path) {
 }
 
 /**
- * 加载章节列表
+ * 加载章节列表：先拉当前项目绑定模板包的章节结构，再渲染步骤条与第一章编辑区
  */
 async function loadChapters() {
     if (!currentProjectId) return;
 
     try {
-        chaptersData = await API.getChapters(currentProjectId);
-        renderChapterStepper(chaptersData);
+        await loadProjectPack();
+        renderChapterStepper();
         // 默认展示第一章（走 Kimi 生成 + Word 式编辑视图）
         await renderChapterEditor(1);
     } catch (error) {
@@ -392,19 +404,51 @@ async function loadChapters() {
 }
 
 /**
- * 渲染章节步骤条（基于API数据）
+ * 拉取当前项目绑定模板包的 manifest + 章节结构；同步刷新依赖包名的界面文案
  */
-function renderChapterStepper(chapters) {
+async function loadProjectPack() {
+    PACK_INFO = null;
+    PACK_CHAPTERS = [];
+    if (!currentProjectId) return;
+    try {
+        const proj = _projectsCache.find(p => p.id === currentProjectId);
+        let packId = proj && proj.pack_id ? proj.pack_id : null;
+        if (!packId) {
+            const packs = await API.getPacks();
+            packId = packs.default_id;
+        }
+        if (packId) {
+            const detail = await API.getPackDetail(packId);
+            PACK_INFO = detail.pack || null;
+            PACK_CHAPTERS = detail.chapters || [];
+        }
+    } catch (error) {
+        console.warn('[REIT-AI] 加载模板包信息失败:', error.message);
+    }
+    _applyPackLabels();
+}
+
+/** 按绑定包刷新界面文案（侧边栏/页面标题里的材料类型名称） */
+function _applyPackLabels() {
+    const label = (PACK_INFO && PACK_INFO.name) ? PACK_INFO.name : '材料生成';
+    const navLabel = document.getElementById('navMaterialLabel');
+    if (navLabel) {
+        navLabel.textContent = label;
+    }
+    if (currentPage === 'ndrc') {
+        const titleEl = document.getElementById('pageTitle');
+        if (titleEl) titleEl.textContent = label;
+    }
+}
+
+/**
+ * 渲染章节步骤条（标题来自项目绑定模板包的 chapters.json，不再写死七章）
+ */
+function renderChapterStepper() {
     const container = document.getElementById('chapterStepper');
     if (!container) return;
 
-    const statusMap = {
-        'extracted': 'done',
-        'extracting': 'current',
-        'pending': '',
-    };
-
-    // 第一项固定为"摘要表和释义"（不属于七章，走独立的点击逻辑）
+    // 第一项固定为"摘要表和释义"（不属于章节，走独立的点击逻辑）
     const summaryStep = {
         title: '摘要表和释义',
         status: '',
@@ -413,26 +457,14 @@ function renderChapterStepper(chapters) {
         onClick: 'selectSummary()',
     };
 
-    const chapterSteps = chapters.map((ch, i) => ({
+    const chapterSteps = (PACK_CHAPTERS || []).map(ch => ({
         title: ch.title,
-        status: statusMap[ch.status] || '',
-        desc: _mapChapterStatusDesc(ch.status),
-        onClick: `selectChapter(${i + 1})`,
+        status: '',
+        desc: '待生成',
+        onClick: `selectChapter(${ch.n})`,
     }));
 
     renderStepper(container, [summaryStep, ...chapterSteps]);
-}
-
-/**
- * 映射章节状态为描述文本
- */
-function _mapChapterStatusDesc(status) {
-    const map = {
-        'extracted': '已提取',
-        'extracting': '提取中',
-        'pending': '待提取',
-    };
-    return map[status] || '待提取';
 }
 
 /**
@@ -455,7 +487,7 @@ async function selectChapter(chapterNum) {
 
     const titleEl = document.getElementById('chapterDetailTitle');
     if (titleEl) {
-        titleEl.textContent = CHAPTER_TITLES[chapterNum] || '';
+        titleEl.textContent = _chapterTitle(chapterNum);
     }
 
     // 加载章节详情
@@ -788,7 +820,7 @@ async function renderChapterEditor(n) {
     const srcBadge = content.source === 'ready'
         ? '<span class="badge badge-success">已生成</span>'
         : (content.source === 'template' ? '<span class="badge">未生成</span>' : '');
-    const title = CHAPTER_TITLES[n] || '';
+    const title = _chapterTitle(n);
 
     // 顶部标题栏（整行）
     let html = `
@@ -918,7 +950,7 @@ function _pollChapterGeneration() {
     const btn = document.getElementById('btnChapterGen');
     const banner = document.getElementById('chapterGenBanner');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ 生成中...'; }
-    if (banner) { banner.style.display = 'block'; banner.textContent = `🤖 Kimi 正在生成${CHAPTER_TITLES[n] || '本章'}，约需数分钟，请稍候…`; }
+    if (banner) { banner.style.display = 'block'; banner.textContent = `🤖 Kimi 正在生成${_chapterTitle(n) || '本章'}，约需数分钟，请稍候…`; }
 
     if (_kimiTimer) clearInterval(_kimiTimer);
     _kimiTimer = setInterval(async () => {
@@ -1829,6 +1861,53 @@ function deleteDoc(docId) {
 // ===== 项目创建 =====
 
 /**
+ * 打开"新建项目"弹窗：材料模板下拉从 /api/packs 拉取，默认选中默认包
+ */
+async function openNewProjectModal() {
+    const nameInput = document.getElementById('newProjectName');
+    const pathInput = document.getElementById('newProjectDataSource');
+    const packSel = document.getElementById('newProjectPack');
+    if (nameInput) nameInput.value = '';
+    if (pathInput) pathInput.value = '';
+    if (packSel) {
+        packSel.innerHTML = '<option value="">加载中…</option>';
+        try {
+            const r = await API.getPacks();
+            const packs = r.packs || [];
+            packSel.innerHTML = packs.map(p =>
+                `<option value="${_escHtmlAttr(p.id)}"${p.id === r.default_id ? ' selected' : ''}>`
+                + `${_escHtmlAttr(p.name || p.id)}${p.version ? '（v' + _escHtmlAttr(p.version) + '）' : ''}</option>`
+            ).join('');
+            if (!packs.length) {
+                packSel.innerHTML = '<option value="">（templates-packs 下没有可用模板包）</option>';
+            }
+        } catch (e) {
+            packSel.innerHTML = '<option value="">获取模板包失败</option>';
+        }
+    }
+    openModal('modal-new-project');
+}
+
+/**
+ * 提交新建项目：名称 + 数据源文件夹 + 材料模板（后端校验路径与包）
+ */
+async function submitNewProject() {
+    const name = (document.getElementById('newProjectName').value || '').trim();
+    const path = (document.getElementById('newProjectDataSource').value || '').trim();
+    const packId = document.getElementById('newProjectPack').value || '';
+    if (!name) { showToast('请填写项目名称', 'warning'); return; }
+    if (!path) { showToast('请选择数据源文件夹', 'warning'); return; }
+    try {
+        await API.createProject(name, path, packId || undefined);
+        closeModal('modal-new-project');
+        showToast('项目创建成功');
+        await loadOverviewData();
+    } catch (e) {
+        showToast('创建失败：' + (e.message || '未知错误'), 'error');
+    }
+}
+
+/**
  * 选择项目并进入发改委材料生成页
  * @param {number} projectId - 项目ID
  */
@@ -1858,6 +1937,8 @@ async function initApp() {
         if (projects && projects.length > 0) {
             currentProjectId = projects[0].id;
             console.log('[REIT-AI] 已自动选择项目:', projects[0].name, 'ID=', currentProjectId);
+            // 预拉绑定包信息，侧边栏/页面标题能立即显示材料模板名称
+            loadProjectPack();
         }
         updateProjectHeaderBar();
     } catch (error) {

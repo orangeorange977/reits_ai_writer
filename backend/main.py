@@ -31,6 +31,7 @@ from backend.config import APP_HOST, APP_PORT
 from backend.database.db import init_database, load_preset_projects
 from backend.routers import projects_router, chapters_router, folders_router, generate_router
 from backend.routers.enhancements import router as enhancements_router
+from backend.routers.packs import router as packs_router
 from backend.routers.skills import router as skills_router
 
 # 创建FastAPI实例
@@ -75,6 +76,7 @@ app.include_router(chapters_router, prefix="/api")
 app.include_router(generate_router, prefix="/api")
 app.include_router(folders_router, prefix="/api")
 app.include_router(enhancements_router, prefix="/api")
+app.include_router(packs_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
 
 

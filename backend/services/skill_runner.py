@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 CHAPTERS = pack_service.get_chapters()
 
 
+def chapters_for(pack_id: str = None) -> dict:
+    """指定模板包的章节结构（None=默认包）；项目绑定了哪个包就用哪个包。"""
+    return pack_service.get_chapters(pack_id)
+
+
 def _project_dir(project_id: str = None) -> Path:
     """项目数据目录（workspace/projects/<项目ID>/），按项目隔离；
     未传/空值/非法值时用默认项目目录。"""
@@ -37,8 +42,11 @@ def chapter_json_path(n: int, project_id: str = None) -> Path:
 
 
 def chapter_docx_path(n: int, project_id: str = None) -> Path:
-    """某章生成的 Word 输出路径（按项目隔离）。"""
-    return _project_dir(project_id) / "output" / f"ch{n}_output.docx"
+    """某章生成的 Word 输出路径（按项目隔离）；目录不存在时自动创建，
+    避免新项目首次预览/生成时因 output/ 缺失而写文件失败。"""
+    path = _project_dir(project_id) / "output" / f"ch{n}_output.docx"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 # 网页上选择的 Kimi 模型（全局设置，持久化在 workspace 根；各章生成都用它，
 # 缺省用 .env 里的 MOONSHOT_MODEL）
@@ -478,9 +486,11 @@ def get_chapter_structured(n: int, project_id: str = None) -> list:
     return _load_json(n, project_id).get("sections", [])
 
 
-def save_chapter_content(n: int, html_sections: list, project_id: str = None) -> None:
+def save_chapter_content(n: int, html_sections: list, project_id: str = None,
+                         pack_id: str = None) -> None:
     """网页保存：把编辑区 HTML 转回结构化 JSON（有序块）并落盘。"""
-    _save_json(n, _html_sections_to_structured(html_sections, CHAPTERS[n]["title"]), project_id)
+    title = chapters_for(pack_id).get(n, {}).get("title", "")
+    _save_json(n, _html_sections_to_structured(html_sections, title), project_id)
 
 
 def _format_saved_summary(project_id: str = None) -> str:
@@ -662,24 +672,26 @@ def _make_materials_executor(root):
 
 
 def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
-                project_id: str = None) -> dict:
+                project_id: str = None, pack_id: str = None) -> dict:
     """执行第 n 章：读 planning.md + 该章 SKILL.md + 已保存摘要，让 Kimi 产出结构化内容。
 
     subtitles（来自官方模板的本章小标题）如果给出，则强制 Kimi 用这几个小标题作为
     sections 的 title（一字不差），以便和模板/编辑区骨架对齐。
 
+    pack_id：项目绑定的模板包（None=默认包），决定章节结构/写作要求/提示词里的材料类型。
+
     若配置了天眼查密钥，会把天眼查企业查询工具挂给 Kimi：Kimi 可在生成过程中查询
     参与主体的工商/股权/人员信息，据实填写，而不是编造。
     """
-    cfg = CHAPTERS[n]
-    planning = _read_text(pack_service.planning_path())
-    skill_md = _read_text(pack_service.reading_path(n))
+    cfg = chapters_for(pack_id)[n]
+    planning = _read_text(pack_service.planning_path(pack_id))
+    skill_md = _read_text(pack_service.reading_path(n, pack_id))
     saved_summary = _format_saved_summary(project_id)
 
     # 排版配置(write_config.json)只在“生成内容”这一步按需刷新（写作要求改过才真调模型）——
     # 从而彻底移出 Word 预览路径：改 skill 不再拖慢预览。失败不阻断本次生成。
     try:
-        ensure_write_config()
+        ensure_write_config(pack_id=pack_id)
     except Exception as e:
         logger.warning(f"刷新 write_config 失败（不影响本次生成）：{e}")
 
@@ -693,7 +705,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
             mat_root = None
 
     system_prompt = (
-        f"你是{pack_service.material_label()}的写作助手，正在执行'{cfg['title']}'的撰写。"
+        f"你是{pack_service.material_label(pack_id)}的写作助手，正在执行'{cfg['title']}'的撰写。"
         "你会拿到几份材料：全局总纲 planning.md、用户在系统中已核对保存的"
         "'摘要表/释义/其他基本信息'、以及本章的写作要求 SKILL.md。"
         "你的任务是严格按 SKILL.md 的结构，优先用'已保存的摘要表/释义/其他基本信息'里的真实值"
@@ -825,13 +837,13 @@ def load_web_render(pack_id: str = None):
     return web_render
 
 
-def chapter_subtitles(n: int, template_path: str) -> list:
+def chapter_subtitles(n: int, template_path: str, pack_id: str = None) -> list:
     """读官方模板里第 n 章的各个小标题（借模板包里的 web_render 解析）。"""
     if not template_path:
         return []
     try:
-        web_render = load_web_render()
-        cfg = CHAPTERS[n]
+        web_render = load_web_render(pack_id)
+        cfg = chapters_for(pack_id)[n]
         subs = web_render.list_chapter_subtitles(template_path, cfg["title"], cfg["next"])
         # 无小标题的章（大标题下直接是正文，如第六章）：用一个"本章正文"单块
         return subs if subs else [web_render._BODY_SECTION_TITLE]
@@ -840,35 +852,40 @@ def chapter_subtitles(n: int, template_path: str) -> list:
         return []
 
 
-def chapter_tables(n: int, template_path: str) -> dict:
+def chapter_tables(n: int, template_path: str, pack_id: str = None) -> dict:
     """读官方模板里第 n 章各小标题下的多列表骨架 {小标题: [grid,...]}（用于编辑区显示空表）。"""
     if not template_path:
         return {}
     try:
-        web_render = load_web_render()
-        cfg = CHAPTERS[n]
+        web_render = load_web_render(pack_id)
+        cfg = chapters_for(pack_id)[n]
         return web_render.list_chapter_tables(template_path, cfg["title"], cfg["next"])
     except Exception as e:
         logger.warning(f"读取第{n}章模板多列表失败: {e}")
         return {}
 
 
-def chapter_table_start(n: int, template_path: str) -> int:
+def chapter_table_start(n: int, template_path: str, pack_id: str = None) -> int:
     """本章第一张表在全篇里的起始表号 = 模板中本章大标题之前已有的表数 + 1。"""
     if not template_path:
         return 1
     try:
-        web_render = load_web_render()
-        return web_render.count_captions_before(template_path, CHAPTERS[n]["title"]) + 1
+        web_render = load_web_render(pack_id)
+        return web_render.count_captions_before(template_path, chapters_for(pack_id)[n]["title"]) + 1
     except Exception as e:
         logger.warning(f"计算第{n}章起始表号失败: {e}")
         return 1
 
 
 # 排版配置(write_config.json)是运行期产物，属项目数据，放 workspace 根（不进模板包）；
-# 写作要求（writing/SKILL.md）从默认模板包读取。
+# 写作要求（writing/SKILL.md）从项目绑定的模板包读取。
 WRITE_CONFIG_PATH = DATA_SOURCE_BASE / "write_config.json"
-WRITING_SKILL_MD = pack_service.pack_path("writing/SKILL.md")
+
+
+def _writing_skill_md(pack_id: str = None) -> Path:
+    return pack_service.pack_path("writing/SKILL.md", pack_id)
+
+
 _WRITE_CONFIG_KEYS = ("font", "body_pt", "table_pt", "footnote_pt",
                       "body_line_spacing", "table_line_spacing", "table_align",
                       "insert_unknown_headings")
@@ -883,7 +900,7 @@ def _load_write_config_dict() -> dict:
     return {}
 
 
-def _write_config_stale() -> bool:
+def _write_config_stale(pack_id: str = None) -> bool:
     """写作要求（planning.md / 写作SKILL.md）比配置文件新，或配置不存在，就算过期。"""
     if not WRITE_CONFIG_PATH.exists():
         return True
@@ -891,7 +908,7 @@ def _write_config_stale() -> bool:
         cfg_m = WRITE_CONFIG_PATH.stat().st_mtime
     except OSError:
         return True
-    for src in (pack_service.planning_path(), WRITING_SKILL_MD):
+    for src in (pack_service.planning_path(pack_id), _writing_skill_md(pack_id)):
         try:
             if src.exists() and src.stat().st_mtime > cfg_m:
                 return True
@@ -900,15 +917,15 @@ def _write_config_stale() -> bool:
     return False
 
 
-def ensure_write_config(force: bool = False) -> dict:
+def ensure_write_config(force: bool = False, pack_id: str = None) -> dict:
     """让大模型读 planning.md + 写作SKILL.md 的自然语言写作要求，翻成 write_config.json，
     供 web_render.py 执行。只有配置过期（写作要求被改过）或 force 时才真正调一次大模型，
     平时只做几个文件时间戳比较，几乎零开销。失败时保留上一版配置、不中断写入。"""
-    if not force and not _write_config_stale():
+    if not force and not _write_config_stale(pack_id):
         return _load_write_config_dict()
 
-    planning = _read_text(pack_service.planning_path())
-    skill_md = _read_text(WRITING_SKILL_MD)
+    planning = _read_text(pack_service.planning_path(pack_id))
+    skill_md = _read_text(_writing_skill_md(pack_id))
     system_prompt = (
         "你是排版配置助手。下面是一份申报材料的写作/格式要求（自然语言）。"
         "请把其中和 Word 排版有关的要求，提炼成一个严格 JSON 配置对象，供写入程序直接使用。"

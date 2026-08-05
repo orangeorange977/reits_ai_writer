@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from backend.database.db import get_db, is_preset_project
 from backend.generators import NDRCGenerator
+from backend.services import pack_service
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class CreateProjectRequest(BaseModel):
     """创建项目请求"""
     name: str
     data_source_path: str
+    pack_id: Optional[str] = None  # 绑定的模板包；不传时绑默认包
 
 
 class ProjectResponse(BaseModel):
@@ -35,6 +37,7 @@ class ProjectResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     is_demo: bool = False
+    pack_id: Optional[str] = None
 
 
 # ===== 路由 =====
@@ -45,7 +48,8 @@ async def list_projects():
     db = await get_db()
     try:
         cursor = await db.execute(
-            "SELECT id, name, data_source_path, status, created_at, updated_at FROM projects ORDER BY created_at DESC"
+            "SELECT id, name, data_source_path, status, created_at, updated_at, pack_id "
+            "FROM projects ORDER BY created_at DESC"
         )
         rows = await cursor.fetchall()
         projects = []
@@ -58,6 +62,7 @@ async def list_projects():
                 created_at=row[4],
                 updated_at=row[5],
                 is_demo=is_preset_project(row[2]),
+                pack_id=row[6],
             ))
         return projects
     except Exception as e:
@@ -77,22 +82,32 @@ async def create_project(request: CreateProjectRequest):
     if not source_path.is_dir():
         raise HTTPException(status_code=400, detail=f"数据源路径不是文件夹: {request.data_source_path}")
 
+    # 校验/解析要绑定的模板包：不传时绑默认包，传了不存在的包则报错
+    try:
+        if request.pack_id:
+            pack_service.get_pack(request.pack_id)
+            pack_id = request.pack_id
+        else:
+            pack_id = pack_service.default_pack_id()
+    except pack_service.PackNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     db = await get_db()
     try:
         cursor = await db.execute(
-            "INSERT INTO projects (name, data_source_path, status) VALUES (?, ?, ?)",
-            (request.name, request.data_source_path, "active")
+            "INSERT INTO projects (name, data_source_path, status, pack_id) VALUES (?, ?, ?, ?)",
+            (request.name, request.data_source_path, "active", pack_id)
         )
         await db.commit()
         project_id = cursor.lastrowid
 
         # 查询刚创建的项目
         cursor = await db.execute(
-            "SELECT id, name, data_source_path, status, created_at, updated_at FROM projects WHERE id = ?",
+            "SELECT id, name, data_source_path, status, created_at, updated_at, pack_id FROM projects WHERE id = ?",
             (project_id,)
         )
         row = await cursor.fetchone()
-        logger.info(f"项目创建成功: {request.name} (ID={project_id})")
+        logger.info(f"项目创建成功: {request.name} (ID={project_id}, 模板包={pack_id})")
         return ProjectResponse(
             id=row[0],
             name=row[1],
@@ -101,6 +116,7 @@ async def create_project(request: CreateProjectRequest):
             created_at=row[4],
             updated_at=row[5],
             is_demo=is_preset_project(row[2]),
+            pack_id=row[6],
         )
     except Exception as e:
         logger.error(f"创建项目失败: {e}")
@@ -115,7 +131,7 @@ async def get_project(project_id: int):
     db = await get_db()
     try:
         cursor = await db.execute(
-            "SELECT id, name, data_source_path, status, created_at, updated_at FROM projects WHERE id = ?",
+            "SELECT id, name, data_source_path, status, created_at, updated_at, pack_id FROM projects WHERE id = ?",
             (project_id,)
         )
         row = await cursor.fetchone()
@@ -129,6 +145,7 @@ async def get_project(project_id: int):
             created_at=row[4],
             updated_at=row[5],
             is_demo=is_preset_project(row[2]),
+            pack_id=row[6],
         )
     except HTTPException:
         raise

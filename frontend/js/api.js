@@ -110,13 +110,30 @@ const API = {
      * 创建新项目
      * @param {string} name - 项目名称
      * @param {string} dataSourcePath - 数据源路径
+     * @param {string} packId - 绑定的模板包 ID（不传时后端绑默认包）
      * @returns {Promise<object>} 创建的项目信息
      */
-    async createProject(name, dataSourcePath) {
-        return this.post('/projects', {
-            name: name,
-            data_source_path: dataSourcePath,
-        });
+    async createProject(name, dataSourcePath, packId) {
+        const body = { name: name, data_source_path: dataSourcePath };
+        if (packId) body.pack_id = packId;
+        return this.post('/projects', body);
+    },
+
+    /**
+     * 可用模板包列表（新建项目时的"材料模板"下拉数据源）
+     * @returns {Promise<object>} {packs:[{id,name,version,...}], default_id}
+     */
+    async getPacks() {
+        return this.get('/packs');
+    },
+
+    /**
+     * 模板包详情：manifest + 章节结构（步骤条标题按此渲染）
+     * @param {string} packId - 模板包 ID
+     * @returns {Promise<object>} {pack:{...}, chapters:[{n,title}]}
+     */
+    async getPackDetail(packId) {
+        return this.get(`/packs/${encodeURIComponent(packId)}`);
     },
 
     /**

@@ -1,0 +1,40 @@
+{
+  "chapters": [
+    {
+      "n": 1,
+      "title": "一、项目基本情况",
+      "next": "二、参与主体情况",
+      "reading": "reading/ch1.md"
+    },
+    {
+      "n": 2,
+      "title": "二、参与主体情况",
+      "next": "三、REITs设立方案",
+      "reading": "reading/ch2.md"
+    },
+    {
+      "n": 3,
+      "title": "三、REITs设立方案",
+      "next": "四、项目基本条件",
+      "reading": "reading/ch3.md"
+    },
+    {
+      "n": 4,
+      "title": "四、项目基本条件",
+      "next": "五、项目合规情况",
+      "reading": "reading/ch4.md"
+    },
+    {
+      "n": 5,
+      "title": "五、项目合规情况",
+      "next": "六、运营管理安排",
+      "reading": "reading/ch5.md"
+    },
+    {
+      "n": 6,
+      "title": "六、运营管理安排（测试修订）",
+      "next": null,
+      "reading": "reading/ch6.md"
+    }
+  ]
+}

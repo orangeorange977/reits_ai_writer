@@ -1,0 +1,8 @@
+{
+  "id": "reits-ndrc-test",
+  "name": "REITs 申报材料（测试包·六章）",
+  "version": "0.1.0",
+  "description": "步骤 2.5 验收用测试包：复制自 reits-ndrc-2024，改为六章结构（去掉第七章），验证引擎按包结构工作、前端可选包。",
+  "material_label": "REITs测试申报材料",
+  "chapter_count": 6
+}

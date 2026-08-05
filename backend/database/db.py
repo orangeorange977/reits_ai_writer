@@ -38,7 +38,8 @@ async def init_database():
                 data_source_path TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                status TEXT DEFAULT 'active'
+                status TEXT DEFAULT 'active',
+                pack_id TEXT DEFAULT NULL
             )
         """)
 
@@ -70,8 +71,40 @@ async def init_database():
             )
         """)
 
+        # 旧库升级：projects 表补 pack_id 列（项目绑定的模板包），幂等
+        try:
+            await db.execute("ALTER TABLE projects ADD COLUMN pack_id TEXT DEFAULT NULL")
+        except Exception:
+            pass  # 列已存在
+
+        # 存量项目（含预置示范项目）尚未绑包时，绑到默认模板包
+        try:
+            from backend.services import pack_service
+            default_pack = pack_service.default_pack_id()
+            await db.execute(
+                "UPDATE projects SET pack_id = ? WHERE pack_id IS NULL OR pack_id = ''",
+                (default_pack,)
+            )
+        except Exception as e:
+            logger.warning(f"存量项目绑定默认模板包失败（不阻断启动）: {e}")
+
         await db.commit()
         print("  数据库初始化完成")
+
+
+async def get_project_pack_id(project_id) -> str | None:
+    """查项目绑定的模板包 ID；项目不存在/未绑包/ID非法时返回 None（用默认包）。"""
+    try:
+        pid = int(project_id)
+    except (TypeError, ValueError):
+        return None
+    async with aiosqlite.connect(str(DATABASE_PATH)) as db:
+        cursor = await db.execute(
+            "SELECT pack_id FROM projects WHERE id = ?", (pid,))
+        row = await cursor.fetchone()
+    if not row or not row[0]:
+        return None
+    return row[0]
 
 
 async def get_project_metadata(project_id: int, meta_type: str) -> dict | None:

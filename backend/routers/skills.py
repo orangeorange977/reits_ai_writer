@@ -8,13 +8,15 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from backend.config import NDRC_OFFICIAL_TEMPLATE
+from backend.config import NDRC_OFFICIAL_TEMPLATE, DEFAULT_PROJECT_ID
+from backend.database.db import get_project_pack_id
 from backend.services import skill_runner, summary_service, materials_client, pack_service
 from backend.services.kimi_client import chat
 
@@ -22,20 +24,28 @@ router = APIRouter(tags=["Skill执行"], prefix="/skills")
 logger = logging.getLogger(__name__)
 
 
-def _resolve_template_path(user_path: str = "") -> str:
-    """解析模板路径：用户提供的路径无效时，自动回退到模板包内置模板。
+async def _project_pack_id(project_id: str) -> Optional[str]:
+    """项目绑定的模板包；未绑包/项目不存在/默认项目时返回 None（用默认包）。"""
+    pid = _norm_pid(project_id)
+    if not pid or pid == DEFAULT_PROJECT_ID:
+        return None
+    return await get_project_pack_id(pid)
+
+
+def _resolve_template_path(user_path: str = "", pack_id: str = None) -> str:
+    """解析模板路径：用户提供的路径无效时，自动回退到项目所绑模板包的内置模板。
 
     回退顺序：
-    1. 当前模板包自带的 template.docx（步骤 2.5 后将成唯一来源）
+    1. 项目绑定模板包自带的 template.docx
     2. config 中的 NDRC_OFFICIAL_TEMPLATE（workspace 路径，部署场景）
     3. 项目源码目录 backend/templates/official/ndrc_2024.docx（开发场景）
     """
     tpl = (user_path or "").strip()
     if tpl and Path(tpl).exists():
         return tpl
-    # 回退 1：模板包自带模板
+    # 回退 1：绑定模板包自带模板
     try:
-        pack_tpl = pack_service.template_docx()
+        pack_tpl = pack_service.template_docx(pack_id)
         if pack_tpl.exists():
             return str(pack_tpl)
     except Exception as e:
@@ -51,9 +61,9 @@ def _resolve_template_path(user_path: str = "") -> str:
     return ""
 
 
-def _load_web_render():
-    """加载模板包内的 web_render 渲染脚本（写作规则随包走，保留热重载机制）。"""
-    return skill_runner.load_web_render()
+def _load_web_render(pack_id: str = None):
+    """加载项目绑定模板包内的 web_render 渲染脚本（写作规则随包走，保留热重载机制）。"""
+    return skill_runner.load_web_render(pack_id)
 
 
 @router.get("/models")
@@ -291,18 +301,20 @@ def _job(key):
     return _jobs.get(key, {"status": "idle", "data": None, "error": None})
 
 
-def _valid_chapter(n: int):
-    if n not in skill_runner.CHAPTERS:
+def _valid_chapter(n: int, pack_id: str = None):
+    if n not in skill_runner.chapters_for(pack_id):
         raise HTTPException(status_code=404, detail=f"章节 {n} 不存在")
 
 
 async def _run_chapter_job_with_subs(key, n: int, subtitles: list,
-                                     materials_path: str = "", project_id: str = ""):
+                                     materials_path: str = "", project_id: str = "",
+                                     pack_id: str = None):
     try:
         result = await asyncio.to_thread(
-            skill_runner.run_chapter, n, subtitles, materials_path, project_id or None)
+            skill_runner.run_chapter, n, subtitles, materials_path,
+            project_id or None, pack_id)
         _jobs[key] = {"status": "done", "data": result, "error": None}
-        logger.info(f"第{n}章 skill 执行完成（项目 {project_id or '默认'}）")
+        logger.info(f"第{n}章 skill 执行完成（项目 {project_id or '默认'}，模板包 {pack_id or '默认'}）")
     except Exception as e:
         logger.error(f"第{n}章 skill 执行失败: {e}", exc_info=True)
         _jobs[key] = {"status": "error", "data": None, "error": str(e)}
@@ -312,26 +324,29 @@ async def _run_chapter_job_with_subs(key, n: int, subtitles: list,
 async def chapter_run(n: int, template_path: str = "", materials_path: str = "",
                       project_id: str = ""):
     """启动第 n 章生成（后台异步），立即返回。template_path 有效时强制用模板小标题；
-    materials_path 有效时把"读取申报材料"的工具挂给 Kimi；project_id 决定数据落在哪个项目目录。"""
-    _valid_chapter(n)
+    materials_path 有效时把"读取申报材料"的工具挂给 Kimi；project_id 决定数据落在哪个项目目录，
+    并按项目绑定的模板包执行。"""
+    pack_id = await _project_pack_id(project_id)
+    _valid_chapter(n, pack_id)
     pid = _norm_pid(project_id)
     key = (pid, n)
     if _job(key)["status"] == "running":
         raise HTTPException(status_code=409, detail=f"第{n}章正在生成中，请稍候")
     subs = []
-    tpl = _resolve_template_path(template_path)
+    tpl = _resolve_template_path(template_path, pack_id)
     if tpl:
-        subs = await asyncio.to_thread(skill_runner.chapter_subtitles, n, tpl)
+        subs = await asyncio.to_thread(skill_runner.chapter_subtitles, n, tpl, pack_id)
     _jobs[key] = {"status": "running", "data": None, "error": None}
     _tasks[key] = asyncio.create_task(
-        _run_chapter_job_with_subs(key, n, subs, materials_path.strip(), pid))
+        _run_chapter_job_with_subs(key, n, subs, materials_path.strip(), pid, pack_id))
     return {"status": "started", "message": f"第{n}章生成已启动，请稍候（Kimi 处理约需数分钟）"}
 
 
 @router.get("/chapter/{n}/status")
 async def chapter_status(n: int, project_id: str = ""):
     """查询第 n 章生成进度/结果（按项目隔离）。"""
-    _valid_chapter(n)
+    pack_id = await _project_pack_id(project_id)
+    _valid_chapter(n, pack_id)
     return _job((_norm_pid(project_id), n))
 
 
@@ -340,20 +355,21 @@ async def chapter_content(n: int, template_path: str = "", project_id: str = "")
     """第 n 章可编辑内容：以官方模板的本章小标题为骨架，合并该项目已保存/已生成的内容。
 
     template_path（来自系统设置）有效时，即使还没生成，也能看到该章的小标题结构。
-    若前端未传或路径无效，自动回退到模板包内置模板。
+    若前端未传或路径无效，自动回退到项目绑定模板包的内置模板。
     """
-    _valid_chapter(n)
+    pack_id = await _project_pack_id(project_id)
+    _valid_chapter(n, pack_id)
     pid = project_id or None
 
     def _do():
         subs = []
         tables = {}
         table_start = 1
-        tpl = _resolve_template_path(template_path)
+        tpl = _resolve_template_path(template_path, pack_id)
         if tpl:
-            subs = skill_runner.chapter_subtitles(n, tpl)
-            tables = skill_runner.chapter_tables(n, tpl)
-            table_start = skill_runner.chapter_table_start(n, tpl)
+            subs = skill_runner.chapter_subtitles(n, tpl, pack_id)
+            tables = skill_runner.chapter_tables(n, tpl, pack_id)
+            table_start = skill_runner.chapter_table_start(n, tpl, pack_id)
         return skill_runner.get_chapter_content(n, subs, tables, table_start, pid)
 
     return await asyncio.to_thread(_do)
@@ -366,10 +382,11 @@ class ChapterSaveBody(BaseModel):
 @router.post("/chapter/{n}/save")
 async def chapter_save(n: int, body: ChapterSaveBody, project_id: str = ""):
     """保存用户编辑后的第 n 章内容到该项目（回传给最终版 JSON）。"""
-    _valid_chapter(n)
+    pack_id = await _project_pack_id(project_id)
+    _valid_chapter(n, pack_id)
     try:
         await asyncio.to_thread(
-            skill_runner.save_chapter_content, n, body.sections, project_id or None)
+            skill_runner.save_chapter_content, n, body.sections, project_id or None, pack_id)
         return {"status": "ok", "message": "已保存"}
     except Exception as e:
         logger.error(f"保存第{n}章内容失败: {e}", exc_info=True)
@@ -401,19 +418,21 @@ async def chapter_preview(n: int, template_path: str = "", project_id: str = "")
     """读该项目第 n 章 JSON -> 写入官方模板对应章节 + 返回预览 HTML。
 
     template_path 由网页"系统设置"里的模板文件路径传入；有效则写入模板、预览取自填好的模板，
-    无效/未提供则自动回退到模板包内置模板；仍无效则回退到独立生成一份 Word。
+    无效/未提供则自动回退到项目绑定模板包的内置模板；仍无效则回退到独立生成一份 Word。
 
     预览只对"编辑区内容"负责：不调用大模型、不因 skill/planning 改动而重跑；
     只有本章已保存内容(JSON)变化时才真正重新渲染，否则直接复用上次结果。
     """
-    _valid_chapter(n)
+    pack_id = await _project_pack_id(project_id)
+    _valid_chapter(n, pack_id)
     pid = project_id or None
     key = (_norm_pid(project_id), n)
-    cfg = skill_runner.CHAPTERS[n]
+    cfg = skill_runner.chapters_for(pack_id)[n]
     docx_path = str(skill_runner.chapter_docx_path(n, pid))
 
-    tpl_resolved = _resolve_template_path(template_path)
-    sig = _preview_signature(n, tpl_resolved, project_id)
+    tpl_resolved = _resolve_template_path(template_path, pack_id)
+    # 签名含模板包：同一项目换绑包后预览要重算
+    sig = (pack_id or "") + "|" + _preview_signature(n, tpl_resolved, project_id)
     cached = _PREVIEW_CACHE.get(key)
     if cached and cached[0] == sig:
         return {"status": "ok", "cached": True, **cached[1]}
@@ -422,7 +441,7 @@ async def chapter_preview(n: int, template_path: str = "", project_id: str = "")
         sections = skill_runner.get_chapter_structured(n, pid)
         if not sections:
             return {"has_content": False, "html": "", "used_template": False}
-        wr = _load_web_render()
+        wr = _load_web_render(pack_id)
         if tpl_resolved:
             wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"])
             html = wr.docx_to_preview_html(docx_path, cfg["title"], cfg["next"])
@@ -445,11 +464,12 @@ async def chapter_preview(n: int, template_path: str = "", project_id: str = "")
 @router.get("/chapter/{n}/download")
 async def chapter_download(n: int, project_id: str = ""):
     """下载该项目第 n 章生成的 Word 文件。"""
-    _valid_chapter(n)
+    pack_id = await _project_pack_id(project_id)
+    _valid_chapter(n, pack_id)
     path = skill_runner.chapter_docx_path(n, project_id or None)
     if not path.exists():
         raise HTTPException(status_code=404, detail="尚未生成 Word，请先在预览处生成")
-    title = skill_runner.CHAPTERS[n]["title"]
+    title = skill_runner.chapters_for(pack_id)[n]["title"]
     name_part = title.split("、", 1)[-1] if "、" in title else title
     filename = f"第{n}章_{name_part}.docx"
     return FileResponse(
