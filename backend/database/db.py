@@ -71,6 +71,18 @@ async def init_database():
             )
         """)
 
+        # 创建users表（步骤 3.2 登录认证）
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'admin',
+                must_change_password INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # 旧库升级：projects 表补 pack_id 列（项目绑定的模板包），幂等
         try:
             await db.execute("ALTER TABLE projects ADD COLUMN pack_id TEXT DEFAULT NULL")
@@ -90,6 +102,33 @@ async def init_database():
 
         await db.commit()
         print("  数据库初始化完成")
+
+
+async def ensure_admin_user():
+    """首次启动创建初始管理员账号（步骤 3.2）：
+    密码取环境变量 ADMIN_INIT_PASSWORD；未配置时自动生成随机强密码并打印到控制台；
+    初始账号标记 must_change_password=1，首次登录强制改密。"""
+    from backend.services import auth as auth_service
+    from backend.config import ADMIN_INIT_PASSWORD
+
+    async with aiosqlite.connect(str(DATABASE_PATH)) as db:
+        db.row_factory = aiosqlite.Row
+        row = await db.execute_fetchall("SELECT id FROM users LIMIT 1")
+        if row:
+            return  # 已有任何用户，不重复创建
+        if ADMIN_INIT_PASSWORD:
+            password = ADMIN_INIT_PASSWORD
+        else:
+            password = auth_service.random_strong_password()
+            print("  ⚠️  未配置 ADMIN_INIT_PASSWORD，已为 admin 生成随机初始密码：")
+            print(f"      {password}")
+            print("      请立即保存，首次登录后会被强制修改。")
+        await db.execute(
+            "INSERT INTO users (username, password_hash, role, must_change_password) VALUES (?, ?, 'admin', 1)",
+            ("admin", auth_service.hash_password(password)),
+        )
+        await db.commit()
+        print("  初始管理员账号 admin 已创建")
 
 
 async def get_project_pack_id(project_id) -> str | None:

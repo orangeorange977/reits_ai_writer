@@ -25,14 +25,16 @@ except Exception:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from backend.config import APP_HOST, APP_PORT
-from backend.database.db import init_database, load_preset_projects
+from backend.database.db import init_database, load_preset_projects, ensure_admin_user
 from backend.routers import projects_router, folders_router
+from backend.routers.auth import router as auth_router
 from backend.routers.enhancements import router as enhancements_router
 from backend.routers.packs import router as packs_router
 from backend.routers.skills import router as skills_router
+from backend.services.auth import decode_token
 
 # 创建FastAPI实例
 app = FastAPI(
@@ -51,7 +53,7 @@ app.add_middleware(
 )
 
 
-# 静态资源禁用浏览器缓存（本地开发环境）：
+# 前端静态文件禁用浏览器缓存（本地开发环境）：
 # 否则每次改前端 JS/CSS/HTML 后，浏览器可能仍用旧缓存，导致新逻辑不生效。
 @app.middleware("http")
 async def _no_cache_static(request, call_next):
@@ -64,6 +66,29 @@ async def _no_cache_static(request, call_next):
     return response
 
 
+# ===== 全局登录鉴权（步骤 3.2）=====
+# 除公开路径外，所有 /api/* 与接口文档一律要求有效 JWT，中间件统一拦截，无一遗漏。
+_PUBLIC_PATHS = ("/api/auth/login", "/api/health")
+_PROTECTED_DOC_PREFIXES = ("/docs", "/redoc", "/openapi.json")
+
+
+@app.middleware("http")
+async def auth_middleware(request, call_next):
+    path = request.url.path
+    need_auth = (
+        (path.startswith("/api/") and path not in _PUBLIC_PATHS)
+        or path.startswith(_PROTECTED_DOC_PREFIXES)
+    )
+    if need_auth and request.method != "OPTIONS":
+        header = request.headers.get("authorization", "")
+        token = header[len("Bearer "):].strip() if header.startswith("Bearer ") else ""
+        payload = decode_token(token) if token else None
+        if not payload:
+            return JSONResponse({"detail": "未登录或登录已过期"}, status_code=401)
+        request.state.user = payload
+    return await call_next(request)
+
+
 # 前端静态文件目录
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
@@ -71,6 +96,7 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 # ===== API路由 =====
 
 # 注册路由模块（必须在静态文件挂载和通配符路由之前）
+app.include_router(auth_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
 app.include_router(folders_router, prefix="/api")
 app.include_router(enhancements_router, prefix="/api")
@@ -112,6 +138,8 @@ async def startup_event():
     print("=" * 50)
     # 初始化数据库
     await init_database()
+    # 首次启动创建初始管理员账号（步骤 3.2）
+    await ensure_admin_user()
     # 加载预置示范项目
     await load_preset_projects()
 

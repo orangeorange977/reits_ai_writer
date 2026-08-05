@@ -2737,3 +2737,50 @@ body {
 .form-table tr:last-child {
     border-bottom: none;
 }
+
+/* ===== 登录层（步骤 3.2）===== */
+#login-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-base);
+}
+
+#login-overlay.hidden {
+    display: none;
+}
+
+.login-card {
+    width: 360px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 28px;
+    box-shadow: 0 8px 30px rgba(46, 58, 46, 0.08);
+}
+
+.login-title {
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+    color: var(--text-primary);
+}
+
+.login-sub {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: 6px 0 18px;
+}
+
+.login-error {
+    background: var(--error-bg);
+    color: var(--error);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    margin-bottom: 10px;
+}

@@ -80,3 +80,12 @@ USE_OFFICIAL_TEMPLATE = True  # 开关：True使用官方模板生成，False使
 
 # 增强功能总开关
 ENABLE_ENHANCEMENTS = True
+
+# ===== 登录认证（步骤 3.2）=====
+# JWT 签名密钥：生产部署必须显式设置（部署时生成随机值）；
+# 未设置时后端会生成进程内随机密钥（重启后旧 token 失效，仅限本地开发）。
+JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
+# 初始管理员密码：首次启动创建 admin 账号用；未设置时自动生成随机强密码并打印到控制台。
+ADMIN_INIT_PASSWORD = os.environ.get("ADMIN_INIT_PASSWORD", "").strip()
+# token 有效期（小时）
+TOKEN_TTL_HOURS = int(os.environ.get("TOKEN_TTL_HOURS", "12") or 12)

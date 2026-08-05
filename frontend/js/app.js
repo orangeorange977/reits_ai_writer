@@ -1731,18 +1731,89 @@ function selectProject(projectId) {
 /**
  * 初始化应用
  */
-async function initApp() {
-    console.log('[REIT-AI] 系统初始化中...');
+// ===== 登录认证（步骤 3.2）=====
 
-    // 恢复系统设置页里保存过的路径
-    restoreSettingsPaths();
+/** 弹出登录层（msg 为可选的提示，如"登录已过期"） */
+function showLoginOverlay(msg) {
+    const overlay = document.getElementById('login-overlay');
+    const errBox = document.getElementById('loginError');
+    if (overlay) overlay.classList.remove('hidden');
+    if (errBox) {
+        errBox.style.display = msg ? 'block' : 'none';
+        errBox.textContent = msg || '';
+    }
+    const input = document.getElementById('loginPassword');
+    if (input) { input.value = ''; input.focus(); }
+}
 
-    // 检查后端健康状态
+/** 隐藏登录层 */
+function hideLoginOverlay() {
+    const overlay = document.getElementById('login-overlay');
+    if (overlay) overlay.classList.add('hidden');
+}
+
+/** 提交登录表单 */
+async function doLogin() {
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const errBox = document.getElementById('loginError');
+    const btn = document.getElementById('loginBtn');
+    if (!username || !password) {
+        errBox.textContent = '请输入用户名和密码';
+        errBox.style.display = 'block';
+        return;
+    }
+    btn.disabled = true;
+    btn.textContent = '登录中...';
     try {
-        const health = await API.get('/health');
-        console.log('[REIT-AI] 后端服务连接正常:', health);
+        const result = await API.login(username, password);
+        AuthToken.set(result.token);
+        hideLoginOverlay();
+        if (result.must_change_password) {
+            // 首次登录强制改密：改完再拉数据
+            document.getElementById('modal-change-password').classList.add('show');
+        } else {
+            await continueInit();
+        }
+    } catch (e) {
+        errBox.textContent = e.message || '登录失败';
+        errBox.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '登 录';
+    }
+}
 
-        // 自动加载项目列表
+/** 提交改密（首次登录强制改密也走这里），成功后刷新页面重新初始化 */
+async function doChangePassword() {
+    const oldPwd = document.getElementById('cpOld').value;
+    const newPwd = document.getElementById('cpNew').value;
+    const confirm = document.getElementById('cpConfirm').value;
+    const errBox = document.getElementById('cpError');
+    errBox.style.display = 'none';
+    if (!oldPwd || !newPwd) {
+        errBox.textContent = '请填写完整';
+        errBox.style.display = 'block';
+        return;
+    }
+    if (newPwd !== confirm) {
+        errBox.textContent = '两次输入的新密码不一致';
+        errBox.style.display = 'block';
+        return;
+    }
+    try {
+        await API.changePassword(oldPwd, newPwd);
+        showToast('密码修改成功', 'success');
+        setTimeout(() => location.reload(), 600);
+    } catch (e) {
+        errBox.textContent = e.message || '修改失败';
+        errBox.style.display = 'block';
+    }
+}
+
+/** 登录成功后的数据初始化（原 initApp 的项目加载部分） */
+async function continueInit() {
+    try {
         const projects = await API.getProjects();
         _projectsCache = projects || [];
         if (projects && projects.length > 0) {
@@ -1753,15 +1824,50 @@ async function initApp() {
         }
         updateProjectHeaderBar();
     } catch (error) {
+        console.warn('[REIT-AI] 项目数据加载失败:', error.message);
+    }
+    navigate('overview');
+}
+
+async function initApp() {
+    console.log('[REIT-AI] 系统初始化中...');
+
+    // 恢复系统设置页里保存过的路径
+    restoreSettingsPaths();
+
+    // 绑定全局事件（登录表单支持回车提交）
+    bindGlobalEvents();
+    document.getElementById('loginPassword').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doLogin();
+    });
+
+    // 检查登录态（步骤 3.2）：无 token 或 token 失效 → 停在登录层
+    if (!AuthToken.get()) {
+        showLoginOverlay();
+        return;
+    }
+    try {
+        const me = await API.getMe();
+        console.log('[REIT-AI] 已登录用户:', me.username);
+        hideLoginOverlay();
+        if (me.must_change_password) {
+            document.getElementById('modal-change-password').classList.add('show');
+            return;
+        }
+    } catch (e) {
+        // getMe 401 时 api.js 已弹登录层
+        return;
+    }
+
+    // 后端健康检查
+    try {
+        const health = await API.get('/health');
+        console.log('[REIT-AI] 后端服务连接正常:', health);
+    } catch (error) {
         console.warn('[REIT-AI] 后端服务未就绪:', error.message);
     }
 
-    // 默认显示概览页面
-    navigate('overview');
-
-    // 绑定全局事件
-    bindGlobalEvents();
-
+    await continueInit();
     console.log('[REIT-AI] 系统初始化完成');
 }
 
@@ -1769,8 +1875,9 @@ async function initApp() {
  * 绑定全局事件监听器
  */
 function bindGlobalEvents() {
-    // 点击弹窗外部关闭
+    // 点击弹窗外部关闭（data-sticky 的强制弹窗除外，如首次登录改密）
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        if (overlay.dataset.sticky === 'true') return;
         overlay.addEventListener('click', function (e) {
             if (e.target === this) {
                 this.classList.remove('show');
@@ -1778,10 +1885,11 @@ function bindGlobalEvents() {
         });
     });
 
-    // ESC 关闭弹窗
+    // ESC 关闭弹窗（sticky 弹窗除外）
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') {
             document.querySelectorAll('.modal-overlay.show').forEach(modal => {
+                if (modal.dataset.sticky === 'true') return;
                 modal.classList.remove('show');
             });
         }

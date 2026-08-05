@@ -5,6 +5,25 @@
 // 同源部署：前端由后端同端口托管，API 走相对路径，不写死主机/端口（步骤 3.1）
 const API_BASE = '/api';
 
+// ===== 登录态（步骤 3.2）：token 存 sessionStorage，关闭标签页即失效 =====
+const AuthToken = {
+    get: () => sessionStorage.getItem('reitai_token') || '',
+    set: (token) => sessionStorage.setItem('reitai_token', token),
+    clear: () => sessionStorage.removeItem('reitai_token'),
+    headers: () => {
+        const t = AuthToken.get();
+        return t ? { 'Authorization': 'Bearer ' + t } : {};
+    },
+};
+
+/** 收到 401：登录态失效，清 token 并弹出登录层 */
+function handleUnauthorized(detail) {
+    AuthToken.clear();
+    if (typeof showLoginOverlay === 'function') {
+        showLoginOverlay(detail || '登录已过期，请重新登录');
+    }
+}
+
 /**
  * API调用工具类
  */
@@ -19,6 +38,7 @@ const API = {
         const url = `${API_BASE}${endpoint}`;
         const defaultHeaders = {
             'Content-Type': 'application/json',
+            ...AuthToken.headers(),
         };
 
         const config = {
@@ -27,7 +47,8 @@ const API = {
         };
 
         // 如果是下载请求，不设置Content-Type
-        if (options._download) {
+        const isDownload = options._download;
+        if (isDownload) {
             delete config.headers['Content-Type'];
             delete config._download;
         }
@@ -35,13 +56,19 @@ const API = {
         try {
             const response = await fetch(url, config);
 
+            if (response.status === 401 && !endpoint.startsWith('/auth/login')) {
+                // 登录接口的 401 是"密码错误"，由后端 detail 展示；其余 401 才是登录态失效
+                handleUnauthorized();
+                throw new Error('未登录或登录已过期');
+            }
+
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.detail || `请求失败: ${response.status} ${response.statusText}`);
             }
 
             // 如果是文件下载响应
-            if (options._download) {
+            if (isDownload) {
                 return response;
             }
 
@@ -243,16 +270,20 @@ const API = {
     },
 
     /**
-     * 下载第 n 章 Word 文件
+     * 下载第 n 章 Word 文件（fetch blob 方式，才能携带登录 token）
      */
-    downloadChapterDocx(n) {
-        const link = document.createElement('a');
+    async downloadChapterDocx(n) {
         const pid = encodeURIComponent(this._currentProjectId());
-        link.href = `${API_BASE}/skills/chapter/${n}/download?project_id=${pid}`;
+        const resp = await this.request(`/skills/chapter/${n}/download?project_id=${pid}`, { _download: true });
+        const blob = await resp.blob();
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `ch${n}_output.docx`;
         link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
     },
 
     /**
@@ -307,7 +338,10 @@ const API = {
      */
     async aiCompose(formData) {
         // multipart 上传：不要手动设 Content-Type，交给浏览器带 boundary
-        const resp = await fetch(`${API_BASE}/skills/ai-compose`, { method: 'POST', body: formData });
+        const resp = await fetch(`${API_BASE}/skills/ai-compose`, {
+            method: 'POST', body: formData, headers: AuthToken.headers(),
+        });
+        if (resp.status === 401) { handleUnauthorized(); throw new Error('未登录或登录已过期'); }
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             throw new Error(err.detail || `请求失败: ${resp.status}`);
@@ -344,11 +378,30 @@ const API = {
         const response = await fetch(`${API_BASE}/skills/summary/import-excel`, {
             method: 'POST',
             body: form,
+            headers: AuthToken.headers(),
         });
+        if (response.status === 401) { handleUnauthorized(); throw new Error('未登录或登录已过期'); }
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
             throw new Error(err.detail || `导入失败: ${response.status}`);
         }
         return response.json();
+    },
+
+    // ===== 登录认证（步骤 3.2）=====
+
+    /** 登录：成功返回 {token, username, role, must_change_password} */
+    async login(username, password) {
+        return this.post('/auth/login', { username, password });
+    },
+
+    /** 当前登录用户信息 */
+    async getMe() {
+        return this.get('/auth/me');
+    },
+
+    /** 修改当前用户密码 */
+    async changePassword(oldPassword, newPassword) {
+        return this.post('/auth/change-password', { old_password: oldPassword, new_password: newPassword });
     },
 };

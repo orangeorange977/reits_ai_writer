@@ -406,6 +406,52 @@
     <!-- ===== Toast提示 ===== -->
     <div class="toast" id="globalToast"></div>
 
+    <!-- ===== 登录层（步骤 3.2，未登录时覆盖全屏）===== -->
+    <div id="login-overlay">
+        <div class="login-card">
+            <div class="login-title">REIT-AI 材料生成系统</div>
+            <div class="login-sub">请登录后继续</div>
+            <div id="loginError" class="login-error" style="display:none"></div>
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" class="form-input" id="loginUsername" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" class="form-input" id="loginPassword" autocomplete="current-password">
+            </div>
+            <button class="btn btn-primary" style="width:100%" id="loginBtn" onclick="doLogin()">登 录</button>
+        </div>
+    </div>
+
+    <!-- ===== 改密弹窗（首次登录强制改密，data-sticky 禁止点外/ESC 关闭）===== -->
+    <div class="modal-overlay" id="modal-change-password" data-sticky="true">
+        <div class="modal" style="width:420px">
+            <div class="modal-header">
+                <span class="modal-title">🔑 请修改密码</span>
+            </div>
+            <div class="modal-body">
+                <div class="text-muted text-sm" style="margin-bottom:12px">
+                    首次登录必须修改初始密码。新密码至少 8 位，且大写/小写/数字/符号至少包含三类。
+                </div>
+                <div class="form-group">
+                    <label>当前密码</label>
+                    <input type="password" class="form-input" id="cpOld" autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label>新密码</label>
+                    <input type="password" class="form-input" id="cpNew" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>确认新密码</label>
+                    <input type="password" class="form-input" id="cpConfirm" autocomplete="new-password">
+                </div>
+                <div id="cpError" class="login-error" style="display:none"></div>
+                <button class="btn btn-primary" style="width:100%" onclick="doChangePassword()">确认修改</button>
+            </div>
+        </div>
+    </div>
+
     <!-- JavaScript -->
     <script src="/js/api.js"></script>
     <script src="/js/components.js"></script>
