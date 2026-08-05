@@ -83,11 +83,37 @@ async def init_database():
             )
         """)
 
+        # 创建generation_jobs表（步骤 3.5：生成任务状态入 DB，多 worker/重启后可见）
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS generation_jobs (
+                project_id TEXT NOT NULL,
+                chapter_n INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'idle',
+                data_json TEXT,
+                error TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (project_id, chapter_n)
+            )
+        """)
+
         # 旧库升级：projects 表补 pack_id 列（项目绑定的模板包），幂等
         try:
             await db.execute("ALTER TABLE projects ADD COLUMN pack_id TEXT DEFAULT NULL")
         except Exception:
             pass  # 列已存在
+
+        # 旧库升级：projects 表补 user_id 列（步骤 3.5 用户隔离），幂等
+        try:
+            await db.execute("ALTER TABLE projects ADD COLUMN user_id INTEGER DEFAULT 1")
+        except Exception:
+            pass  # 列已存在
+
+        # 存量项目（含预置示范项目）归属 admin（id=1）
+        try:
+            await db.execute(
+                "UPDATE projects SET user_id = 1 WHERE user_id IS NULL")
+        except Exception as e:
+            logger.warning(f"存量项目归属回填失败（不阻断启动）: {e}")
 
         # 存量项目（含预置示范项目）尚未绑包时，绑到默认模板包
         try:
@@ -144,6 +170,57 @@ async def get_project_pack_id(project_id) -> str | None:
     if not row or not row[0]:
         return None
     return row[0]
+
+
+async def get_project_owner_id(project_id) -> int | None:
+    """查项目归属的用户 ID；项目不存在/ID非法时返回 None（步骤 3.5）。"""
+    try:
+        pid = int(project_id)
+    except (TypeError, ValueError):
+        return None
+    async with aiosqlite.connect(str(DATABASE_PATH)) as db:
+        cursor = await db.execute(
+            "SELECT user_id FROM projects WHERE id = ?", (pid,))
+        row = await cursor.fetchone()
+    if not row or row[0] is None:
+        return None
+    return int(row[0])
+
+
+async def upsert_generation_job(project_id: str, chapter_n: int, status: str,
+                                data_json: str = None, error: str = None) -> None:
+    """写入/更新生成任务状态（步骤 3.5：状态入 DB，重启/多 worker 后可见）。"""
+    async with aiosqlite.connect(str(DATABASE_PATH)) as db:
+        await db.execute(
+            """INSERT INTO generation_jobs (project_id, chapter_n, status, data_json, error, updated_at)
+               VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(project_id, chapter_n)
+               DO UPDATE SET status = excluded.status,
+                             data_json = excluded.data_json,
+                             error = excluded.error,
+                             updated_at = CURRENT_TIMESTAMP""",
+            (str(project_id), chapter_n, status, data_json, error)
+        )
+        await db.commit()
+
+
+async def get_generation_job(project_id: str, chapter_n: int) -> dict | None:
+    """读取生成任务状态；无记录返回 None。"""
+    async with aiosqlite.connect(str(DATABASE_PATH)) as db:
+        cursor = await db.execute(
+            "SELECT status, data_json, error FROM generation_jobs WHERE project_id = ? AND chapter_n = ?",
+            (str(project_id), chapter_n)
+        )
+        row = await cursor.fetchone()
+    if not row:
+        return None
+    data = None
+    if row[1]:
+        try:
+            data = json.loads(row[1])
+        except (json.JSONDecodeError, TypeError):
+            data = None
+    return {"status": row[0], "data": data, "error": row[2]}
 
 
 async def get_project_metadata(project_id: int, meta_type: str) -> dict | None:

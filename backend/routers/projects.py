@@ -13,16 +13,32 @@ import zipfile
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel
 
 from backend.config import PROJECTS_DIR
-from backend.database.db import get_db, is_preset_project
+from backend.database.db import get_db, get_project_owner_id, is_preset_project
 from backend.services import pack_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["项目管理"])
+
+
+def _current_user_id(http_req: Request) -> int:
+    """从中间件解析的 token payload 里取当前用户 ID（步骤 3.5）。"""
+    user = getattr(http_req.state, "user", None) or {}
+    try:
+        return int(user.get("sub"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="未登录或登录已过期")
+
+
+async def _assert_project_owned(project_id: int, user_id: int):
+    """项目存在且归属当前用户，否则 404（不泄露他人项目的存在性，步骤 3.5）。"""
+    owner = await get_project_owner_id(project_id)
+    if owner is None or owner != user_id:
+        raise HTTPException(status_code=404, detail=f"项目不存在: ID={project_id}")
 
 # ===== 材料上传（步骤 3.4） =====
 
@@ -106,13 +122,15 @@ class ProjectResponse(BaseModel):
 # ===== 路由 =====
 
 @router.get("/projects", response_model=List[ProjectResponse])
-async def list_projects():
-    """获取项目列表"""
+async def list_projects(http_req: Request):
+    """获取项目列表（只返回当前用户自己的项目，步骤 3.5）"""
+    user_id = _current_user_id(http_req)
     db = await get_db()
     try:
         cursor = await db.execute(
             "SELECT id, name, data_source_path, status, created_at, updated_at, pack_id "
-            "FROM projects ORDER BY created_at DESC"
+            "FROM projects WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,)
         )
         rows = await cursor.fetchall()
         projects = []
@@ -136,8 +154,9 @@ async def list_projects():
 
 
 @router.post("/projects", response_model=ProjectResponse)
-async def create_project(request: CreateProjectRequest):
-    """创建新项目"""
+async def create_project(request: CreateProjectRequest, http_req: Request):
+    """创建新项目（归属当前登录用户，步骤 3.5）"""
+    user_id = _current_user_id(http_req)
     # 验证路径是否存在
     source_path = Path(request.data_source_path)
     if not source_path.exists():
@@ -158,8 +177,8 @@ async def create_project(request: CreateProjectRequest):
     db = await get_db()
     try:
         cursor = await db.execute(
-            "INSERT INTO projects (name, data_source_path, status, pack_id) VALUES (?, ?, ?, ?)",
-            (request.name, request.data_source_path, "active", pack_id)
+            "INSERT INTO projects (name, data_source_path, status, pack_id, user_id) VALUES (?, ?, ?, ?, ?)",
+            (request.name, request.data_source_path, "active", pack_id, user_id)
         )
         await db.commit()
         project_id = cursor.lastrowid
@@ -189,8 +208,9 @@ async def create_project(request: CreateProjectRequest):
 
 
 @router.get("/projects/{project_id}", response_model=ProjectResponse)
-async def get_project(project_id: int):
-    """获取项目详情"""
+async def get_project(project_id: int, http_req: Request):
+    """获取项目详情（仅归属当前用户的项目，步骤 3.5）"""
+    await _assert_project_owned(project_id, _current_user_id(http_req))
     db = await get_db()
     try:
         cursor = await db.execute(
@@ -220,8 +240,9 @@ async def get_project(project_id: int):
 
 
 @router.delete("/projects/{project_id}")
-async def delete_project(project_id: int):
-    """删除项目"""
+async def delete_project(project_id: int, http_req: Request):
+    """删除项目（仅归属当前用户的项目，步骤 3.5）"""
+    await _assert_project_owned(project_id, _current_user_id(http_req))
     db = await get_db()
     try:
         # 检查项目是否存在
@@ -256,24 +277,15 @@ async def delete_project(project_id: int):
 
 # ===== 申报材料上传（步骤 3.4：上传模式替代本机路径） =====
 
-async def _assert_project_exists(project_id: int):
-    db = await get_db()
-    try:
-        cursor = await db.execute("SELECT id FROM projects WHERE id = ?", (project_id,))
-        if not await cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"项目不存在: ID={project_id}")
-    finally:
-        await db.close()
-
 
 @router.post("/projects/{project_id}/materials")
-async def upload_materials(project_id: int, files: List[UploadFile] = File(...)):
+async def upload_materials(project_id: int, http_req: Request, files: List[UploadFile] = File(...)):
     """上传申报材料（多文件，支持 zip 自动解压）。
 
     落盘到 workspace/projects/<id>/materials/；zip 里的多级文件夹结构原样保留，
     生成时由 materials_client 递归扫描。同名文件直接覆盖（重传即替换）。
     """
-    await _assert_project_exists(project_id)
+    await _assert_project_owned(project_id, _current_user_id(http_req))
     if not files:
         raise HTTPException(status_code=400, detail="未选择任何文件")
 
@@ -314,9 +326,9 @@ async def upload_materials(project_id: int, files: List[UploadFile] = File(...))
 
 
 @router.get("/projects/{project_id}/materials")
-async def list_materials(project_id: int):
+async def list_materials(project_id: int, http_req: Request):
     """列出当前项目已上传的申报材料（递归，含多级子文件夹）。"""
-    await _assert_project_exists(project_id)
+    await _assert_project_owned(project_id, _current_user_id(http_req))
     root = _materials_dir(project_id)
     files = []
     if root.is_dir():
@@ -335,9 +347,9 @@ async def list_materials(project_id: int):
 
 
 @router.delete("/projects/{project_id}/materials")
-async def clear_materials(project_id: int):
+async def clear_materials(project_id: int, http_req: Request):
     """清空当前项目的全部申报材料。"""
-    await _assert_project_exists(project_id)
+    await _assert_project_owned(project_id, _current_user_id(http_req))
     shutil.rmtree(_materials_dir(project_id), ignore_errors=True)
     return {"message": "材料已清空", "project_id": project_id}
 

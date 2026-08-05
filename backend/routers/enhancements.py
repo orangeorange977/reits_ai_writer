@@ -3,7 +3,7 @@
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from backend.managers.glossary_manager import GlossaryManager
@@ -11,10 +11,23 @@ from backend.managers.inapplicable_handler import InapplicableSectionHandler
 from backend.managers.financial_data_manager import FinancialDataManager
 from backend.managers.attachment_ref_linker import AttachmentReferenceLinker
 from backend.mappings import load_commitment_templates, load_metadata_config
-from backend.database.db import get_project_metadata, save_project_metadata
+from backend.database.db import (get_project_metadata, save_project_metadata,
+                                 get_project_owner_id)
 
 router = APIRouter(tags=["enhancements"])
 logger = logging.getLogger(__name__)
+
+
+async def _check_project_owned(project_id: int, http_req: Request):
+    """项目存在且归属当前用户，否则 404（不泄露他人项目存在性，步骤 3.5 用户隔离）。"""
+    user = getattr(http_req.state, "user", None) or {}
+    try:
+        user_id = int(user.get("sub"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="未登录或登录已过期")
+    owner = await get_project_owner_id(project_id)
+    if owner is None or owner != user_id:
+        raise HTTPException(status_code=404, detail=f"项目不存在: ID={project_id}")
 
 
 # ===== Pydantic请求/响应模型 =====
@@ -81,7 +94,7 @@ def _error_response(error: str, status_code: int = 400):
 # ===== 释义表端点 =====
 
 @router.get("/projects/{project_id}/glossary")
-async def get_glossary(project_id: int):
+async def get_glossary(project_id: int, _: None = Depends(_check_project_owned)):
     """获取项目释义表"""
     try:
         manager = GlossaryManager()
@@ -93,7 +106,7 @@ async def get_glossary(project_id: int):
 
 
 @router.put("/projects/{project_id}/glossary")
-async def update_glossary(project_id: int, request: GlossaryUpdateRequest):
+async def update_glossary(project_id: int, request: GlossaryUpdateRequest, _: None = Depends(_check_project_owned)):
     """更新项目释义表"""
     try:
         manager = GlossaryManager()
@@ -113,7 +126,7 @@ async def update_glossary(project_id: int, request: GlossaryUpdateRequest):
 # ===== 承诺函端点 =====
 
 @router.get("/projects/{project_id}/commitments")
-async def get_commitment_templates(project_id: int):
+async def get_commitment_templates(project_id: int, _: None = Depends(_check_project_owned)):
     """获取可用承诺函模板列表"""
     try:
         templates = load_commitment_templates(cache=True)
@@ -128,7 +141,7 @@ async def get_commitment_templates(project_id: int):
 
 
 @router.post("/projects/{project_id}/commitments/fill")
-async def fill_commitment(project_id: int, request: CommitmentFillRequest):
+async def fill_commitment(project_id: int, request: CommitmentFillRequest, _: None = Depends(_check_project_owned)):
     """填充承诺函（替换变量）"""
     try:
         templates = load_commitment_templates(cache=True)
@@ -167,7 +180,7 @@ async def fill_commitment(project_id: int, request: CommitmentFillRequest):
 # ===== 财务数据端点 =====
 
 @router.get("/projects/{project_id}/financial-data")
-async def get_financial_data(project_id: int):
+async def get_financial_data(project_id: int, _: None = Depends(_check_project_owned)):
     """获取项目财务数据"""
     try:
         manager = FinancialDataManager()
@@ -183,7 +196,7 @@ async def get_financial_data(project_id: int):
 
 
 @router.put("/projects/{project_id}/financial-data")
-async def save_financial_data(project_id: int, request: FinancialDataUpdateRequest):
+async def save_financial_data(project_id: int, request: FinancialDataUpdateRequest, _: None = Depends(_check_project_owned)):
     """保存项目财务数据"""
     try:
         manager = FinancialDataManager()
@@ -202,7 +215,7 @@ async def save_financial_data(project_id: int, request: FinancialDataUpdateReque
 # ===== 不涉及模块端点 =====
 
 @router.get("/projects/{project_id}/inapplicable")
-async def get_inapplicable(project_id: int):
+async def get_inapplicable(project_id: int, _: None = Depends(_check_project_owned)):
     """获取已标记的不涉及模块"""
     try:
         handler = InapplicableSectionHandler()
@@ -217,7 +230,7 @@ async def get_inapplicable(project_id: int):
 
 
 @router.put("/projects/{project_id}/inapplicable")
-async def update_inapplicable(project_id: int, request: InapplicableUpdateRequest):
+async def update_inapplicable(project_id: int, request: InapplicableUpdateRequest, _: None = Depends(_check_project_owned)):
     """更新不涉及标记"""
     try:
         handler = InapplicableSectionHandler()
@@ -236,7 +249,7 @@ async def update_inapplicable(project_id: int, request: InapplicableUpdateReques
 # ===== 基准日/查询时点端点 =====
 
 @router.get("/projects/{project_id}/query-dates")
-async def get_query_dates(project_id: int):
+async def get_query_dates(project_id: int, _: None = Depends(_check_project_owned)):
     """获取基准日配置"""
     try:
         data = await get_project_metadata(project_id, "query_point")
@@ -262,7 +275,7 @@ async def get_query_dates(project_id: int):
 
 
 @router.put("/projects/{project_id}/query-dates")
-async def update_query_dates(project_id: int, request: QueryDatesUpdateRequest):
+async def update_query_dates(project_id: int, request: QueryDatesUpdateRequest, _: None = Depends(_check_project_owned)):
     """更新基准日配置"""
     try:
         meta_data = {
@@ -284,7 +297,7 @@ async def update_query_dates(project_id: int, request: QueryDatesUpdateRequest):
 # ===== 附件引用端点 =====
 
 @router.get("/projects/{project_id}/attachments")
-async def get_attachments(project_id: int):
+async def get_attachments(project_id: int, _: None = Depends(_check_project_owned)):
     """获取附件编号清单"""
     try:
         linker = AttachmentReferenceLinker()
@@ -299,7 +312,7 @@ async def get_attachments(project_id: int):
 
 
 @router.put("/projects/{project_id}/attachments")
-async def update_attachments(project_id: int, request: AttachmentUpdateRequest):
+async def update_attachments(project_id: int, request: AttachmentUpdateRequest, _: None = Depends(_check_project_owned)):
     """更新附件引用"""
     try:
         linker = AttachmentReferenceLinker()
