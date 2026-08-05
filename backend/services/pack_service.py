@@ -87,8 +87,12 @@ def get_chapters(pack_id: str = None) -> dict:
 
 
 def pack_path(rel: str, pack_id: str = None) -> Path:
-    """包内任意资源路径（相对路径，自动防穿越）。"""
-    return get_pack(pack_id)["dir"] / rel.replace("\\", "/")
+    """包内任意资源路径（相对路径）；解析后校验不得逃逸出包目录，防目录穿越。"""
+    d = get_pack(pack_id)["dir"].resolve()
+    p = (d / rel.replace("\\", "/")).resolve()
+    if not p.is_relative_to(d):
+        raise PackNotFoundError(f"非法包内资源路径：{rel}")
+    return p
 
 
 def planning_path(pack_id: str = None) -> Path:
