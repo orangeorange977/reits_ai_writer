@@ -186,7 +186,12 @@ async function renderGlossaryPanel(containerId) {
     if (currentProjectId) {
         try {
             const data = await EnhancementsAPI.getGlossary(currentProjectId);
-            EnhancementsState.glossary.entries = data.entries || [];
+            // 后端条目不带 id，前端编辑/删除按钮依赖 id，这里补上稳定的本地 id
+            EnhancementsState.glossary.entries = (data.entries || []).map((e, i) => ({
+                id: e.id != null ? e.id : (i + 1),
+                term: e.term,
+                definition: e.definition,
+            }));
         } catch (e) {
             EnhancementsState.glossary.entries = getDefaultGlossary();
         }
