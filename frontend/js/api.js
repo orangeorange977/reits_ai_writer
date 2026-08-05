@@ -2,7 +2,8 @@
  * REIT-AI 法律文件生成系统 - API调用封装
  */
 
-const API_BASE = 'http://127.0.0.1:8000/api';
+// 同源部署：前端由后端同端口托管，API 走相对路径，不写死主机/端口（步骤 3.1）
+const API_BASE = '/api';
 
 /**
  * API调用工具类
