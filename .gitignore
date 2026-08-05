@@ -16,3 +16,4 @@ server_*.log
 # 生成的 Word 文档（官方模板例外保留）
 *.docx
 !backend/templates/official/*.docx
+!templates-packs/*/*.docx

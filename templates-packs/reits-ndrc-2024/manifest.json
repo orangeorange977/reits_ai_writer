@@ -1,0 +1,8 @@
+{
+  "id": "reits-ndrc-2024",
+  "name": "REITs 发改委申报材料（2024 版）",
+  "version": "1.0.0",
+  "description": "基础设施领域不动产投资信托基金（REITs）国家发改委申报材料生成模板包：七章结构 + 官方格式 Word 模板 + 各章写作要求 + 排版脚本 + 画图模板。",
+  "material_label": "REITs发改委申报材料",
+  "chapter_count": 7
+}
