@@ -1,0 +1,18 @@
+# Python 运行产物
+__pycache__/
+*.pyc
+.venv/
+
+# 密钥（含真实 Kimi/天眼查密钥，绝不可入库）
+.env
+
+# 运行期数据库和输出
+workspace/
+
+# 运行日志与依赖标记
+server_*.log
+.deps_installed
+
+# 生成的 Word 文档（官方模板例外保留）
+*.docx
+!backend/templates/official/*.docx

@@ -1,0 +1,215 @@
+{% from "ndrc/base.j2" import render_table, field, paragraph, optional_section, conditional_table %}
+{# 第五章：项目合规情况 #}
+
+五、项目合规情况
+
+（一）项目符合宏观管理政策要求情况
+
+{{ paragraph(policy_compliance_overview) }}
+
+1. 符合国家产业政策情况：
+{{ paragraph(industry_policy) }}
+
+{% if regional_policy %}
+2. 符合区域发展政策情况：
+{{ paragraph(regional_policy) }}
+{% endif %}
+
+3. 符合REITs试点政策要求情况：
+{{ paragraph(reits_pilot_policy) }}
+
+{% if asset_size_requirement %}
+4. 资产规模符合要求情况：
+{{ paragraph(asset_size_requirement) }}
+{% endif %}
+
+{% if operation_period_requirement %}
+5. 运营期限符合要求情况：
+{{ paragraph(operation_period_requirement) }}
+{% endif %}
+
+{% if cash_flow_requirement %}
+6. 现金流符合要求情况：
+{{ paragraph(cash_flow_requirement) }}
+{% endif %}
+
+（二）投资管理手续合规性
+
+1. 项目立项批复：
+{{ paragraph(project_approval) }}
+
+{% if approval_documents and approval_documents.rows %}
+2. 核准/备案文件：
+{{ render_table(approval_documents.headers, approval_documents.rows) }}
+{% endif %}
+
+{% if construction_permit %}
+3. 施工许可证：{{ field(construction_permit) }}
+{% endif %}
+
+{% if completion_acceptance %}
+4. 竣工验收情况：
+{{ paragraph(completion_acceptance) }}
+{% endif %}
+
+{% if fire_acceptance %}
+5. 消防验收情况：
+{{ paragraph(fire_acceptance) }}
+{% endif %}
+
+{% if environmental_approval %}
+6. 环评批复：
+{{ paragraph(environmental_approval) }}
+{% endif %}
+
+{% if energy_assessment %}
+7. 节能评估：
+{{ paragraph(energy_assessment) }}
+{% endif %}
+
+{% if other_approvals %}
+8. 其他行政审批：
+{{ paragraph(other_approvals) }}
+{% endif %}
+
+（三）土地使用合规情况
+
+{{ paragraph(land_use_compliance) }}
+
+1. 土地取得方式：{{ field(land_acquisition_method) }}
+
+2. 土地用途：{{ field(land_use_type) }}
+
+3. 土地使用期限：{{ field(land_use_period) }}
+
+{% if land_area %}
+4. 土地面积：{{ field(land_area) }}
+{% endif %}
+
+{% if land_payment_status %}
+5. 土地出让金缴纳情况：
+{{ paragraph(land_payment_status) }}
+{% endif %}
+
+{% if planning_permit %}
+6. 建设用地规划许可证：{{ field(planning_permit) }}
+{% endif %}
+
+{% if construction_planning_permit %}
+7. 建设工程规划许可证：{{ field(construction_planning_permit) }}
+{% endif %}
+
+{% if land_compliance_opinion %}
+8. 土地合规法律意见：
+{{ paragraph(land_compliance_opinion) }}
+{% endif %}
+
+（四）可转让性有关情况
+
+{{ paragraph(transferability_overview) }}
+
+{% if transfer_restrictions %}
+1. 转让限制条件：
+{{ paragraph(transfer_restrictions) }}
+{% endif %}
+
+{% if consent_documents %}
+2. 相关方同意转让文件：
+{{ paragraph(consent_documents) }}
+{% endif %}
+
+{% if preemptive_rights %}
+3. 优先购买权情况：
+{{ paragraph(preemptive_rights) }}
+{% endif %}
+
+{% if transfer_legal_opinion %}
+4. 转让合法性法律意见：
+{{ paragraph(transfer_legal_opinion) }}
+{% endif %}
+
+{% if no_objection_letters %}
+5. 无异议函：
+{{ paragraph(no_objection_letters) }}
+{% endif %}
+
+（五）政府和社会资本合作（PPP）项目合规情况
+
+{% if is_ppp_project == "是" %}
+本项目属于政府和社会资本合作（PPP）项目。
+
+{% if ppp_agreement %}
+1. PPP合同/特许经营协议：
+{{ paragraph(ppp_agreement) }}
+{% endif %}
+
+{% if ppp_compliance %}
+2. PPP合规性说明：
+{{ paragraph(ppp_compliance) }}
+{% endif %}
+
+{% if ppp_government_consent %}
+3. 政府方同意情况：
+{{ paragraph(ppp_government_consent) }}
+{% endif %}
+
+{% if ppp_remaining_period %}
+4. 特许经营剩余期限：{{ field(ppp_remaining_period) }}
+{% endif %}
+{% else %}
+    本项目不属于政府和社会资本合作（PPP）项目，本节不适用。
+{% endif %}
+
+（六）税收处理情况
+
+{{ paragraph(tax_overview) }}
+
+{% if restructuring_tax %}
+1. 资产重组环节税务安排：
+{{ paragraph(restructuring_tax) }}
+{% endif %}
+
+{% if transfer_tax %}
+2. 资产转让环节税务处理：
+{{ paragraph(transfer_tax) }}
+{% endif %}
+
+{% if operation_tax %}
+3. 运营环节税务处理：
+{{ paragraph(operation_tax) }}
+{% endif %}
+
+{% if distribution_tax %}
+4. 分配环节税务处理：
+{{ paragraph(distribution_tax) }}
+{% endif %}
+
+{% if vat_treatment %}
+5. 增值税处理：
+{{ paragraph(vat_treatment) }}
+{% endif %}
+
+{% if income_tax_treatment %}
+6. 所得税处理：
+{{ paragraph(income_tax_treatment) }}
+{% endif %}
+
+{% if land_vat_treatment %}
+7. 土地增值税处理：
+{{ paragraph(land_vat_treatment) }}
+{% endif %}
+
+{% if stamp_duty_treatment %}
+8. 印花税处理：
+{{ paragraph(stamp_duty_treatment) }}
+{% endif %}
+
+{% if deed_tax_treatment %}
+9. 契税处理：
+{{ paragraph(deed_tax_treatment) }}
+{% endif %}
+
+{% if tax_commitment %}
+10. 税收承诺：
+{{ paragraph(tax_commitment) }}
+{% endif %}

@@ -1,0 +1,234 @@
+{
+  "version": "2024",
+  "description": "发改委REITs申报材料专业术语与简称对照表",
+  "glossary_entries": [
+    {
+      "term": "基础设施领域不动产投资信托基金",
+      "abbreviation": "基础设施REITs",
+      "definition": "依据中国证监会和国家发展改革委相关规定，以基础设施项目为底层资产，通过公开募集方式设立的不动产投资信托基金",
+      "category": "产品类"
+    },
+    {
+      "term": "资产支持专项计划",
+      "abbreviation": "专项计划/ABS",
+      "definition": "由资产支持证券管理人设立并管理的，以基础设施项目产生的现金流为偿付支持的资产支持证券专项计划",
+      "category": "产品类"
+    },
+    {
+      "term": "资产支持证券",
+      "abbreviation": "ABS",
+      "definition": "以特定基础资产或资产组合所产生的现金流为偿付支持，通过结构化等方式进行信用增级，在此基础上发行的金融产品",
+      "category": "产品类"
+    },
+    {
+      "term": "基金份额",
+      "abbreviation": "份额",
+      "definition": "基础设施REITs基金的份额，代表基金份额持有人对基金资产享有的权益",
+      "category": "产品类"
+    },
+    {
+      "term": "公开募集基础设施证券投资基金",
+      "abbreviation": "公募REITs",
+      "definition": "经中国证监会注册，向社会公众公开募集资金设立的基础设施不动产投资信托基金",
+      "category": "产品类"
+    },
+    {
+      "term": "原始权益人",
+      "abbreviation": "原始权益人",
+      "definition": "依法合规持有基础设施项目资产或相关权利的主体，按照相关规定将资产转让给专项计划并获得对价",
+      "category": "主体类"
+    },
+    {
+      "term": "发起人（原始权益人）",
+      "abbreviation": "发起人",
+      "definition": "发起设立基础设施REITs并作为原始权益人将基础设施资产转让给专项计划的主体",
+      "category": "主体类"
+    },
+    {
+      "term": "基金管理人",
+      "abbreviation": "基金管理人",
+      "definition": "依法募集并管理基础设施REITs基金的基金管理公司或其他经中国证监会核准的机构",
+      "category": "主体类"
+    },
+    {
+      "term": "资产支持证券管理人",
+      "abbreviation": "ABS管理人/计划管理人",
+      "definition": "设立并管理资产支持专项计划的证券公司或基金管理公司子公司",
+      "category": "主体类"
+    },
+    {
+      "term": "运营管理机构",
+      "abbreviation": "运营管理机构/运管机构",
+      "definition": "受基金管理人委托，负责基础设施项目日常运营管理的专业机构",
+      "category": "主体类"
+    },
+    {
+      "term": "项目公司",
+      "abbreviation": "项目公司/SPV",
+      "definition": "直接持有基础设施项目资产或相关经营权利的公司，通常为专项计划通过股权投资持有的特殊目的载体",
+      "category": "主体类"
+    },
+    {
+      "term": "基金托管人",
+      "abbreviation": "托管人",
+      "definition": "依法托管基础设施REITs基金资产的商业银行或其他金融机构",
+      "category": "主体类"
+    },
+    {
+      "term": "息税折旧摊销前利润",
+      "abbreviation": "EBITDA",
+      "definition": "企业净利润加上所得税费用、利息费用、折旧和摊销后的利润指标，反映项目现金创造能力",
+      "category": "财务类"
+    },
+    {
+      "term": "净营业收入",
+      "abbreviation": "NOI",
+      "definition": "Net Operating Income，项目营业收入扣除营业成本和运营管理费用（不含折旧摊销和利息）后的净收入",
+      "category": "财务类"
+    },
+    {
+      "term": "电能使用效率",
+      "abbreviation": "PUE",
+      "definition": "Power Usage Effectiveness，数据中心总能耗与IT设备能耗的比值，衡量数据中心能源利用效率的核心指标",
+      "category": "行业类"
+    },
+    {
+      "term": "净回收资金",
+      "abbreviation": "净回收资金",
+      "definition": "发起人（原始权益人）通过基础设施REITs发行获得的对价扣除相关税费和费用后的资金净额",
+      "category": "财务类"
+    },
+    {
+      "term": "可供分配金额",
+      "abbreviation": "可供分配金额",
+      "definition": "基金经营活动产生的现金流量扣除必要费用后可用于向基金份额持有人分配的金额",
+      "category": "财务类"
+    },
+    {
+      "term": "计费率",
+      "abbreviation": "计费率/上架率",
+      "definition": "数据中心已计费IT功率与总可售IT功率的比值，反映数据中心实际业务使用程度",
+      "category": "行业类"
+    },
+    {
+      "term": "资产负债率",
+      "abbreviation": "资产负债率",
+      "definition": "负债总额除以资产总额，反映企业利用债权人资金进行经营的能力和偿债能力",
+      "category": "财务类"
+    },
+    {
+      "term": "国家发展和改革委员会",
+      "abbreviation": "国家发改委/发改委",
+      "definition": "中华人民共和国国家发展和改革委员会，负责基础设施REITs项目的审核推荐",
+      "category": "合规类"
+    },
+    {
+      "term": "中国证券监督管理委员会",
+      "abbreviation": "中国证监会/证监会",
+      "definition": "负责基础设施REITs基金的注册审核和监督管理",
+      "category": "合规类"
+    },
+    {
+      "term": "深圳证券交易所",
+      "abbreviation": "深交所",
+      "definition": "基础设施REITs基金上市交易的证券交易场所之一",
+      "category": "合规类"
+    },
+    {
+      "term": "上海证券交易所",
+      "abbreviation": "上交所",
+      "definition": "基础设施REITs基金上市交易的证券交易场所之一",
+      "category": "合规类"
+    },
+    {
+      "term": "全国企业信用信息公示系统",
+      "abbreviation": "信用中国/企业信用公示",
+      "definition": "由国家市场监督管理总局主管的企业信用信息公示查询平台",
+      "category": "合规类"
+    },
+    {
+      "term": "互联网数据中心",
+      "abbreviation": "IDC",
+      "definition": "Internet Data Center，为客户提供服务器托管、网络带宽、机房环境等IT基础设施服务的专业场所",
+      "category": "行业类"
+    },
+    {
+      "term": "净机房面积",
+      "abbreviation": "净机房面积",
+      "definition": "数据中心内用于放置IT设备的有效使用面积，不含走道、配电间、制冷设备间等辅助面积",
+      "category": "行业类"
+    },
+    {
+      "term": "标准机柜",
+      "abbreviation": "机柜",
+      "definition": "数据中心中用于安装和保护IT设备的标准化机架，通常为42U标准机柜",
+      "category": "行业类"
+    },
+    {
+      "term": "千瓦/兆瓦",
+      "abbreviation": "kW/MW",
+      "definition": "IT设备电力容量计量单位，1MW=1000kW，数据中心通常以可售IT功率（MW）衡量运营规模",
+      "category": "行业类"
+    },
+    {
+      "term": "贷款市场报价利率",
+      "abbreviation": "LPR",
+      "definition": "Loan Prime Rate，由中国人民银行授权全国银行间同业拆借中心公布的贷款市场报价利率",
+      "category": "财务类"
+    },
+    {
+      "term": "工作日",
+      "abbreviation": "工作日",
+      "definition": "指中华人民共和国法定工作日，即周一至周五（法定节假日除外）",
+      "category": "其他"
+    },
+    {
+      "term": "招标、拍卖、挂牌",
+      "abbreviation": "招拍挂",
+      "definition": "国有建设用地使用权出让的三种方式，即招标出让、拍卖出让和挂牌出让",
+      "category": "其他"
+    },
+    {
+      "term": "建设-运营-移交",
+      "abbreviation": "BOT",
+      "definition": "Build-Operate-Transfer，一种基础设施投资建设模式",
+      "category": "其他"
+    },
+    {
+      "term": "现金分派率",
+      "abbreviation": "分派率",
+      "definition": "基金年度可供分配金额与基金发行规模或基金净值的比率",
+      "category": "财务类"
+    },
+    {
+      "term": "内部收益率",
+      "abbreviation": "IRR",
+      "definition": "Internal Rate of Return，使项目净现值为零的折现率，反映投资回报水平",
+      "category": "财务类"
+    },
+    {
+      "term": "资本化率",
+      "abbreviation": "Cap Rate",
+      "definition": "Capitalization Rate，项目净营业收入与资产评估价值的比率，用于不动产估值",
+      "category": "财务类"
+    },
+    {
+      "term": "服务等级协议",
+      "abbreviation": "SLA",
+      "definition": "Service Level Agreement，数据中心与客户之间约定的服务质量标准协议",
+      "category": "行业类"
+    },
+    {
+      "term": "不间断电源",
+      "abbreviation": "UPS",
+      "definition": "Uninterruptible Power Supply，保障数据中心IT设备持续供电的设备系统",
+      "category": "行业类"
+    },
+    {
+      "term": "可变利益实体",
+      "abbreviation": "VIE",
+      "definition": "Variable Interest Entity，通过协议控制而非股权控制实现对境内企业的控制结构安排",
+      "category": "其他"
+    }
+  ]
+}

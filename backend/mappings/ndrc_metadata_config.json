@@ -1,0 +1,294 @@
+{
+  "version": "2024",
+  "description": "发改委REITs申报材料生成增强功能元数据配置",
+  "inapplicable_handling": {
+    "description": "不涉及模块智能处理配置",
+    "default_text": "不涉及。",
+    "alternative_texts": [
+      "不适用。",
+      "本项目不涉及此项内容。",
+      "本项目不存在上述情形。"
+    ],
+    "rules": [
+      {
+        "id": "rule_ppp",
+        "condition": "project_type != 'PPP'",
+        "applicable_sections": ["5-6"],
+        "action": "mark_inapplicable",
+        "text": "本项目非政府和社会资本合作（PPP）项目，不涉及。"
+      },
+      {
+        "id": "rule_toll_road",
+        "condition": "asset_type != '收费公路'",
+        "applicable_sections": ["4-3-toll"],
+        "action": "mark_inapplicable",
+        "text": "本项目非收费公路类基础设施项目，不涉及。"
+      },
+      {
+        "id": "rule_government_subsidy",
+        "condition": "has_government_subsidy == false",
+        "applicable_sections": ["4-2-subsidy"],
+        "action": "mark_inapplicable",
+        "text": "项目运营收入不依赖于政府补贴，不涉及。"
+      },
+      {
+        "id": "rule_corridor_mezzanine",
+        "condition": "has_corridor_mezzanine == false",
+        "applicable_sections": ["5-2-corridor"],
+        "action": "mark_inapplicable",
+        "text": "本项目不存在连廊、夹层等未取得独立产权证书的建筑情况，不涉及。"
+      },
+      {
+        "id": "rule_collective_land",
+        "condition": "land_type != '集体土地'",
+        "applicable_sections": ["5-3-collective"],
+        "action": "mark_inapplicable",
+        "text": "本项目不涉及集体建设用地，不涉及。"
+      },
+      {
+        "id": "rule_operation_right",
+        "condition": "asset_holding_type != '经营收益权'",
+        "applicable_sections": ["5-3-operation-right"],
+        "action": "mark_inapplicable",
+        "text": "本项目为产权类项目，不涉及经营收益权相关内容。"
+      },
+      {
+        "id": "rule_expansion",
+        "condition": "has_expansion_plan == false",
+        "applicable_sections": ["1-expansion"],
+        "action": "mark_inapplicable",
+        "text": "本项目暂无明确的扩募安排，不涉及。"
+      },
+      {
+        "id": "rule_vie_structure",
+        "condition": "has_vie_structure == false",
+        "applicable_sections": ["2-vie"],
+        "action": "mark_inapplicable",
+        "text": "本项目发起人（原始权益人）不涉及VIE架构，不涉及。"
+      },
+      {
+        "id": "rule_overseas_assets",
+        "condition": "has_overseas_assets == false",
+        "applicable_sections": ["5-overseas"],
+        "action": "mark_inapplicable",
+        "text": "本项目基础设施资产均位于中国境内，不涉及境外资产。"
+      },
+      {
+        "id": "rule_tax_consultant",
+        "condition": "has_tax_consultant == false",
+        "applicable_sections": ["2-5-tax"],
+        "action": "mark_inapplicable",
+        "text": "本项目未聘请专门的税务咨询机构，不涉及。"
+      }
+    ]
+  },
+  "table_numbering": {
+    "description": "表格编号自动管理配置",
+    "format": "表{chapter}-{seq}",
+    "title_pattern": "表\\d+-\\d+",
+    "auto_renumber": true,
+    "numbering_rules": {
+      "chapter_prefix": true,
+      "sequential_within_chapter": true,
+      "start_from": 1,
+      "separator": "-"
+    },
+    "display_format": {
+      "title_template": "表{number}  {title}",
+      "reference_template": "详见表{number}",
+      "cross_reference_template": "如表{number}所示"
+    },
+    "chapter_table_mapping": {
+      "chapter1": {"prefix": "1", "description": "项目基本情况"},
+      "chapter2": {"prefix": "2", "description": "参与主体情况"},
+      "chapter3": {"prefix": "3", "description": "REITs设立方案"},
+      "chapter4": {"prefix": "4", "description": "项目基本条件"},
+      "chapter5": {"prefix": "5", "description": "项目合规情况"},
+      "chapter6": {"prefix": "6", "description": "运营管理安排"},
+      "chapter7": {"prefix": "7", "description": "募集资金用途情况"}
+    }
+  },
+  "query_point_management": {
+    "description": "查询时点统一管理",
+    "date_types": [
+      {
+        "id": "base_date",
+        "label": "申报基准日",
+        "description": "财务数据和估值数据的基准日期",
+        "format": "YYYY年MM月DD日",
+        "example": "2025年12月31日"
+      },
+      {
+        "id": "credit_query_date",
+        "label": "信用查询时点",
+        "description": "信用中国、企业信用信息公示系统等信用查询的具体日期",
+        "format": "YYYY年MM月DD日",
+        "example": "2026年1月15日",
+        "display_template": "（查询时点：{date}）"
+      },
+      {
+        "id": "litigation_query_date",
+        "label": "诉讼查询时点",
+        "description": "中国裁判文书网、企业涉诉信息查询的具体日期",
+        "format": "YYYY年MM月DD日",
+        "example": "2026年1月15日",
+        "display_template": "（查询时点：{date}）"
+      },
+      {
+        "id": "signing_date",
+        "label": "文件签署日期",
+        "description": "申报文件正式签署盖章日期",
+        "format": "YYYY年MM月DD日"
+      },
+      {
+        "id": "valuation_date",
+        "label": "评估基准日",
+        "description": "资产评估报告的评估基准日",
+        "format": "YYYY年MM月DD日",
+        "note": "通常与申报基准日一致"
+      },
+      {
+        "id": "audit_date",
+        "label": "审计截止日",
+        "description": "最近一期审计报告的截止日期",
+        "format": "YYYY年MM月DD日"
+      }
+    ],
+    "compliance_text_templates": [
+      {
+        "id": "credit_china_query",
+        "template": "经查询“信用中国”网站（查询时点：{credit_query_date}），{entity_name}未被列入失信被执行人名单、重大税收违法失信主体名单。",
+        "variables": ["credit_query_date", "entity_name"]
+      },
+      {
+        "id": "enterprise_credit_query",
+        "template": "经查询全国企业信用信息公示系统（查询时点：{credit_query_date}），{entity_name}未被列入经营异常名录或严重违法失信企业名单。",
+        "variables": ["credit_query_date", "entity_name"]
+      },
+      {
+        "id": "litigation_query",
+        "template": "经查询中国裁判文书网（查询时点：{litigation_query_date}），截至查询日，{entity_name}不存在作为被告/被申请人的尚未了结的重大诉讼或仲裁案件。",
+        "variables": ["litigation_query_date", "entity_name"]
+      },
+      {
+        "id": "pboc_credit_query",
+        "template": "经查询中国人民银行征信中心（查询时点：{credit_query_date}），{entity_name}信用记录良好，不存在不良信贷记录。",
+        "variables": ["credit_query_date", "entity_name"]
+      },
+      {
+        "id": "financial_data_note",
+        "template": "注：上述财务数据来源于{entity_name}{audit_period}经审计的财务报告（审计机构：{audit_firm}，审计截止日：{audit_date}）。",
+        "variables": ["entity_name", "audit_period", "audit_firm", "audit_date"]
+      }
+    ]
+  },
+  "attachment_reference": {
+    "description": "附件引用管理配置",
+    "format": "附件{num}",
+    "auto_link": true,
+    "numbering_start": 1,
+    "reference_template": "（详见附件{num}：{title}）",
+    "inline_reference_template": "详见附件{num}",
+    "categories": [
+      {
+        "id": "cat_participants",
+        "name": "参与主体情况",
+        "number_range": [1, 6],
+        "items": [
+          "营业执照及项目公司章程",
+          "经审计的财务报告",
+          "信用状况查询结果",
+          "运营情况承诺函",
+          "基金管理人执业资格承诺函",
+          "中介机构执业资格承诺函"
+        ]
+      },
+      {
+        "id": "cat_basic_conditions",
+        "name": "项目基本条件",
+        "number_range": [7, 12],
+        "items": [
+          "权属相关政府批准文件",
+          "项目权属和项目运营承诺函",
+          "项目合规法律意见书",
+          "资产完整性承诺函",
+          "政府补贴承诺函",
+          "影响项目稳定运营重要因素承诺函"
+        ]
+      },
+      {
+        "id": "cat_compliance",
+        "name": "项目合规情况",
+        "number_range": [13, 21],
+        "items": [
+          "投资管理合规手续证明材料",
+          "连廊夹层等建筑情况承诺函",
+          "土地使用合规证明材料",
+          "可转让性相关文件",
+          "发起人可转让性承诺函",
+          "基金管理人可转让性承诺函",
+          "转让行为合法性法律意见书",
+          "PPP项目相关证明材料",
+          "环评及其他合规文件"
+        ]
+      },
+      {
+        "id": "cat_fund_usage",
+        "name": "募集资金用途",
+        "number_range": [22, 22],
+        "items": [
+          "回收资金使用承诺函"
+        ]
+      },
+      {
+        "id": "cat_others",
+        "name": "其他材料",
+        "number_range": [23, 30],
+        "items": [
+          "资产评估报告",
+          "现金流预测报告",
+          "尽职调查报告",
+          "基金合同草案",
+          "专项计划说明书草案",
+          "运营管理协议草案",
+          "税务筹划方案",
+          "其他补充材料"
+        ]
+      }
+    ]
+  },
+  "document_structure": {
+    "description": "文档结构元数据",
+    "page_settings": {
+      "paper_size": "A4",
+      "margins": {
+        "top": "2.54cm",
+        "bottom": "2.54cm",
+        "left": "3.17cm",
+        "right": "3.17cm"
+      },
+      "header_footer": {
+        "header_enabled": true,
+        "footer_enabled": true,
+        "page_number_position": "bottom_center",
+        "page_number_format": "- {page} -"
+      }
+    },
+    "font_settings": {
+      "title_font": "黑体",
+      "body_font": "仿宋_GB2312",
+      "table_font": "仿宋_GB2312",
+      "title_size": "三号",
+      "subtitle_size": "四号",
+      "body_size": "四号",
+      "table_size": "小四"
+    },
+    "toc_settings": {
+      "auto_generate": true,
+      "max_level": 3,
+      "title": "目录",
+      "page_number_alignment": "right",
+      "dot_leader": true
+    }
+  }
+}

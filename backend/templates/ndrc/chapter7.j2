@@ -1,0 +1,98 @@
+{% from "ndrc/base.j2" import render_table, field, paragraph, optional_section, conditional_table %}
+{# 第七章：募集资金用途情况 #}
+
+七、募集资金用途情况
+
+（一）募集资金规模及使用结构
+
+1. 募集资金总规模：{{ field(total_fundraising) }}亿元
+
+{{ paragraph(fund_usage_structure) }}
+
+{% if fund_usage_breakdown and fund_usage_breakdown.rows %}
+资金使用结构明细：
+{{ render_table(fund_usage_breakdown.headers, fund_usage_breakdown.rows) }}
+{% endif %}
+
+{% if acquisition_cost %}
+2. 收购对价：{{ field(acquisition_cost) }}
+{% endif %}
+
+{% if issuance_cost %}
+3. 发行费用：{{ field(issuance_cost) }}
+{% endif %}
+
+{% if reserve_fund %}
+4. 储备金/流动性安排：{{ field(reserve_fund) }}
+{% endif %}
+
+{% if debt_repayment %}
+5. 偿还负债：{{ field(debt_repayment) }}
+{% endif %}
+
+（二）资金流向
+
+{{ paragraph(fund_flow_overview) }}
+
+{% if fund_flow_path and fund_flow_path.rows %}
+资金流转路径：
+{{ render_table(fund_flow_path.headers, fund_flow_path.rows) }}
+{% endif %}
+
+{% if fund_supervision %}
+资金监管安排：
+{{ paragraph(fund_supervision) }}
+{% endif %}
+
+{% if payment_schedule %}
+支付时间安排：
+{{ paragraph(payment_schedule) }}
+{% endif %}
+
+（三）拟投资项目情况
+
+{{ paragraph(investment_project_overview) }}
+
+{% if investment_projects and investment_projects.rows %}
+拟投资项目清单：
+{{ render_table(investment_projects.headers, investment_projects.rows) }}
+{% endif %}
+
+{% if investment_feasibility %}
+投资可行性分析：
+{{ paragraph(investment_feasibility) }}
+{% endif %}
+
+{% if investment_compliance %}
+投资合规性说明：
+{{ paragraph(investment_compliance) }}
+{% endif %}
+
+{% if investment_approval_status %}
+投资审批状态：
+{{ paragraph(investment_approval_status) }}
+{% endif %}
+
+（四）拟收购存量资产情况
+
+{% if acquisition_overview %}
+{{ paragraph(acquisition_overview) }}
+{% endif %}
+
+{% if acquisition_targets and acquisition_targets.rows %}
+拟收购资产清单：
+{{ render_table(acquisition_targets.headers, acquisition_targets.rows) }}
+{% endif %}
+
+{% if acquisition_rationale %}
+收购必要性和合理性：
+{{ paragraph(acquisition_rationale) }}
+{% endif %}
+
+{% if acquisition_funding_source %}
+收购资金来源：
+{{ paragraph(acquisition_funding_source) }}
+{% endif %}
+
+发起人回收资金使用承诺：
+{{ paragraph(originator_fund_usage_commitment) }}

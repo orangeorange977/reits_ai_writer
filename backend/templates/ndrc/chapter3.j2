@@ -1,0 +1,182 @@
+{% from "ndrc/base.j2" import render_table, field, paragraph, optional_section, conditional_table %}
+{# 第三章：REITs设立方案 #}
+
+三、REITs设立方案
+
+（一）产品要素
+
+1. 产品全称：{{ field(product_name) }}
+
+{% if product_short_name %}
+2. 产品简称：{{ field(product_short_name) }}
+{% endif %}
+
+3. 基金类型：{{ field(fund_type) }}
+
+4. 拟上市交易所：{{ field(listing_exchange) }}
+
+5. 基金存续期限：{{ field(fund_duration) }}
+
+{% if total_fund_shares %}
+6. 基金份额总额：{{ field(total_fund_shares) }}
+{% endif %}
+
+{% if offering_price %}
+7. 发售价格：{{ field(offering_price) }}
+{% endif %}
+
+{% if min_subscription %}
+8. 最低认购份额：{{ field(min_subscription) }}
+{% endif %}
+
+{% if strategic_placement_ratio %}
+9. 战略配售比例：{{ field(strategic_placement_ratio) }}
+{% endif %}
+
+10. 原始权益人持有比例：{{ field(originator_retention_ratio) }}
+
+11. 原始权益人锁定期：{{ field(originator_lock_period) }}
+
+{% if public_offering_ratio %}
+12. 公众投资者发售比例：{{ field(public_offering_ratio) }}
+{% endif %}
+
+{% if distribution_frequency %}
+13. 分红频率：{{ field(distribution_frequency) }}
+{% endif %}
+
+{% if leverage_ratio %}
+14. 杠杆比例：{{ field(leverage_ratio) }}
+{% endif %}
+
+{% if product_elements_table and product_elements_table.rows %}
+产品要素一览表：
+{{ render_table(product_elements_table.headers, product_elements_table.rows) }}
+{% endif %}
+
+（二）产品架构
+
+{{ paragraph(product_structure_desc) }}
+
+{% if fund_layer_desc %}
+1. 公募基金层：
+{{ paragraph(fund_layer_desc) }}
+{% endif %}
+
+{% if abs_layer_desc %}
+2. ABS层：
+{{ paragraph(abs_layer_desc) }}
+{% endif %}
+
+{% if project_company_layer_desc %}
+3. 项目公司层：
+{{ paragraph(project_company_layer_desc) }}
+{% endif %}
+
+{% if asset_layer_desc %}
+4. 基础设施资产层：
+{{ paragraph(asset_layer_desc) }}
+{% endif %}
+
+{% if cash_flow_path %}
+5. 现金流路径说明：
+{{ paragraph(cash_flow_path) }}
+{% endif %}
+
+（三）实施步骤
+
+{{ paragraph(implementation_overview) }}
+
+{% if step_1_reorganization %}
+步骤一：资产重组
+{{ paragraph(step_1_reorganization) }}
+{% endif %}
+
+{% if step_2_abs_setup %}
+步骤二：ABS设立
+{{ paragraph(step_2_abs_setup) }}
+{% endif %}
+
+{% if step_3_fund_setup %}
+步骤三：公募基金设立
+{{ paragraph(step_3_fund_setup) }}
+{% endif %}
+
+{% if step_4_asset_transfer %}
+步骤四：资产转让
+{{ paragraph(step_4_asset_transfer) }}
+{% endif %}
+
+{% if step_5_fund_raising %}
+步骤五：基金募集
+{{ paragraph(step_5_fund_raising) }}
+{% endif %}
+
+{% if step_6_listing %}
+步骤六：上市交易
+{{ paragraph(step_6_listing) }}
+{% endif %}
+
+{% if implementation_timeline and implementation_timeline.rows %}
+实施时间表：
+{{ render_table(implementation_timeline.headers, implementation_timeline.rows) }}
+{% endif %}
+
+（四）目前进展
+
+{{ paragraph(current_progress) }}
+
+{% if regulatory_communication %}
+1. 与监管部门沟通情况：
+{{ paragraph(regulatory_communication) }}
+{% endif %}
+
+{% if due_diligence_progress %}
+2. 尽职调查进展：
+{{ paragraph(due_diligence_progress) }}
+{% endif %}
+
+{% if valuation_progress %}
+3. 资产评估进展：
+{{ paragraph(valuation_progress) }}
+{% endif %}
+
+{% if legal_opinion_progress %}
+4. 法律意见进展：
+{{ paragraph(legal_opinion_progress) }}
+{% endif %}
+
+{% if remaining_work %}
+5. 后续待完成工作：
+{{ paragraph(remaining_work) }}
+{% endif %}
+
+（五）其他需要说明的重大情况
+
+{% if major_matters or pending_litigation or environmental_issues or related_party_transactions or other_disclosures %}
+{% if major_matters %}
+{{ paragraph(major_matters) }}
+{% endif %}
+
+{% if pending_litigation %}
+1. 未决诉讼仲裁：
+{{ paragraph(pending_litigation) }}
+{% endif %}
+
+{% if environmental_issues %}
+2. 环保相关事项：
+{{ paragraph(environmental_issues) }}
+{% endif %}
+
+{% if related_party_transactions %}
+3. 关联交易情况：
+{{ paragraph(related_party_transactions) }}
+{% endif %}
+
+{% if other_disclosures %}
+4. 其他需要披露的事项：
+{{ paragraph(other_disclosures) }}
+{% endif %}
+{% else %}
+    本项目不存在其他需要说明的重大情况。
+{% endif %}

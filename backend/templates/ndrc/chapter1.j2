@@ -1,0 +1,99 @@
+{% from "ndrc/base.j2" import render_table, field, paragraph, optional_section, conditional_table %}
+{# 第一章：项目基本情况 #}
+
+一、项目基本情况
+
+（一）项目概况
+
+1. 项目名称：{{ field(project_name) }}
+
+2. 资产类型：{{ field(asset_type) }}
+
+3. 项目位置：{{ field(project_location) }}
+
+4. 原始权益人（发起人）：{{ field(originator) }}
+
+5. 项目公司：{{ field(project_company) }}
+
+6. 运营管理机构：{{ field(operation_manager) }}
+
+7. 基金管理人：{{ field(fund_manager) }}
+
+8. 资产支持证券管理人：{{ field(abs_manager) }}
+
+9. 拟发行基金规模：{{ field(fund_scale) }}亿元
+
+10. 基础设施资产评估值：{{ field(asset_valuation) }}亿元
+
+11. 项目总面积/规模：{{ field(total_area) }}
+
+12. 已运营年限：{{ field(operation_years) }}
+
+{% if distribution_rate %}
+13. 预计现金分派率：{{ field(distribution_rate) }}
+{% endif %}
+
+14. 基准日：{{ field(base_date) }}
+
+15. 项目概况描述：
+{{ paragraph(project_description) }}
+
+{% if infrastructure_assets and infrastructure_assets.rows %}
+16. 基础设施资产清单：
+{{ render_table(infrastructure_assets.headers, infrastructure_assets.rows) }}
+{% endif %}
+
+（二）特殊限定情况说明
+
+{% if special_restrictions or land_use_restrictions or mortgage_pledge or lease_restrictions %}
+{% if special_restrictions %}
+{{ paragraph(special_restrictions) }}
+{% endif %}
+
+{% if land_use_restrictions %}
+土地使用权限制条件：
+{{ paragraph(land_use_restrictions) }}
+{% endif %}
+
+{% if mortgage_pledge %}
+抵押质押情况：
+{{ paragraph(mortgage_pledge) }}
+{% endif %}
+
+{% if lease_restrictions %}
+租赁限制情况：
+{{ paragraph(lease_restrictions) }}
+{% endif %}
+{% else %}
+    本项目不存在特殊限定情况。
+{% endif %}
+
+{% if risk_factors %}
+主要风险因素：
+{{ paragraph(risk_factors) }}
+{% endif %}
+
+{% if risk_mitigation %}
+风险化解措施：
+{{ paragraph(risk_mitigation) }}
+{% endif %}
+
+（三）可扩募资产情况
+
+{% if has_expandable_assets == "是" %}
+{% if expandable_assets and expandable_assets.rows %}
+{{ render_table(expandable_assets.headers, expandable_assets.rows) }}
+{% endif %}
+
+{% if expansion_plan %}
+扩募计划说明：
+{{ paragraph(expansion_plan) }}
+{% endif %}
+
+{% if expansion_criteria %}
+扩募资产筛选标准：
+{{ paragraph(expansion_criteria) }}
+{% endif %}
+{% else %}
+    本项目暂无可扩募资产。
+{% endif %}
