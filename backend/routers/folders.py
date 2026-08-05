@@ -1,46 +1,17 @@
 """文件夹浏览路由 - 本地文件系统浏览和文件扫描"""
 
 import logging
-import platform
-import string
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.config import DATA_SOURCE_BASE
-from backend.parsers.utils import scan_folder, detect_file_type, format_file_size
+from backend.parsers.utils import scan_folder, format_file_size
 
 router = APIRouter(tags=["文件夹浏览"])
 logger = logging.getLogger(__name__)
-
-
-def _list_dir_items(target_path: Path) -> list:
-    """列出一个目录下的文件夹/文件条目，供 browse_folder / browse_any_path 共用。"""
-    items = []
-    for entry in sorted(target_path.iterdir(), key=lambda e: (not e.is_dir(), e.name)):
-        try:
-            stat = entry.stat()
-            item = {
-                "name": entry.name,
-                "type": "dir" if entry.is_dir() else "file",
-                "path": str(entry),
-                "modified": datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
-            }
-            if entry.is_file():
-                item["size"] = stat.st_size
-                item["size_formatted"] = format_file_size(stat.st_size)
-                item["extension"] = entry.suffix.lower()
-            else:
-                item["size"] = None
-                item["size_formatted"] = ""
-                item["extension"] = ""
-            items.append(item)
-        except (OSError, PermissionError) as e:
-            logger.warning(f"无法访问: {entry}, 错误: {e}")
-            continue
-    return items
 
 
 def _is_safe_path(path: Path) -> bool:
@@ -116,55 +87,6 @@ async def browse_folder(path: Optional[str] = Query(default=None, description="�
                 logger.warning(f"无法访问: {entry}, 错误: {e}")
                 continue
 
-    except PermissionError as e:
-        raise HTTPException(status_code=403, detail=f"无权限访问该目录: {e}")
-
-    return {
-        "current_path": str(target_path),
-        "parent_path": parent_path,
-        "items": items,
-    }
-
-
-@router.get("/folders/browse-any")
-async def browse_any_path(path: Optional[str] = Query(default=None, description="要浏览的路径，留空则列出磁盘根目录")):
-    """浏览本机任意路径（不限制在 DATA_SOURCE_BASE 内）
-
-    专供"系统设置"页的路径选择器使用——那些字段本身就是在配置本机上的
-    任意文件/文件夹位置（输出目录、模板文件、申报材料文件等），不应该被
-    限制在数据源根目录下。本服务只监听 127.0.0.1，供本机用户配置自己的
-    电脑，不对外网开放，因此不做路径穿越限制。
-    """
-    if path is None or path.strip() == "":
-        # 未指定路径：列出磁盘根目录供用户选择起点
-        items = []
-        if platform.system() == "Windows":
-            for letter in string.ascii_uppercase:
-                drive = Path(f"{letter}:/")
-                if drive.exists():
-                    items.append({
-                        "name": f"{letter}:\\", "type": "dir", "path": f"{letter}:\\",
-                        "modified": "", "size": None, "size_formatted": "", "extension": "",
-                    })
-        else:
-            items.append({
-                "name": "/", "type": "dir", "path": "/",
-                "modified": "", "size": None, "size_formatted": "", "extension": "",
-            })
-        return {"current_path": "", "parent_path": None, "items": items}
-
-    target_path = Path(path)
-    if not target_path.exists():
-        raise HTTPException(status_code=404, detail=f"路径不存在: {target_path}")
-    if not target_path.is_dir():
-        raise HTTPException(status_code=400, detail=f"路径不是文件夹: {target_path}")
-
-    # 计算父路径：到达磁盘根目录时父路径为空（回到磁盘列表）
-    resolved = target_path.resolve()
-    parent_path = str(resolved.parent) if resolved.parent != resolved else ""
-
-    try:
-        items = _list_dir_items(target_path)
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=f"无权限访问该目录: {e}")
 

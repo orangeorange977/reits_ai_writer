@@ -28,25 +28,6 @@ function _chapterTitle(n) {
     return (c && c.title) || CHAPTER_TITLES[n] || '';
 }
 
-// 系统设置页里几个"选择文件"路径框：选中即通过 localStorage 自动保存，刷新页面后自动恢复
-const SETTINGS_PATH_INPUT_IDS = ['settingOutputPath', 'settingTemplatePath', 'settingNdrcMaterialPath'];
-
-function _persistSettingsPathIfNeeded(inputId, value) {
-    if (SETTINGS_PATH_INPUT_IDS.includes(inputId)) {
-        localStorage.setItem('reitai_' + inputId, value);
-    }
-}
-
-function restoreSettingsPaths() {
-    SETTINGS_PATH_INPUT_IDS.forEach(id => {
-        const saved = localStorage.getItem('reitai_' + id);
-        if (saved) {
-            const el = document.getElementById(id);
-            if (el) el.value = saved;
-        }
-    });
-}
-
 /**
  * 页面导航切换
  * @param {string} pageId - 目标页面ID
@@ -262,35 +243,24 @@ function updateProjectHeaderBar() {
 
 // ===== 发改委材料生成页面功能 =====
 
-// 本地路径选择器状态：mode='source' 是原有的"数据源文件夹"选择（限定在数据源根目录下，只能选文件夹）；
-// mode='local' 是"系统设置"页用的通用选择器（不限制路径，文件夹和文件都能直接点选）。
-let _picker = { mode: 'local', targetInputId: '' };
+// ===== 数据源文件夹选择器（步骤 3.3：只允许浏览 DATA_SOURCE_BASE 内的目录，任意路径浏览已删除） =====
+
+let _picker = { targetInputId: '' };  // 当前选择器要把路径填回哪个输入框
 
 /**
- * 打开本地路径选择器（系统设置页"选择文件"按钮用）：不限制路径，文件夹可以点进去，
- * 文件可以直接点选，选中后填回对应的输入框。
+ * 打开数据源文件夹选择器（新建项目弹窗用）：只能浏览数据源根目录内的文件夹。
  * @param {string} targetInputId - 选中的路径要填回哪个输入框的id
  */
-async function openLocalPicker(targetInputId) {
-    _picker = { mode: 'local', targetInputId };
+async function openSourcePicker(targetInputId) {
+    _picker = { targetInputId };
     const input = document.getElementById(targetInputId);
     const startPath = input ? input.value.trim() : '';
 
-    // 输入框里的旧值可能已经不存在、或者本身是个文件（不是文件夹）——依次尝试：
-    // 原值 -> 原值的上一级目录 -> 磁盘列表，用第一个能成功打开的
-    const candidates = [];
-    if (startPath) {
-        candidates.push(startPath);
-        const idx = Math.max(startPath.lastIndexOf('\\'), startPath.lastIndexOf('/'));
-        if (idx > 0) {
-            candidates.push(startPath.substring(0, idx));
-        }
-    }
-    candidates.push('');
-
+    // 优先从输入框旧值打开；旧值不在白名单内/不存在时回退到数据源根目录
+    const candidates = startPath ? [startPath, ''] : [''];
     for (const candidate of candidates) {
         try {
-            const result = await API.browseAnyPath(candidate);
+            const result = await API.browseFolder(candidate);
             showFolderBrowser(result);
             return;
         } catch (error) {
@@ -311,7 +281,7 @@ function showFolderBrowser(data) {
     const listContainer = modal.querySelector('#folderBrowserList');
 
     if (pathDisplay) {
-        pathDisplay.textContent = data.current_path || '（请选择磁盘）';
+        pathDisplay.textContent = data.current_path || '-';
     }
 
     if (listContainer) {
@@ -325,7 +295,7 @@ function showFolderBrowser(data) {
             </div>`;
         }
 
-        // 目录/文件列表
+        // 目录列表（文件只展示不可选：数据源选择器只需要选文件夹）
         for (const item of data.items) {
             if (item.type === 'dir') {
                 html += `<div class="folder-item" onclick="navigateFolder('${item.path.replace(/\\/g, '\\\\')}')">
@@ -333,7 +303,7 @@ function showFolderBrowser(data) {
                     <span class="folder-name">${item.name}</span>
                 </div>`;
             } else {
-                html += `<div class="folder-item" onclick="selectLocalFile('${item.path.replace(/\\/g, '\\\\')}')">
+                html += `<div class="folder-item" style="cursor:default;opacity:.6">
                     <span class="folder-icon">📄</span>
                     <span class="folder-name">${item.name}</span>
                     <span class="folder-size">${item.size_formatted || ''}</span>
@@ -352,7 +322,7 @@ function showFolderBrowser(data) {
  */
 async function navigateFolder(path) {
     try {
-        const result = await API.browseAnyPath(path);
+        const result = await API.browseFolder(path);
         showFolderBrowser(result);
     } catch (error) {
         showToast('无法访问该目录: ' + error.message, 'error');
@@ -367,23 +337,9 @@ function selectCurrentFolder() {
     const input = document.getElementById(_picker.targetInputId);
     if (pathDisplay && input) {
         input.value = pathDisplay.textContent;
-        _persistSettingsPathIfNeeded(_picker.targetInputId, pathDisplay.textContent);
     }
     closeModal('modal-folder-browser');
-    showToast('已选择路径');
-}
-
-/**
- * 选择某一个具体文件（本地任意路径模式下点文件时触发）
- */
-function selectLocalFile(path) {
-    const input = document.getElementById(_picker.targetInputId);
-    if (input) {
-        input.value = path;
-        _persistSettingsPathIfNeeded(_picker.targetInputId, path);
-    }
-    closeModal('modal-folder-browser');
-    showToast('已选择文件');
+    showToast('已选择文件夹');
 }
 
 /**
@@ -868,7 +824,7 @@ async function refreshChapterPreview(force = false) {
             body.innerHTML = resp.html;
             _previewCache[n] = resp.html;  // 缓存，供下次开关预览直接用
             if (!resp.used_template) {
-                showToast('未使用模板（请在系统设置里设置模板文件路径），已用独立文档预览', 'warning');
+                showToast('未使用官方模板，已用独立文档预览（材料包内置模板未找到）', 'warning');
             }
         } else {
             body.innerHTML = '<div class="text-muted text-sm" style="padding:8px 0;">暂无内容，请先生成并保存本章。</div>';
@@ -1831,9 +1787,6 @@ async function continueInit() {
 
 async function initApp() {
     console.log('[REIT-AI] 系统初始化中...');
-
-    // 恢复系统设置页里保存过的路径
-    restoreSettingsPaths();
 
     // 绑定全局事件（登录表单支持回车提交）
     bindGlobalEvents();

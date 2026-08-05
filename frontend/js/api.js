@@ -195,14 +195,14 @@ const API = {
     // ===== 文件夹浏览 =====
 
     /**
-     * 浏览本机任意路径（系统设置页选择文件/文件夹用，不限制在数据源目录下）
-     * @param {string} path - 要浏览的路径（为空则列出磁盘根目录）
+     * 浏览数据源文件夹（限定在服务器 DATA_SOURCE_BASE 内，步骤 3.3）
+     * @param {string} path - 要浏览的路径（为空则从数据源根目录开始）
      * @returns {Promise<object>} {current_path, parent_path, items: [...]}
      */
-    async browseAnyPath(path = '') {
+    async browseFolder(path = '') {
         const params = {};
         if (path) params.path = path;
-        return this.get('/folders/browse-any', params);
+        return this.get('/folders/browse', params);
     },
 
     // ===== Skill 执行（Kimi）=====
