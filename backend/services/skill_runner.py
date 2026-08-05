@@ -11,36 +11,38 @@ import re
 from pathlib import Path
 from html.parser import HTMLParser
 
-from backend.config import SKILLS_DIR, PLANNING_MD_PATH, MOONSHOT_MODEL
+from backend.config import (DATA_SOURCE_BASE, PROJECTS_DIR, DEFAULT_PROJECT_ID,
+                            MOONSHOT_MODEL)
 from backend.services.kimi_client import chat, chat_with_tools
 from backend.services import summary_service, tianyancha_client, materials_client
+from backend.services import pack_service
 
 logger = logging.getLogger(__name__)
 
-# 各章配置：title 必须与官方模板里的 Heading1 一字不差；next 是下一章标题（界定本章在模板里的
-# 起止范围，最后一章为 None）；dir 是该章 reading skill 目录。三~七已配好，前端接入即可用。
-CHAPTERS = {
-    1: {"title": "一、项目基本情况", "next": "二、参与主体情况",   "dir": "reits-reading-ch1"},
-    2: {"title": "二、参与主体情况", "next": "三、REITs设立方案", "dir": "reits-reading-ch2"},
-    3: {"title": "三、REITs设立方案", "next": "四、项目基本条件", "dir": "reits-reading-ch3"},
-    4: {"title": "四、项目基本条件", "next": "五、项目合规情况", "dir": "reits-reading-ch4"},
-    5: {"title": "五、项目合规情况", "next": "六、运营管理安排", "dir": "reits-reading-ch5"},
-    6: {"title": "六、运营管理安排", "next": "七、募集资金用途情况", "dir": "reits-reading-ch6"},
-    7: {"title": "七、募集资金用途情况", "next": None,           "dir": "reits-reading-ch7"},
-}
+# 各章配置来自默认模板包的 chapters.json：title 必须与官方模板里的 Heading1 一字不差；
+# next 是下一章标题（界定本章在模板里的起止范围，最后一章为 None）；
+# reading 是该章写作要求在包内的相对路径。
+CHAPTERS = pack_service.get_chapters()
 
 
-def chapter_json_path(n: int) -> Path:
-    """某章 reading skill 产出的结构化 JSON 路径（放在该 skill 自己的目录下）。"""
-    return SKILLS_DIR / CHAPTERS[n]["dir"] / f"ch{n}.json"
+def _project_dir(project_id: str = None) -> Path:
+    """项目数据目录（workspace/projects/<项目ID>/）；未传项目时用默认项目。
+    步骤 2.4 会由路由层把真实 project_id 传进来。"""
+    return PROJECTS_DIR / (project_id or DEFAULT_PROJECT_ID)
 
 
-def chapter_docx_path(n: int) -> Path:
-    """reits-writing skill 生成的某章 Word 输出路径。"""
-    return SKILLS_DIR / "reits-writing" / f"ch{n}_output.docx"
+def chapter_json_path(n: int, project_id: str = None) -> Path:
+    """某章的结构化 JSON 路径（按项目隔离）。"""
+    return _project_dir(project_id) / f"ch{n}.json"
 
-# 网页上选择的 Kimi 模型（持久化到这里，各章生成都用它；缺省用 .env 里的 MOONSHOT_MODEL）
-_MODEL_SETTING_PATH = SKILLS_DIR / "model_setting.json"
+
+def chapter_docx_path(n: int, project_id: str = None) -> Path:
+    """某章生成的 Word 输出路径（按项目隔离）。"""
+    return _project_dir(project_id) / "output" / f"ch{n}_output.docx"
+
+# 网页上选择的 Kimi 模型（全局设置，持久化在 workspace 根；各章生成都用它，
+# 缺省用 .env 里的 MOONSHOT_MODEL）
+_MODEL_SETTING_PATH = DATA_SOURCE_BASE / "model_setting.json"
 
 
 def get_selected_model() -> str:
@@ -75,7 +77,7 @@ def _esc_attr(s: str) -> str:
     return _esc_html(s).replace('"', "&quot;")
 
 
-# 脚注标记：段落字符串里用私用区字符夹住脚注文本（与 reits-writing 的 web_render 一致）
+# 脚注标记：段落字符串里用私用区字符夹住脚注文本（与模板包内 web_render 一致）
 _FN_OPEN = chr(0xE010)
 _FN_CLOSE = chr(0xE011)
 _FN_RE = re.compile(_FN_OPEN + r"(.*?)" + _FN_CLOSE, re.DOTALL)
@@ -668,8 +670,8 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None) -> d
     参与主体的工商/股权/人员信息，据实填写，而不是编造。
     """
     cfg = CHAPTERS[n]
-    planning = _read_text(PLANNING_MD_PATH)
-    skill_md = _read_text(SKILLS_DIR / cfg["dir"] / "SKILL.md")
+    planning = _read_text(pack_service.planning_path())
+    skill_md = _read_text(pack_service.reading_path(n))
     saved_summary = _format_saved_summary()
 
     # 排版配置(write_config.json)只在“生成内容”这一步按需刷新（写作要求改过才真调模型）——
@@ -689,7 +691,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None) -> d
             mat_root = None
 
     system_prompt = (
-        f"你是REITs发改委申报材料的写作助手，正在执行'{cfg['title']}'的撰写。"
+        f"你是{pack_service.material_label()}的写作助手，正在执行'{cfg['title']}'的撰写。"
         "你会拿到几份材料：全局总纲 planning.md、用户在系统中已核对保存的"
         "'摘要表/释义/其他基本信息'、以及本章的写作要求 SKILL.md。"
         "你的任务是严格按 SKILL.md 的结构，优先用'已保存的摘要表/释义/其他基本信息'里的真实值"
@@ -729,7 +731,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None) -> d
         )
     system_prompt += (
         "\n\n你还能**联网搜索**（$web_search）。当某项公开信息在“已保存摘要/释义/其他基本信息”、天眼查、"
-        "证明材料里都找不到时（例如基金管理人某时点的资产管理规模、已发行REITs等公开披露数据），可以联网搜索后填写。"
+        "证明材料里都找不到的公开披露数据（如机构某时点的规模、业绩等），可以联网搜索后填写。"
         "但**联网所得务必谨慎核对**：优先采信官方/权威来源（公司官网、中基协、交易所、监管公示），"
         "注明是截至哪个时点/什么口径；若时点或口径对不上、或来源不可靠，宁可标“【注：网络来源，待人工核实】”，绝不凑数。"
     )
@@ -752,7 +754,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None) -> d
     user_prompt = (
         f"# 全局总纲 planning.md\n\n{planning}\n\n"
         f"# 已保存的摘要表/释义/其他基本信息（用户已核对，优先以此为准）\n\n{saved_summary}\n\n"
-        f"# 本章（{cfg['title']}）写作要求 {cfg['dir']}/SKILL.md\n\n{skill_md}\n\n"
+        f"# 本章（{cfg['title']}）写作要求\n\n{skill_md}\n\n"
         f"# 输出要求\n{_output_contract(cfg['title'])}"
         f"{subtitle_rule}"
     )
@@ -801,18 +803,32 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None) -> d
     return data
 
 
+def load_web_render(pack_id: str = None):
+    """加载模板包内的 web_render 渲染脚本（写作规则随包走）。
+
+    每次都 reload：脚本在 templates-packs 下，不在后端自动重载范围内，
+    reload 后改写作要求即时生效、无需重启服务（保留热重载机制）。
+    """
+    import importlib
+    import os
+    import sys
+    # 把排版配置的落点告诉渲染脚本：write_config.json 是运行期数据（workspace 下），
+    # 不进模板包；web_render 会优先读这个环境变量。
+    os.environ["WRITE_CONFIG_PATH"] = str(WRITE_CONFIG_PATH)
+    scripts_dir = str(pack_service.writing_script_dir(pack_id))
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import web_render
+    importlib.reload(web_render)
+    return web_render
+
+
 def chapter_subtitles(n: int, template_path: str) -> list:
-    """读官方模板里第 n 章的各个小标题（借 reits-writing 的 web_render 解析）。"""
+    """读官方模板里第 n 章的各个小标题（借模板包里的 web_render 解析）。"""
     if not template_path:
         return []
     try:
-        import importlib
-        scripts_dir = str(SKILLS_DIR / "reits-writing" / "scripts")
-        import sys
-        if scripts_dir not in sys.path:
-            sys.path.insert(0, scripts_dir)
-        import web_render
-        importlib.reload(web_render)
+        web_render = load_web_render()
         cfg = CHAPTERS[n]
         subs = web_render.list_chapter_subtitles(template_path, cfg["title"], cfg["next"])
         # 无小标题的章（大标题下直接是正文，如第六章）：用一个"本章正文"单块
@@ -827,13 +843,7 @@ def chapter_tables(n: int, template_path: str) -> dict:
     if not template_path:
         return {}
     try:
-        import importlib
-        scripts_dir = str(SKILLS_DIR / "reits-writing" / "scripts")
-        import sys
-        if scripts_dir not in sys.path:
-            sys.path.insert(0, scripts_dir)
-        import web_render
-        importlib.reload(web_render)
+        web_render = load_web_render()
         cfg = CHAPTERS[n]
         return web_render.list_chapter_tables(template_path, cfg["title"], cfg["next"])
     except Exception as e:
@@ -846,21 +856,17 @@ def chapter_table_start(n: int, template_path: str) -> int:
     if not template_path:
         return 1
     try:
-        import importlib
-        scripts_dir = str(SKILLS_DIR / "reits-writing" / "scripts")
-        import sys
-        if scripts_dir not in sys.path:
-            sys.path.insert(0, scripts_dir)
-        import web_render
-        importlib.reload(web_render)
+        web_render = load_web_render()
         return web_render.count_captions_before(template_path, CHAPTERS[n]["title"]) + 1
     except Exception as e:
         logger.warning(f"计算第{n}章起始表号失败: {e}")
         return 1
 
 
-WRITE_CONFIG_PATH = SKILLS_DIR / "reits-writing" / "write_config.json"
-WRITING_SKILL_MD = SKILLS_DIR / "reits-writing" / "SKILL.md"
+# 排版配置(write_config.json)是运行期产物，属项目数据，放 workspace 根（不进模板包）；
+# 写作要求（writing/SKILL.md）从默认模板包读取。
+WRITE_CONFIG_PATH = DATA_SOURCE_BASE / "write_config.json"
+WRITING_SKILL_MD = pack_service.pack_path("writing/SKILL.md")
 _WRITE_CONFIG_KEYS = ("font", "body_pt", "table_pt", "footnote_pt",
                       "body_line_spacing", "table_line_spacing", "table_align",
                       "insert_unknown_headings")
@@ -883,7 +889,7 @@ def _write_config_stale() -> bool:
         cfg_m = WRITE_CONFIG_PATH.stat().st_mtime
     except OSError:
         return True
-    for src in (PLANNING_MD_PATH, WRITING_SKILL_MD):
+    for src in (pack_service.planning_path(), WRITING_SKILL_MD):
         try:
             if src.exists() and src.stat().st_mtime > cfg_m:
                 return True
@@ -899,15 +905,15 @@ def ensure_write_config(force: bool = False) -> dict:
     if not force and not _write_config_stale():
         return _load_write_config_dict()
 
-    planning = _read_text(PLANNING_MD_PATH)
+    planning = _read_text(pack_service.planning_path())
     skill_md = _read_text(WRITING_SKILL_MD)
     system_prompt = (
-        "你是排版配置助手。下面是一份 REITs 申报材料的写作/格式要求（自然语言）。"
+        "你是排版配置助手。下面是一份申报材料的写作/格式要求（自然语言）。"
         "请把其中和 Word 排版有关的要求，提炼成一个严格 JSON 配置对象，供写入程序直接使用。"
     )
     user_prompt = (
         f"# 全局总纲 planning.md\n\n{planning}\n\n"
-        f"# 写作 SKILL.md（reits-writing）\n\n{skill_md}\n\n"
+        f"# 写作要求 writing/SKILL.md\n\n{skill_md}\n\n"
         "# 输出要求\n"
         "只输出一个 JSON 对象（不要任何解释、不要```代码块），字段如下（拿不准的字段就省略，不要瞎填）：\n"
         "{\n"
@@ -941,7 +947,7 @@ def ensure_write_config(force: bool = False) -> dict:
 
 # 表标题编号占位：表# / 表c / 表3 等（表 后跟 #、单个字母、或一串数字）。编号不靠 Kimi 算，
 # 由代码按"表格出现顺序"统一排：编辑区用 _number_captions（起始号按模板前面已有几张表），
-# 最终 Word 由 reits-writing 的 web_render 全篇重排为准。
+# 最终 Word 由模板包内 web_render 全篇重排为准。
 _CAP_LEAD_RE = re.compile(r"^表(?:[#＃]|[0-9]+|[A-Za-z])")
 
 

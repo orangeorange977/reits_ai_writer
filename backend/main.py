@@ -36,7 +36,7 @@ from backend.routers.skills import router as skills_router
 # 创建FastAPI实例
 app = FastAPI(
     title="REIT-AI 法律文件生成系统",
-    description="基础设施REITs基金法律文件智能生成平台",
+    description="申报材料智能生成平台（引擎通用，具体材料类型由模板包定义）",
     version="1.0.0"
 )
 

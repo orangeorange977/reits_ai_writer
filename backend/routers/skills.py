@@ -14,8 +14,8 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from backend.config import SKILLS_DIR, NDRC_OFFICIAL_TEMPLATE
-from backend.services import skill_runner, summary_service, materials_client
+from backend.config import NDRC_OFFICIAL_TEMPLATE
+from backend.services import skill_runner, summary_service, materials_client, pack_service
 from backend.services.kimi_client import chat
 
 router = APIRouter(tags=["Skill执行"], prefix="/skills")
@@ -23,20 +23,28 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_template_path(user_path: str = "") -> str:
-    """解析模板路径：用户提供的路径无效时，自动回退到内置官方模板。
+    """解析模板路径：用户提供的路径无效时，自动回退到模板包内置模板。
 
     回退顺序：
-    1. config 中的 NDRC_OFFICIAL_TEMPLATE（workspace/app/... 路径，部署场景）
-    2. 项目源码目录 backend/templates/official/ndrc_2024.docx（开发场景）
+    1. 当前模板包自带的 template.docx（步骤 2.5 后将成唯一来源）
+    2. config 中的 NDRC_OFFICIAL_TEMPLATE（workspace 路径，部署场景）
+    3. 项目源码目录 backend/templates/official/ndrc_2024.docx（开发场景）
     """
     tpl = (user_path or "").strip()
     if tpl and Path(tpl).exists():
         return tpl
-    # 回退 1：config 中配置的路径
+    # 回退 1：模板包自带模板
+    try:
+        pack_tpl = pack_service.template_docx()
+        if pack_tpl.exists():
+            return str(pack_tpl)
+    except Exception as e:
+        logger.warning(f"读取模板包模板失败: {e}")
+    # 回退 2：config 中配置的路径
     default = str(NDRC_OFFICIAL_TEMPLATE)
     if Path(default).exists():
         return default
-    # 回退 2：项目源码目录下的模板（开发环境）
+    # 回退 3：项目源码目录下的模板（开发环境）
     project_template = Path(__file__).resolve().parents[1] / "templates" / "official" / "ndrc_2024.docx"
     if project_template.exists():
         return str(project_template)
@@ -44,18 +52,8 @@ def _resolve_template_path(user_path: str = "") -> str:
 
 
 def _load_web_render():
-    """加载 reits-writing skill 里的 web_render 脚本（写入逻辑归属该 skill）。
-
-    每次都 reload：skill 脚本在 SKILLS_DIR 下，不在后端自动重载范围内，
-    reload 后你改 skill 才能即时生效，无需重启服务。
-    """
-    import importlib
-    scripts_dir = str(SKILLS_DIR / "reits-writing" / "scripts")
-    if scripts_dir not in sys.path:
-        sys.path.insert(0, scripts_dir)
-    import web_render
-    importlib.reload(web_render)
-    return web_render
+    """加载模板包内的 web_render 渲染脚本（写作规则随包走，保留热重载机制）。"""
+    return skill_runner.load_web_render()
 
 
 @router.get("/models")
@@ -101,7 +99,7 @@ async def ai_edit(body: AIEditBody):
 
     def _do():
         system = (
-            "你是REITs发改委申报材料的中文写作助手。用户会给你一条【指令】和一段【原文】，"
+            f"你是{pack_service.material_label()}的中文写作助手。用户会给你一条【指令】和一段【原文】，"
             "请严格按指令处理这段原文，只返回处理后的正文本身：不要解释、不要加引号、"
             "不要加“以下是”之类前后缀、不要用代码块包裹。保持正式的申报材料书面文体。"
             "若【原文】为空，则按指令直接写出一段合适的正文。"
@@ -185,7 +183,7 @@ async def ai_compose(
 
         material = "\n\n".join(blocks)
         system = (
-            "你是REITs发改委申报材料的中文写作助手。用户会给你一条【指令】，可能还有一段【选中的原文】"
+            f"你是{pack_service.material_label()}的中文写作助手。用户会给你一条【指令】，可能还有一段【选中的原文】"
             "以及若干【素材】（用户粘贴的文字、网页链接内容、上传文件的内容）。请理解并综合这些素材，"
             "严格按【指令】写出用户想要的正文。只返回正文本身：不要解释、不要加引号、不要“以下是”之类前后缀、"
             "不要用代码块包裹，保持正式的申报材料书面文体。素材仅作依据，请甄别提炼、按需引用，"
@@ -209,17 +207,18 @@ async def ai_compose(
         raise HTTPException(status_code=500, detail=f"AI处理失败：{e}")
 
 
-_DIAGRAM_TPL_DIR = SKILLS_DIR / "reits-diagrams" / "templates"
-
-
 @router.get("/diagram-templates")
 async def diagram_templates():
-    """列出可选的画图模板（reits-diagrams/templates 下的 .drawio 文件）。"""
+    """列出可选的画图模板（默认模板包 diagrams/ 下的 .drawio 文件）。"""
     def _list():
-        if not _DIAGRAM_TPL_DIR.exists():
+        try:
+            tpl_dir = pack_service.diagram_dir()
+        except Exception:
+            return []
+        if not tpl_dir.exists():
             return []
         items = []
-        for p in sorted(_DIAGRAM_TPL_DIR.glob("*.drawio")):
+        for p in sorted(tpl_dir.glob("*.drawio")):
             items.append({"name": p.stem, "label": p.stem})
         return items
     return {"templates": await asyncio.to_thread(_list)}
@@ -230,7 +229,7 @@ async def diagram_template(name: str):
     """返回某个模板的 draw.io XML。"""
     # 防目录穿越：只用文件名
     safe = Path(name).name
-    path = _DIAGRAM_TPL_DIR / f"{safe}.drawio"
+    path = pack_service.diagram_dir() / f"{safe}.drawio"
     if not path.exists():
         raise HTTPException(status_code=404, detail="模板不存在")
     xml = await asyncio.to_thread(path.read_text, "utf-8")

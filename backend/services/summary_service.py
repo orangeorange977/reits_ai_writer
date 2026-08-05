@@ -10,18 +10,21 @@ import logging
 
 from openpyxl import load_workbook
 
-from backend.config import SKILLS_DIR
+from backend.config import PROJECTS_DIR, DEFAULT_PROJECT_ID
 
 logger = logging.getLogger(__name__)
 
-# 用户在网页上核对/编辑/导入后保存的摘要表数据（唯一可信来源）
-SAVED_SUMMARY_PATH = SKILLS_DIR / "summary_saved.json"
+# 用户在网页上核对/编辑/导入后保存的摘要表数据（唯一可信来源）。
+# 按项目隔离存放（workspace/projects/<项目ID>/）；步骤 2.4 全量接入项目维度，
+# 过渡期用 "default" 默认项目目录。
+SAVED_SUMMARY_PATH = PROJECTS_DIR / DEFAULT_PROJECT_ID / "summary_saved.json"
 _GROUP_KEYS = ("summary_table", "glossary", "other_info")
 
 
 def save_summary_data(data: dict) -> None:
     """把网页上编辑好的摘要表/释义/其他基本信息保存到 JSON 文件。"""
     clean = {k: (data.get(k) or []) for k in _GROUP_KEYS}
+    SAVED_SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
     SAVED_SUMMARY_PATH.write_text(
         json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8"
     )

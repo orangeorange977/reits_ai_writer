@@ -24,14 +24,13 @@ MOONSHOT_VISION_MODEL = os.environ.get("MOONSHOT_VISION_MODEL", "")
 TIANYANCHA_MCP_KEY = os.environ.get("TIANYANCHA_MCP_KEY", "")
 TIANYANCHA_MCP_URL = os.environ.get("TIANYANCHA_MCP_URL", "https://mcp.tianyancha.com/v1")
 
-# ===== Skill 部署配置 =====
-# skills 目录（reits-reading-ch1~ch7、reits-writing、reits-diagrams、planning.md 所在处）
-# 默认按打包结构自动定位：<AI test>/skills 与 <AI test>/REIT-AI-System/REIT-AI-System 同级，
-# 这样整个 "AI test" 文件夹拷到任何电脑/盘符都能找到，不用改代码。也可用环境变量 SKILLS_DIR 覆盖。
-# config.py 路径：<AI test>/REIT-AI-System/REIT-AI-System/backend/config.py → parents[3] = <AI test>
-_DEFAULT_SKILLS_DIR = Path(__file__).resolve().parents[3] / "skills"
-SKILLS_DIR = Path(os.environ.get("SKILLS_DIR", str(_DEFAULT_SKILLS_DIR)))
-PLANNING_MD_PATH = SKILLS_DIR / "planning.md"
+# ===== 模板包（templates-packs）配置 =====
+# 引擎不认识具体业务：章节结构、写作要求、官方模板、渲染脚本全部在包内。
+# 默认在仓库根目录的 templates-packs/，可用环境变量 PACKS_DIR 覆盖。
+PACKS_DIR = Path(os.environ.get(
+    "PACKS_DIR",
+    str(Path(__file__).resolve().parents[1] / "templates-packs"),
+))
 
 # 工作空间根目录（数据库、输出等运行期文件的基准）。
 # 默认放在网站目录内的 workspace/，随文件夹一起移动、自动创建，不再写到 C 盘固定路径。
@@ -41,14 +40,13 @@ DATA_SOURCE_BASE = Path(os.environ.get(
     str(Path(__file__).resolve().parents[1] / "workspace"),
 ))
 
-# 发改委材料路径
-NDRC_MATERIALS_PATH = DATA_SOURCE_BASE / "1.发改委阶段"
-
-# 证监会阶段材料路径
-CSRC_MATERIALS_PATH = DATA_SOURCE_BASE / "2.证监会阶段【启用】"
-
 # 应用目录
 APP_DIR = DATA_SOURCE_BASE / "app"
+
+# 项目数据根目录（workspace/projects/<项目ID>/）：摘要表、各章 JSON、生成产物按项目隔离。
+# 步骤 2.4 全量按项目隔离前的过渡期用 "default" 单项目目录。
+PROJECTS_DIR = DATA_SOURCE_BASE / "projects"
+DEFAULT_PROJECT_ID = "default"
 
 # 输出目录
 OUTPUT_DIR = APP_DIR / "output"
