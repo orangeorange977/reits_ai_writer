@@ -197,12 +197,13 @@ async function renderGlossaryPanel(containerId) {
 }
 
 function getDefaultGlossary() {
+    // 仅作后端不可用时的兜底展示，不包含任何具体项目内容
     return [
         { id: 1, term: 'REITs', definition: '不动产投资信托基金（Real Estate Investment Trusts）' },
-        { id: 2, term: '原始权益人', definition: '万国数据有限公司' },
+        { id: 2, term: '原始权益人', definition: '将基础设施资产转让给REITs的原始权利人' },
         { id: 3, term: '基金管理人', definition: '负责基金投资运作及管理的机构' },
-        { id: 4, term: '基础设施项目', definition: '万国数据数据中心' },
-        { id: 5, term: '评估基准日', definition: '2026年3月31日' },
+        { id: 4, term: '基础设施项目', definition: 'REITs底层持有的基础设施资产项目' },
+        { id: 5, term: '评估基准日', definition: '资产评估报告所采用的基准日期' },
         { id: 6, term: 'ABS', definition: '资产支持证券（Asset-Backed Securities）' },
         { id: 7, term: 'SPV', definition: '特殊目的载体（Special Purpose Vehicle）' },
     ];

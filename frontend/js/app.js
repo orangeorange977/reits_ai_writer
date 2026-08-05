@@ -6,7 +6,6 @@
 const PAGE_TITLES = {
     'overview': '系统概览',
     'ndrc': '发改委材料生成',
-    'chapter-edit': '章节编辑',
     'documents': '文档管理',
     'settings': '系统设置'
 };
@@ -17,6 +16,8 @@ let currentProjectId = null;
 let currentChapter = 'chapter1';
 let chaptersData = [];
 let generationPollingTimer = null;
+// 最近一次从后端拉到的项目列表，供项目信息栏等展示真实数据用
+let _projectsCache = [];
 
 // 系统设置页里几个"选择文件"路径框：选中即通过 localStorage 自动保存，刷新页面后自动恢复
 const SETTINGS_PATH_INPUT_IDS = ['settingOutputPath', 'settingTemplatePath', 'settingNdrcMaterialPath'];
@@ -57,9 +58,7 @@ function navigate(pageId) {
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     });
-    // chapter-edit页面对应ndrc导航项
-    const navPage = pageId === 'chapter-edit' ? 'ndrc' : pageId;
-    const activeNav = document.querySelector(`.nav-item[data-page="${navPage}"]`);
+    const activeNav = document.querySelector(`.nav-item[data-page="${pageId}"]`);
     if (activeNav) {
         activeNav.classList.add('active');
     }
@@ -180,21 +179,27 @@ function closeModal(id) {
 async function loadOverviewData() {
     try {
         const projects = await API.getProjects();
+        _projectsCache = projects || [];
         const tbody = document.querySelector('#projectTable tbody');
-        if (tbody && projects.length > 0) {
-            renderProjectTable(tbody, projects.map(p => ({
-                name: p.name,
-                assetType: '数据中心',
-                stage: '发改委申报',
-                status: _mapProjectStatus(p.status),
-                updateTime: p.updated_at || p.created_at || '-',
-                id: p.id,
-            })));
-            // 自动选择第一个项目
-            if (!currentProjectId && projects.length > 0) {
-                currentProjectId = projects[0].id;
+        if (tbody) {
+            if (projects.length > 0) {
+                renderProjectTable(tbody, projects.map(p => ({
+                    name: p.name,
+                    assetType: '数据中心',
+                    stage: '发改委申报',
+                    status: _mapProjectStatus(p.status),
+                    updateTime: p.updated_at || p.created_at || '-',
+                    id: p.id,
+                })));
+                // 自动选择第一个项目
+                if (!currentProjectId && projects.length > 0) {
+                    currentProjectId = projects[0].id;
+                }
+            } else {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:24px">暂无项目</td></tr>';
             }
         }
+        updateProjectHeaderBar();
 
         // 更新统计卡片
         const statsContainer = document.getElementById('overviewStats');
@@ -225,6 +230,23 @@ function _mapProjectStatus(status) {
         'generation_failed': '错误',
     };
     return map[status] || status;
+}
+
+/**
+ * 按当前项目渲染“发改委材料生成”页顶部的项目信息栏（真实数据）
+ */
+function updateProjectHeaderBar() {
+    const titleEl = document.getElementById('projectHeaderTitle');
+    const metaEl = document.getElementById('projectHeaderMeta');
+    if (!titleEl || !metaEl) return;
+    const proj = _projectsCache.find(p => p.id === currentProjectId);
+    if (!proj) {
+        titleEl.textContent = '未选择项目';
+        metaEl.textContent = '请先在系统概览中选择或创建项目';
+        return;
+    }
+    titleEl.textContent = proj.name || '未命名项目';
+    metaEl.textContent = `状态：${_mapProjectStatus(proj.status)} | 更新时间：${proj.updated_at || proj.created_at || '-'}`;
 }
 
 // ===== 发改委材料生成页面功能 =====
@@ -1812,6 +1834,7 @@ function deleteDoc(docId) {
  */
 function selectProject(projectId) {
     currentProjectId = projectId;
+    updateProjectHeaderBar();
     navigate('ndrc');
 }
 
@@ -1831,10 +1854,12 @@ async function initApp() {
 
         // 自动加载项目列表
         const projects = await API.getProjects();
+        _projectsCache = projects || [];
         if (projects && projects.length > 0) {
             currentProjectId = projects[0].id;
             console.log('[REIT-AI] 已自动选择项目:', projects[0].name, 'ID=', currentProjectId);
         }
+        updateProjectHeaderBar();
     } catch (error) {
         console.warn('[REIT-AI] 后端服务未就绪:', error.message);
     }

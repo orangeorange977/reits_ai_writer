@@ -86,23 +86,23 @@
 
             <!-- ==================== 页面1：系统概览 ==================== -->
             <div class="page active" id="page-overview">
-                <!-- 统计卡片行 -->
+                <!-- 统计卡片行（数值由 JS 按真实项目数据渲染） -->
                 <div class="stat-row" id="overviewStats">
                     <div class="stat-card">
                         <div class="stat-icon blue">📁</div>
-                        <div class="stat-info"><div class="stat-value">1</div><div class="stat-label">项目总数</div></div>
+                        <div class="stat-info"><div class="stat-value">…</div><div class="stat-label">项目总数</div></div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon orange">🔄</div>
-                        <div class="stat-info"><div class="stat-value">1</div><div class="stat-label">生成中</div></div>
+                        <div class="stat-info"><div class="stat-value">…</div><div class="stat-label">生成中</div></div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon green">✅</div>
-                        <div class="stat-info"><div class="stat-value">0</div><div class="stat-label">已完成</div></div>
+                        <div class="stat-info"><div class="stat-value">…</div><div class="stat-label">已完成</div></div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon purple">📐</div>
-                        <div class="stat-info"><div class="stat-value">1</div><div class="stat-label">模板数</div></div>
+                        <div class="stat-info"><div class="stat-value">…</div><div class="stat-label">模板数</div></div>
                     </div>
                 </div>
 
@@ -128,14 +128,7 @@
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td><strong>万国数据数据中心REIT</strong></td>
-                                        <td><span class="badge badge-info">数据中心</span></td>
-                                        <td><span class="badge badge-primary">发改委申报</span></td>
-                                        <td><span class="badge badge-warning">生成中</span></td>
-                                        <td class="text-sm text-muted">2026-07-16</td>
-                                        <td>
-                                            <button class="btn btn-ghost btn-sm" onclick="navigate('ndrc')">编辑</button>
-                                        </td>
+                                        <td colspan="6" class="text-muted" style="text-align:center;padding:24px">加载中…</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -149,53 +142,8 @@
                             <div class="card-header"><h3>📌 最近任务</h3></div>
                             <div class="card-body">
                                 <div class="timeline" id="recentTimeline">
-                                    <div class="timeline-item">
-                                        <div class="timeline-dot orange"></div>
-                                        <div class="timeline-content">
-                                            <div class="timeline-title">万国数据REIT — 发改委材料生成</div>
-                                            <div class="timeline-time">2026-07-16 10:30 · 进行中</div>
-                                            <div class="timeline-desc">七章节申报材料生成中，已完成3/7章</div>
-                                        </div>
-                                    </div>
-                                    <div class="timeline-item">
-                                        <div class="timeline-dot blue"></div>
-                                        <div class="timeline-content">
-                                            <div class="timeline-title">数据源文件扫描完成</div>
-                                            <div class="timeline-time">2026-07-15 16:20 · 已完成</div>
-                                            <div class="timeline-desc">共识别到28个底稿文件，覆盖全部七章</div>
-                                        </div>
-                                    </div>
-                                    <div class="timeline-item">
-                                        <div class="timeline-dot green"></div>
-                                        <div class="timeline-content">
-                                            <div class="timeline-title">项目创建完成</div>
-                                            <div class="timeline-time">2026-07-14 09:00 · 已完成</div>
-                                            <div class="timeline-desc">万国数据数据中心REIT项目已录入系统</div>
-                                        </div>
-                                    </div>
+                                    <div class="text-muted text-sm" style="padding:12px 0">暂无最近任务</div>
                                 </div>
-                            </div>
-                        </div>
-
-                        <!-- 模板版本信息 -->
-                        <div class="card">
-                            <div class="card-header"><h3>📐 模板版本</h3></div>
-                            <div class="card-body" style="padding:0">
-                                <table class="data-table">
-                                    <thead><tr><th>模板名称</th><th>版本</th><th>更新时间</th></tr></thead>
-                                    <tbody>
-                                        <tr>
-                                            <td>发改委申报材料格式文本（2024版）</td>
-                                            <td class="text-sm">v2.4</td>
-                                            <td class="text-sm text-muted">2026-07-01</td>
-                                        </tr>
-                                        <tr>
-                                            <td>REITs项目申报核查表模板</td>
-                                            <td class="text-sm">v1.2</td>
-                                            <td class="text-sm text-muted">2026-06-20</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
                             </div>
                         </div>
                     </div>
@@ -204,21 +152,14 @@
 
             <!-- ==================== 页面2：发改委材料生成（核心页面）==================== -->
             <div class="page" id="page-ndrc">
-                <!-- 项目信息栏 -->
+                <!-- 项目信息栏（由 JS 按当前项目渲染） -->
                 <div class="project-header-bar">
                     <div class="ph-left">
                         <div class="ph-icon">📄</div>
                         <div class="ph-info">
-                            <h2>万国数据数据中心基础设施REITs项目</h2>
-                            <p>基准日期：2026-03-31 | 发改委申报阶段</p>
-                            <div class="ph-tags">
-                                <span class="badge badge-info">数据中心</span>
-                                <span class="badge badge-warning">生成中</span>
-                            </div>
+                            <h2 id="projectHeaderTitle">未选择项目</h2>
+                            <p id="projectHeaderMeta">请先在系统概览中选择或创建项目</p>
                         </div>
-                    </div>
-                    <div>
-                        <button class="btn btn-ghost btn-sm" onclick="openModal('modal-project-info')">项目详情</button>
                     </div>
                 </div>
 
@@ -228,96 +169,13 @@
                     <h3 style="font-size:14px;font-weight:600;margin-bottom:20px;color:var(--text-primary)">📋 申报材料章节进度</h3>
                     <div class="stepper" id="chapterStepper">
                         <!-- 由JS动态渲染 -->
-                        <div class="step done" data-chapter="1" onclick="selectChapter(1)">
-                            <div class="step-connector"></div>
-                            <div class="step-circle">✓</div>
-                            <div class="step-title">一、项目基本情况</div>
-                            <div class="step-desc">已提取</div>
-                        </div>
-                        <div class="step done" data-chapter="2" onclick="selectChapter(2)">
-                            <div class="step-connector"></div>
-                            <div class="step-circle">✓</div>
-                            <div class="step-title">二、参与主体</div>
-                            <div class="step-desc">已提取</div>
-                        </div>
-                        <div class="step current" data-chapter="3" onclick="selectChapter(3)">
-                            <div class="step-connector"></div>
-                            <div class="step-circle">3</div>
-                            <div class="step-title">三、设立方案</div>
-                            <div class="step-desc">提取中</div>
-                        </div>
-                        <div class="step" data-chapter="4" onclick="selectChapter(4)">
-                            <div class="step-connector"></div>
-                            <div class="step-circle">4</div>
-                            <div class="step-title">四、基本条件</div>
-                            <div class="step-desc">待提取</div>
-                        </div>
-                        <div class="step" data-chapter="5" onclick="selectChapter(5)">
-                            <div class="step-connector"></div>
-                            <div class="step-circle">5</div>
-                            <div class="step-title">五、合规情况</div>
-                            <div class="step-desc">待提取</div>
-                        </div>
-                        <div class="step" data-chapter="6" onclick="selectChapter(6)">
-                            <div class="step-connector"></div>
-                            <div class="step-circle">6</div>
-                            <div class="step-title">六、运营管理</div>
-                            <div class="step-desc">待提取</div>
-                        </div>
-                        <div class="step" data-chapter="7" onclick="selectChapter(7)">
-                            <div class="step-circle">7</div>
-                            <div class="step-title">七、募集资金</div>
-                            <div class="step-desc">待提取</div>
-                        </div>
+                        <div class="text-muted text-sm" style="padding:8px 0">章节加载中…</div>
                     </div>
                 </div>
 
-                <!-- 章节详情区域 -->
+                <!-- 章节详情区域（内容由 renderChapterEditor 按所选章节动态渲染） -->
                 <div class="chapter-detail" id="chapterDetail">
-                    <div class="chapter-detail-header">
-                        <div class="flex items-center gap-12">
-                            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary)" id="chapterDetailTitle">一、项目基本情况</h3>
-                            <span class="badge badge-success">已提取</span>
-                        </div>
-                        <div class="flex gap-8">
-                            <button class="btn btn-ghost btn-sm" onclick="navigate('chapter-edit')">编辑</button>
-                            <button class="btn btn-ghost btn-sm" onclick="previewChapter()">预览</button>
-                        </div>
-                    </div>
-                    <div class="chapter-detail-body">
-                        <div class="field-list" id="chapterFields">
-                            <div class="field-item">
-                                <span class="field-label">项目名称</span>
-                                <span class="field-value">万国数据数据中心基础设施领域不动产投资信托基金（REITs）</span>
-                                <span class="field-source">来源：申报材料.docx</span>
-                                <button class="btn btn-ghost btn-sm" onclick="editField(this)">编辑</button>
-                            </div>
-                            <div class="field-item">
-                                <span class="field-label">项目类型</span>
-                                <span class="field-value">数据中心</span>
-                                <span class="field-source">来源：项目概况</span>
-                                <button class="btn btn-ghost btn-sm" onclick="editField(this)">编辑</button>
-                            </div>
-                            <div class="field-item">
-                                <span class="field-label">基础设施位置</span>
-                                <span class="field-value">北京市房山区</span>
-                                <span class="field-source">来源：底稿文件</span>
-                                <button class="btn btn-ghost btn-sm" onclick="editField(this)">编辑</button>
-                            </div>
-                            <div class="field-item">
-                                <span class="field-label">原始权益人</span>
-                                <span class="field-value">万国数据有限公司</span>
-                                <span class="field-source">来源：工商信息</span>
-                                <button class="btn btn-ghost btn-sm" onclick="editField(this)">编辑</button>
-                            </div>
-                            <div class="field-item">
-                                <span class="field-label">评估基准日</span>
-                                <span class="field-value">2026年3月31日</span>
-                                <span class="field-source">来源：评估报告</span>
-                                <button class="btn btn-ghost btn-sm" onclick="editField(this)">编辑</button>
-                            </div>
-                        </div>
-                    </div>
+                    <div class="text-muted text-sm" style="padding:24px;text-align:center">请在上方步骤条选择章节</div>
                 </div>
 
                 <!-- 增强功能折叠面板 -->
@@ -348,10 +206,10 @@
                         <div style="width:300px">
                             <div class="progress-label">
                                 <span>整体进度</span>
-                                <span id="progressPercent">28%</span>
+                                <span id="progressPercent">0%</span>
                             </div>
                             <div class="progress-bar">
-                                <div class="progress-fill blue" id="progressFill" style="width:28%"></div>
+                                <div class="progress-fill blue" id="progressFill" style="width:0%"></div>
                             </div>
                         </div>
                     </div>
@@ -362,71 +220,7 @@
                 </div>
             </div>
 
-            <!-- ==================== 页面3：章节编辑 ==================== -->
-            <div class="page" id="page-chapter-edit">
-                <div class="editor-layout">
-                    <!-- 左侧：内容预览 -->
-                    <div class="editor-preview">
-                        <div class="editor-preview-header">📄 章节内容预览 — 一、项目基本情况</div>
-                        <div class="editor-preview-body" id="editorPreview">
-                            <h4 style="margin-bottom:12px;color:var(--text-primary)">（一）项目概况</h4>
-                            <p style="margin-bottom:16px">本项目拟发行的基础设施不动产投资信托基金为"万国数据数据中心基础设施领域不动产投资信托基金（REITs）"，
-                            基础设施项目为位于北京市房山区的数据中心，项目类型为数据中心。</p>
-                            <h4 style="margin-bottom:12px;color:var(--text-primary)">（二）特殊限定情况说明</h4>
-                            <p style="margin-bottom:16px">本项目基础设施资产不涉及特殊限定情况，项目土地使用权及房屋建筑物产权权属清晰，
-                            不存在重大权属纠纷、被抵押查封或其他影响转让的情形。</p>
-                            <h4 style="margin-bottom:12px;color:var(--text-primary)">（三）可扩募资产情况</h4>
-                            <p>原始权益人持有的可扩募资产主要包括位于北京市及周边区域的其他数据中心资产，
-                            具备作为后续扩募标的的潜力。</p>
-                        </div>
-                    </div>
-
-                    <!-- 右侧：数据编辑 -->
-                    <div class="editor-form">
-                        <div class="editor-form-header">✏️ 数据字段编辑</div>
-                        <div class="editor-form-body" id="editorForm">
-                            <div class="form-group">
-                                <label>项目名称</label>
-                                <input type="text" class="form-input" style="width:100%;padding:8px 12px" 
-                                    value="万国数据数据中心基础设施领域不动产投资信托基金（REITs）">
-                            </div>
-                            <div class="form-group">
-                                <label>项目类型</label>
-                                <input type="text" class="form-input" style="width:100%;padding:8px 12px" value="数据中心">
-                            </div>
-                            <div class="form-group">
-                                <label>基础设施位置</label>
-                                <input type="text" class="form-input" style="width:100%;padding:8px 12px" value="北京市房山区">
-                            </div>
-                            <div class="form-group">
-                                <label>原始权益人</label>
-                                <input type="text" class="form-input" style="width:100%;padding:8px 12px" value="万国数据有限公司">
-                            </div>
-                            <div class="form-group">
-                                <label>项目概况描述</label>
-                                <textarea>本项目拟发行的基础设施不动产投资信托基金为"万国数据数据中心基础设施领域不动产投资信托基金（REITs）"，基础设施项目为位于北京市房山区的数据中心，项目类型为数据中心。</textarea>
-                            </div>
-                            <div class="form-group">
-                                <label>特殊限定说明</label>
-                                <textarea>本项目基础设施资产不涉及特殊限定情况，项目土地使用权及房屋建筑物产权权属清晰，不存在重大权属纠纷、被抵押查封或其他影响转让的情形。</textarea>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 底部操作 -->
-                <div class="action-bar" style="margin-top:24px">
-                    <div class="action-bar-left">
-                        <button class="btn btn-ghost" onclick="navigate('ndrc')">← 返回</button>
-                    </div>
-                    <div class="action-bar-right">
-                        <button class="btn btn-ghost" onclick="resetChapterEdit()">重置</button>
-                        <button class="btn btn-primary" onclick="saveChapterEdit()">保存修改</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ==================== 页面4：文档管理 ==================== -->
+            <!-- ==================== 页面3：文档管理 ====================（旧“章节编辑”页为旧视图假数据，已整页删除，新流程走 renderChapterEditor） -->
             <div class="page" id="page-documents">
                 <!-- 标签栏 -->
                 <div class="tab-bar" id="docTabBar">
@@ -456,87 +250,21 @@
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td>
-                                        <div class="flex items-center gap-8">
-                                            <span style="color:var(--info);font-weight:700;font-size:12px">DOCX</span>
-                                            <strong>万国数据数据中心REITs项目申报材料.docx</strong>
-                                        </div>
-                                    </td>
-                                    <td class="text-sm text-muted">2026-07-15 16:30</td>
-                                    <td class="text-sm">2.4 MB</td>
-                                    <td><span class="badge badge-success">已完成</span></td>
-                                    <td>
-                                        <div class="flex gap-8">
-                                            <button class="btn btn-ghost btn-sm" onclick="downloadDoc('doc1')">下载</button>
-                                            <button class="btn btn-ghost btn-sm" onclick="regenerateDoc('doc1')">重新生成</button>
-                                            <button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="deleteDoc('doc1')">删除</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div class="flex items-center gap-8">
-                                            <span style="color:var(--error);font-weight:700;font-size:12px">PDF</span>
-                                            <strong>万国数据数据中心REITs项目申报材料（盖章版）.pdf</strong>
-                                        </div>
-                                    </td>
-                                    <td class="text-sm text-muted">2026-07-15 17:00</td>
-                                    <td class="text-sm">5.1 MB</td>
-                                    <td><span class="badge badge-success">已完成</span></td>
-                                    <td>
-                                        <div class="flex gap-8">
-                                            <button class="btn btn-ghost btn-sm" onclick="downloadDoc('doc2')">下载</button>
-                                            <button class="btn btn-ghost btn-sm" onclick="regenerateDoc('doc2')">重新生成</button>
-                                            <button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="deleteDoc('doc2')">删除</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div class="flex items-center gap-8">
-                                            <span style="color:var(--info);font-weight:700;font-size:12px">DOCX</span>
-                                            <strong>REITs项目相关证明材料目录.docx</strong>
-                                        </div>
-                                    </td>
-                                    <td class="text-sm text-muted">2026-07-14 11:20</td>
-                                    <td class="text-sm">856 KB</td>
-                                    <td><span class="badge badge-warning">待审核</span></td>
-                                    <td>
-                                        <div class="flex gap-8">
-                                            <button class="btn btn-ghost btn-sm" onclick="downloadDoc('doc3')">下载</button>
-                                            <button class="btn btn-ghost btn-sm" onclick="regenerateDoc('doc3')">重新生成</button>
-                                            <button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="deleteDoc('doc3')">删除</button>
-                                        </div>
-                                    </td>
+                                    <td colspan="5" class="text-muted" style="text-align:center;padding:24px">暂无已生成文档</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- 历史版本对比 -->
-                <div class="card" style="margin-top:24px">
+                <!-- 历史版本对比（暂无版本历史 API，先隐藏） -->
+                <div class="card" style="margin-top:24px;display:none">
                     <div class="card-header">
                         <h3>📝 版本历史</h3>
                     </div>
                     <div class="card-body">
                         <div class="timeline" id="docVersionTimeline">
-                            <div class="timeline-item">
-                                <div class="timeline-dot green"></div>
-                                <div class="timeline-content">
-                                    <div class="timeline-title">v2.0 - 更新基准日至2026.03.31版本</div>
-                                    <div class="timeline-time">2026-07-15 16:30</div>
-                                    <div class="timeline-desc">全文更新，基准日从2025.12.31变更为2026.03.31</div>
-                                </div>
-                            </div>
-                            <div class="timeline-item">
-                                <div class="timeline-dot blue"></div>
-                                <div class="timeline-content">
-                                    <div class="timeline-title">v1.0 - 首次申报版本</div>
-                                    <div class="timeline-time">2026-05-20 14:00</div>
-                                    <div class="timeline-desc">基准日2025.12.31，首次提交国家发改委</div>
-                                </div>
-                            </div>
+                            <div class="text-muted text-sm" style="padding:12px 0">暂无版本历史</div>
                         </div>
                     </div>
                 </div>
@@ -564,7 +292,7 @@
                                 <input type="text" class="form-input" id="settingOutputPath" readonly
                                     style="cursor:pointer;background:var(--bg-hover)"
                                     onclick="openLocalPicker('settingOutputPath')"
-                                    value="C:\AI应用成果\REITs基金法律文件生成\app\output">
+                                    value="" placeholder="请选择输出目录">
                                 <button class="btn btn-ghost" onclick="openLocalPicker('settingOutputPath')">选择文件</button>
                             </div>
                         </div>
@@ -574,7 +302,7 @@
                                 <input type="text" class="form-input" id="settingTemplatePath" readonly
                                     style="cursor:pointer;background:var(--bg-hover)"
                                     onclick="openLocalPicker('settingTemplatePath')"
-                                    value="C:\AI应用成果\REITs基金法律文件生成\app\backend\templates">
+                                    value="" placeholder="请选择官方模板文件（.docx）">
                                 <button class="btn btn-ghost" onclick="openLocalPicker('settingTemplatePath')">选择文件</button>
                             </div>
                         </div>
@@ -622,34 +350,15 @@
         </div>
     </div>
 
-    <!-- ===== 弹窗：项目详情 ===== -->
+    <!-- ===== 弹窗：项目详情（内容由 JS 按当前项目填充） ===== -->
     <div class="modal-overlay" id="modal-project-info">
         <div class="modal">
             <div class="modal-header">
                 <span class="modal-title">项目详情</span>
                 <button class="modal-close" onclick="closeModal('modal-project-info')">✕</button>
             </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>项目全称</label>
-                    <p style="color:var(--text-primary);font-size:14px">万国数据数据中心基础设施领域不动产投资信托基金（REITs）</p>
-                </div>
-                <div class="form-group">
-                    <label>原始权益人</label>
-                    <p style="color:var(--text-primary);font-size:14px">万国数据有限公司</p>
-                </div>
-                <div class="form-group">
-                    <label>基金管理人</label>
-                    <p style="color:var(--text-primary);font-size:14px">待确定</p>
-                </div>
-                <div class="form-group">
-                    <label>基础设施类型</label>
-                    <p style="color:var(--text-primary);font-size:14px">数据中心（新型基础设施）</p>
-                </div>
-                <div class="form-group">
-                    <label>评估基准日</label>
-                    <p style="color:var(--text-primary);font-size:14px">2026年3月31日</p>
-                </div>
+            <div class="modal-body" id="projectInfoModalBody">
+                <div class="text-muted text-sm">暂无项目信息</div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-ghost" onclick="closeModal('modal-project-info')">关闭</button>
