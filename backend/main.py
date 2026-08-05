@@ -153,8 +153,8 @@ app.mount("/js", StaticFiles(directory=str(FRONTEND_DIR / "js")), name="js")
 @app.get("/{full_path:path}")
 async def serve_frontend(full_path: str):
     """服务前端页面，所有非API请求返回index.html"""
-    # /api/* 下的未知路径直接 404，避免被 SPA 兜底成 HTML（也防止已删除的接口残留为 200）
-    if full_path.startswith("api/"):
+    # /api 及 /api/* 下的未知路径直接 404，避免被 SPA 兜底成 HTML（也防止已删除的接口残留为 200）
+    if full_path == "api" or full_path.startswith("api/"):
         return JSONResponse({"detail": "Not Found"}, status_code=404)
     file_path = FRONTEND_DIR / full_path
     if full_path and file_path.exists() and file_path.is_file():
