@@ -44,9 +44,18 @@ DATA_SOURCE_BASE = Path(os.environ.get(
 APP_DIR = DATA_SOURCE_BASE / "app"
 
 # 项目数据根目录（workspace/projects/<项目ID>/）：摘要表、各章 JSON、生成产物按项目隔离。
-# 步骤 2.4 全量按项目隔离前的过渡期用 "default" 单项目目录。
 PROJECTS_DIR = DATA_SOURCE_BASE / "projects"
 DEFAULT_PROJECT_ID = "default"
+
+
+def safe_project_id(project_id) -> str:
+    """净化外部传入的项目 ID：取文件名部分防目录穿越，
+    空值或 '.'/'..' 等特殊值落回默认项目。"""
+    pid = str(project_id or "").strip()
+    safe = Path(pid).name if pid else ""
+    if safe in ("", ".", ".."):
+        return DEFAULT_PROJECT_ID
+    return safe
 
 # 输出目录
 OUTPUT_DIR = APP_DIR / "output"

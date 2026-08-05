@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from html.parser import HTMLParser
 
-from backend.config import (DATA_SOURCE_BASE, PROJECTS_DIR, DEFAULT_PROJECT_ID,
+from backend.config import (DATA_SOURCE_BASE, PROJECTS_DIR, safe_project_id,
                             MOONSHOT_MODEL)
 from backend.services.kimi_client import chat, chat_with_tools
 from backend.services import summary_service, tianyancha_client, materials_client
@@ -26,9 +26,9 @@ CHAPTERS = pack_service.get_chapters()
 
 
 def _project_dir(project_id: str = None) -> Path:
-    """项目数据目录（workspace/projects/<项目ID>/）；未传项目时用默认项目。
-    步骤 2.4 会由路由层把真实 project_id 传进来。"""
-    return PROJECTS_DIR / (project_id or DEFAULT_PROJECT_ID)
+    """项目数据目录（workspace/projects/<项目ID>/），按项目隔离；
+    未传/空值/非法值时用默认项目目录。"""
+    return PROJECTS_DIR / safe_project_id(project_id)
 
 
 def chapter_json_path(n: int, project_id: str = None) -> Path:
@@ -361,8 +361,8 @@ def _html_sections_to_structured(html_sections: list, chapter_title: str = "") -
     return {"chapter": chapter_title, "sections": sections}
 
 
-def _load_json(n: int) -> dict:
-    path = chapter_json_path(n)
+def _load_json(n: int, project_id: str = None) -> dict:
+    path = chapter_json_path(n, project_id)
     if path.exists():
         try:
             # utf-8-sig 兼容带 BOM 的文件（外部编辑器可能写入 BOM）
@@ -372,8 +372,8 @@ def _load_json(n: int) -> dict:
     return {}
 
 
-def _save_json(n: int, data: dict) -> None:
-    path = chapter_json_path(n)
+def _save_json(n: int, data: dict, project_id: str = None) -> None:
+    path = chapter_json_path(n, project_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -426,7 +426,8 @@ def _fold_enumerated_sections(sections: list, subtitles: list = None) -> list:
 
 
 def get_chapter_content(n: int, subtitles: list = None,
-                        template_tables: dict = None, table_start: int = 1) -> dict:
+                        template_tables: dict = None, table_start: int = 1,
+                        project_id: str = None) -> dict:
     """给网页编辑区：每个子标题一块可读富文本。
 
     subtitles（来自官方模板的本章小标题）如果给出，则以它为权威骨架：按模板顺序铺出
@@ -440,7 +441,7 @@ def get_chapter_content(n: int, subtitles: list = None,
     把表标题里的编号占位（表#/表c…）显示成连续序号。
     """
     template_tables = template_tables or {}
-    saved = _load_json(n).get("sections", []) or []
+    saved = _load_json(n, project_id).get("sections", []) or []
     # 兜底：把误升级成 section 的编号项（“1.奥飞数据”等）折回其所属的模板小标题，锁定小标题结构
     saved = _fold_enumerated_sections(saved, subtitles)
 
@@ -472,19 +473,19 @@ def get_chapter_content(n: int, subtitles: list = None,
             "sections": _sections_to_html(_number_captions(saved, table_start))}
 
 
-def get_chapter_structured(n: int) -> list:
-    """给 writing skill：返回某章的结构化 sections（表标题编号由 web_render 全篇统一重排）。"""
-    return _load_json(n).get("sections", [])
+def get_chapter_structured(n: int, project_id: str = None) -> list:
+    """给写作渲染：返回某章的结构化 sections（表标题编号由 web_render 全篇统一重排）。"""
+    return _load_json(n, project_id).get("sections", [])
 
 
-def save_chapter_content(n: int, html_sections: list) -> None:
+def save_chapter_content(n: int, html_sections: list, project_id: str = None) -> None:
     """网页保存：把编辑区 HTML 转回结构化 JSON（有序块）并落盘。"""
-    _save_json(n, _html_sections_to_structured(html_sections, CHAPTERS[n]["title"]))
+    _save_json(n, _html_sections_to_structured(html_sections, CHAPTERS[n]["title"]), project_id)
 
 
-def _format_saved_summary() -> str:
+def _format_saved_summary(project_id: str = None) -> str:
     """把用户已保存的摘要表/释义/其他基本信息格式化成文本，供拼进 prompt。"""
-    saved = summary_service.get_summary_data()  # 优先返回已保存版本
+    saved = summary_service.get_summary_data(project_id)  # 优先返回已保存版本
     if not saved:
         return ""
 
@@ -660,7 +661,8 @@ def _make_materials_executor(root):
     return _exec
 
 
-def run_chapter(n: int, subtitles: list = None, materials_path: str = None) -> dict:
+def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
+                project_id: str = None) -> dict:
     """执行第 n 章：读 planning.md + 该章 SKILL.md + 已保存摘要，让 Kimi 产出结构化内容。
 
     subtitles（来自官方模板的本章小标题）如果给出，则强制 Kimi 用这几个小标题作为
@@ -672,7 +674,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None) -> d
     cfg = CHAPTERS[n]
     planning = _read_text(pack_service.planning_path())
     skill_md = _read_text(pack_service.reading_path(n))
-    saved_summary = _format_saved_summary()
+    saved_summary = _format_saved_summary(project_id)
 
     # 排版配置(write_config.json)只在“生成内容”这一步按需刷新（写作要求改过才真调模型）——
     # 从而彻底移出 Word 预览路径：改 skill 不再拖慢预览。失败不阻断本次生成。
@@ -796,7 +798,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None) -> d
     if isinstance(data, dict) and data.get("sections"):
         data["sections"] = _fold_enumerated_sections(data["sections"], subtitles)
     try:
-        _save_json(n, data)
+        _save_json(n, data, project_id)
     except Exception as e:
         logger.warning(f"写入 ch{n}.json 失败: {e}")
 

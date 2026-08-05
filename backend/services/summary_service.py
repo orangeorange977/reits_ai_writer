@@ -7,47 +7,54 @@
 import io
 import json
 import logging
+from pathlib import Path
 
 from openpyxl import load_workbook
 
-from backend.config import PROJECTS_DIR, DEFAULT_PROJECT_ID
+from backend.config import PROJECTS_DIR, safe_project_id
 
 logger = logging.getLogger(__name__)
 
-# 用户在网页上核对/编辑/导入后保存的摘要表数据（唯一可信来源）。
-# 按项目隔离存放（workspace/projects/<项目ID>/）；步骤 2.4 全量接入项目维度，
-# 过渡期用 "default" 默认项目目录。
-SAVED_SUMMARY_PATH = PROJECTS_DIR / DEFAULT_PROJECT_ID / "summary_saved.json"
+# 用户在网页上核对/编辑/导入后保存的摘要表数据（唯一可信来源），按项目隔离存放
+# （workspace/projects/<项目ID>/summary_saved.json）；未传项目时用默认项目目录。
+
+
+def saved_summary_path(project_id: str = None) -> Path:
+    return PROJECTS_DIR / safe_project_id(project_id) / "summary_saved.json"
+
+
 _GROUP_KEYS = ("summary_table", "glossary", "other_info")
 
 
-def save_summary_data(data: dict) -> None:
-    """把网页上编辑好的摘要表/释义/其他基本信息保存到 JSON 文件。"""
+def save_summary_data(data: dict, project_id: str = None) -> None:
+    """把网页上编辑好的摘要表/释义/其他基本信息保存到该项目的 JSON 文件。"""
     clean = {k: (data.get(k) or []) for k in _GROUP_KEYS}
-    SAVED_SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SAVED_SUMMARY_PATH.write_text(
+    path = saved_summary_path(project_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
 
-def load_saved_summary():
-    """读取已保存的摘要表数据；没有则返回 None。"""
-    if SAVED_SUMMARY_PATH.exists():
+def load_saved_summary(project_id: str = None):
+    """读取该项目已保存的摘要表数据；没有则返回 None。"""
+    path = saved_summary_path(project_id)
+    if path.exists():
         try:
-            data = json.loads(SAVED_SUMMARY_PATH.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
             return {k: (data.get(k) or []) for k in _GROUP_KEYS}
         except Exception as e:
             logger.warning(f"读取已保存摘要表失败: {e}")
     return None
 
 
-def get_summary_data() -> dict:
+def get_summary_data(project_id: str = None) -> dict:
     """返回 {summary_table, glossary, other_info}。
 
-    唯一来源是保存文件；没有保存过则返回空结构（三个空列表），由用户在网页上录入或
-    Excel 导入后保存。
+    唯一来源是该项目的保存文件；没有保存过则返回空结构（三个空列表），
+    由用户在网页上录入或 Excel 导入后保存。
     """
-    saved = load_saved_summary()
+    saved = load_saved_summary(project_id)
     if saved is not None:
         return saved
     return {"summary_table": [], "glossary": [], "other_info": []}

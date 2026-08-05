@@ -244,6 +244,15 @@ const API = {
     // ===== Skill 执行（Kimi）=====
 
     /**
+     * 当前选中项目 ID（章节内容/摘要表等数据按项目隔离，请求时携带）；
+     * 未选项目时返回空串，后端落回默认项目目录。
+     */
+    _currentProjectId() {
+        return (typeof currentProjectId !== 'undefined' && currentProjectId != null)
+            ? String(currentProjectId) : '';
+    },
+
+    /**
      * 启动第 n 章 Kimi 生成（异步）
      * @param {number} n - 章节号 1-7
      * @returns {Promise<object>} {status: 'started', ...}
@@ -252,8 +261,8 @@ const API = {
         const params = new URLSearchParams();
         if (templatePath) params.set('template_path', templatePath);
         if (materialsPath) params.set('materials_path', materialsPath);
-        const qs = params.toString() ? `?${params.toString()}` : '';
-        return this.post(`/skills/chapter/${n}/run${qs}`);
+        params.set('project_id', this._currentProjectId());
+        return this.post(`/skills/chapter/${n}/run?${params.toString()}`);
     },
 
     /**
@@ -261,7 +270,7 @@ const API = {
      * @returns {Promise<object>} {status: 'idle'|'running'|'done'|'error', data, error}
      */
     async getChapterStatus(n) {
-        return this.get(`/skills/chapter/${n}/status`);
+        return this.get(`/skills/chapter/${n}/status`, { project_id: this._currentProjectId() });
     },
 
     /**
@@ -269,28 +278,29 @@ const API = {
      * @returns {Promise<object>} {source:'ready'|'none', sections:[{id,title,html}]}
      */
     async getChapterContent(n, templatePath = '') {
-        const params = {};
+        const params = { project_id: this._currentProjectId() };
         if (templatePath) params.template_path = templatePath;
         return this.get(`/skills/chapter/${n}/content`, params);
     },
 
     /**
-     * 保存第 n 章编辑后的内容（回传给 reading skill）
+     * 保存第 n 章编辑后的内容（回传给最终版 JSON）
      * @param {number} n
      * @param {Array} sections - [{id, title, html}]
      */
     async saveChapterContent(n, sections) {
-        return this.post(`/skills/chapter/${n}/save`, { sections });
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/chapter/${n}/save?project_id=${pid}`, { sections });
     },
 
     /**
-     * 生成第 n 章 Word 并返回预览 HTML（writing skill 写入官方模板对应章节）
+     * 生成第 n 章 Word 并返回预览 HTML（写入官方模板对应章节）
      * @param {number} n
      * @param {string} templatePath - 官方模板文件路径（来自系统设置）
      * @returns {Promise<object>} {status, has_content, html, used_template}
      */
     async getChapterPreview(n, templatePath = '') {
-        const params = {};
+        const params = { project_id: this._currentProjectId() };
         if (templatePath) params.template_path = templatePath;
         return this.get(`/skills/chapter/${n}/preview`, params);
     },
@@ -300,7 +310,8 @@ const API = {
      */
     downloadChapterDocx(n) {
         const link = document.createElement('a');
-        link.href = `${API_BASE}/skills/chapter/${n}/download`;
+        const pid = encodeURIComponent(this._currentProjectId());
+        link.href = `${API_BASE}/skills/chapter/${n}/download?project_id=${pid}`;
         link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
@@ -308,20 +319,21 @@ const API = {
     },
 
     /**
-     * 获取摘要表/释义/其他基本信息
+     * 获取当前项目的摘要表/释义/其他基本信息
      * @returns {Promise<object>} {status, data:{summary_table, glossary, other_info}}
      */
     async getSummary() {
-        return this.get('/skills/summary');
+        return this.get('/skills/summary', { project_id: this._currentProjectId() });
     },
 
     /**
-     * 保存摘要表/释义/其他基本信息（持久化到后端）
+     * 保存摘要表/释义/其他基本信息到当前项目（持久化到后端）
      * @param {object} data - {summary_table, glossary, other_info}
      * @returns {Promise<object>} {status, message}
      */
     async saveSummary(data) {
-        return this.post('/skills/summary/save', data);
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/summary/save?project_id=${pid}`, data);
     },
 
     /**

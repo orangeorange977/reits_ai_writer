@@ -237,10 +237,10 @@ async def diagram_template(name: str):
 
 
 @router.get("/summary")
-async def get_summary():
-    """摘要表 / 释义（来自申报定稿 docx）+ 其他基本信息（来自 planning.md）。"""
+async def get_summary(project_id: str = ""):
+    """摘要表 / 释义（来自申报定稿 docx）+ 其他基本信息，按项目隔离。"""
     try:
-        data = await asyncio.to_thread(summary_service.get_summary_data)
+        data = await asyncio.to_thread(summary_service.get_summary_data, project_id or None)
         return {"status": "ok", "data": data}
     except Exception as e:
         logger.error(f"获取摘要表/释义失败: {e}", exc_info=True)
@@ -254,10 +254,10 @@ class SummaryData(BaseModel):
 
 
 @router.post("/summary/save")
-async def save_summary(data: SummaryData):
-    """保存网页上编辑好的摘要表/释义/其他基本信息（写入 JSON，之后各章生成都以此为准）。"""
+async def save_summary(data: SummaryData, project_id: str = ""):
+    """保存网页上编辑好的摘要表/释义/其他基本信息到该项目（写入 JSON，之后该项目各章生成都以此为准）。"""
     try:
-        await asyncio.to_thread(summary_service.save_summary_data, data.model_dump())
+        await asyncio.to_thread(summary_service.save_summary_data, data.model_dump(), project_id or None)
         return {"status": "ok", "message": "已保存"}
     except Exception as e:
         logger.error(f"保存摘要表失败: {e}", exc_info=True)
@@ -277,14 +277,18 @@ async def import_summary_excel(file: UploadFile = File(...)):
         logger.error(f"解析上传的 Excel 失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"解析 Excel 失败：{e}")
 
-# 各章生成任务状态（内存，本地单机单用户够用），按章节号存
-_jobs = {}    # n -> {"status","data","error"}
+# 各章生成任务状态（内存，本地单机单用户够用），按 (project_id, 章节号) 存，项目间互不影响
+_jobs = {}    # (pid, n) -> {"status","data","error"}
 # 后台 task 的强引用：asyncio 只对 task 持弱引用，不保存会被 GC 掉，导致状态卡在 running
-_tasks = {}   # n -> asyncio.Task
+_tasks = {}   # (pid, n) -> asyncio.Task
 
 
-def _job(n: int) -> dict:
-    return _jobs.get(n, {"status": "idle", "data": None, "error": None})
+def _norm_pid(project_id: str = "") -> str:
+    return str(project_id or "").strip()
+
+
+def _job(key):
+    return _jobs.get(key, {"status": "idle", "data": None, "error": None})
 
 
 def _valid_chapter(n: int):
@@ -292,57 +296,54 @@ def _valid_chapter(n: int):
         raise HTTPException(status_code=404, detail=f"章节 {n} 不存在")
 
 
-async def _run_chapter_job(n: int):
+async def _run_chapter_job_with_subs(key, n: int, subtitles: list,
+                                     materials_path: str = "", project_id: str = ""):
     try:
-        result = await asyncio.to_thread(skill_runner.run_chapter, n)
-        _jobs[n] = {"status": "done", "data": result, "error": None}
-        logger.info(f"第{n}章 skill 执行完成")
+        result = await asyncio.to_thread(
+            skill_runner.run_chapter, n, subtitles, materials_path, project_id or None)
+        _jobs[key] = {"status": "done", "data": result, "error": None}
+        logger.info(f"第{n}章 skill 执行完成（项目 {project_id or '默认'}）")
     except Exception as e:
         logger.error(f"第{n}章 skill 执行失败: {e}", exc_info=True)
-        _jobs[n] = {"status": "error", "data": None, "error": str(e)}
-
-
-async def _run_chapter_job_with_subs(n: int, subtitles: list, materials_path: str = ""):
-    try:
-        result = await asyncio.to_thread(skill_runner.run_chapter, n, subtitles, materials_path)
-        _jobs[n] = {"status": "done", "data": result, "error": None}
-        logger.info(f"第{n}章 skill 执行完成")
-    except Exception as e:
-        logger.error(f"第{n}章 skill 执行失败: {e}", exc_info=True)
-        _jobs[n] = {"status": "error", "data": None, "error": str(e)}
+        _jobs[key] = {"status": "error", "data": None, "error": str(e)}
 
 
 @router.post("/chapter/{n}/run")
-async def chapter_run(n: int, template_path: str = "", materials_path: str = ""):
+async def chapter_run(n: int, template_path: str = "", materials_path: str = "",
+                      project_id: str = ""):
     """启动第 n 章生成（后台异步），立即返回。template_path 有效时强制用模板小标题；
-    materials_path 有效时把"读取申报材料"的工具挂给 Kimi。"""
+    materials_path 有效时把"读取申报材料"的工具挂给 Kimi；project_id 决定数据落在哪个项目目录。"""
     _valid_chapter(n)
-    if _job(n)["status"] == "running":
+    pid = _norm_pid(project_id)
+    key = (pid, n)
+    if _job(key)["status"] == "running":
         raise HTTPException(status_code=409, detail=f"第{n}章正在生成中，请稍候")
     subs = []
     tpl = _resolve_template_path(template_path)
     if tpl:
         subs = await asyncio.to_thread(skill_runner.chapter_subtitles, n, tpl)
-    _jobs[n] = {"status": "running", "data": None, "error": None}
-    _tasks[n] = asyncio.create_task(_run_chapter_job_with_subs(n, subs, materials_path.strip()))
+    _jobs[key] = {"status": "running", "data": None, "error": None}
+    _tasks[key] = asyncio.create_task(
+        _run_chapter_job_with_subs(key, n, subs, materials_path.strip(), pid))
     return {"status": "started", "message": f"第{n}章生成已启动，请稍候（Kimi 处理约需数分钟）"}
 
 
 @router.get("/chapter/{n}/status")
-async def chapter_status(n: int):
-    """查询第 n 章生成进度/结果。"""
+async def chapter_status(n: int, project_id: str = ""):
+    """查询第 n 章生成进度/结果（按项目隔离）。"""
     _valid_chapter(n)
-    return _job(n)
+    return _job((_norm_pid(project_id), n))
 
 
 @router.get("/chapter/{n}/content")
-async def chapter_content(n: int, template_path: str = ""):
-    """第 n 章可编辑内容：以官方模板的本章小标题为骨架，合并已保存/已生成的内容。
+async def chapter_content(n: int, template_path: str = "", project_id: str = ""):
+    """第 n 章可编辑内容：以官方模板的本章小标题为骨架，合并该项目已保存/已生成的内容。
 
     template_path（来自系统设置）有效时，即使还没生成，也能看到该章的小标题结构。
-    若前端未传或路径无效，自动回退到内置官方模板。
+    若前端未传或路径无效，自动回退到模板包内置模板。
     """
     _valid_chapter(n)
+    pid = project_id or None
 
     def _do():
         subs = []
@@ -353,7 +354,7 @@ async def chapter_content(n: int, template_path: str = ""):
             subs = skill_runner.chapter_subtitles(n, tpl)
             tables = skill_runner.chapter_tables(n, tpl)
             table_start = skill_runner.chapter_table_start(n, tpl)
-        return skill_runner.get_chapter_content(n, subs, tables, table_start)
+        return skill_runner.get_chapter_content(n, subs, tables, table_start, pid)
 
     return await asyncio.to_thread(_do)
 
@@ -363,27 +364,28 @@ class ChapterSaveBody(BaseModel):
 
 
 @router.post("/chapter/{n}/save")
-async def chapter_save(n: int, body: ChapterSaveBody):
-    """保存用户编辑后的第 n 章内容（回传给 reading skill 的最终版）。"""
+async def chapter_save(n: int, body: ChapterSaveBody, project_id: str = ""):
+    """保存用户编辑后的第 n 章内容到该项目（回传给最终版 JSON）。"""
     _valid_chapter(n)
     try:
-        await asyncio.to_thread(skill_runner.save_chapter_content, n, body.sections)
+        await asyncio.to_thread(
+            skill_runner.save_chapter_content, n, body.sections, project_id or None)
         return {"status": "ok", "message": "已保存"}
     except Exception as e:
         logger.error(f"保存第{n}章内容失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"保存失败：{e}")
 
 
-# 预览渲染缓存：{n: (signature, result)}。签名只取“会影响成稿的东西”——本章已保存内容(JSON)、
+# 预览渲染缓存：{(pid, n): (signature, result)}。签名只取“会影响成稿的东西”——本章已保存内容(JSON)、
 # 模板文件、排版配置的修改时间。改 skill/planning 不会改变这三样，故不会触发重渲染；
 # 只有在编辑区保存(内容变)或重新生成时 JSON 变了，签名才变、才重跑。进程内单例、够用。
 _PREVIEW_CACHE: dict = {}
 
 
-def _preview_signature(n: int, template_path: str) -> str:
+def _preview_signature(n: int, template_path: str, project_id: str = "") -> str:
     tpl = (template_path or "").strip()
     parts = [tpl]
-    srcs = [skill_runner.chapter_json_path(n), skill_runner.WRITE_CONFIG_PATH]
+    srcs = [skill_runner.chapter_json_path(n, project_id or None), skill_runner.WRITE_CONFIG_PATH]
     if tpl:
         srcs.append(Path(tpl))
     for p in srcs:
@@ -395,27 +397,29 @@ def _preview_signature(n: int, template_path: str) -> str:
 
 
 @router.get("/chapter/{n}/preview")
-async def chapter_preview(n: int, template_path: str = ""):
-    """reits-writing skill 读第 n 章 JSON -> 写入官方模板对应章节 + 返回预览 HTML。
+async def chapter_preview(n: int, template_path: str = "", project_id: str = ""):
+    """读该项目第 n 章 JSON -> 写入官方模板对应章节 + 返回预览 HTML。
 
     template_path 由网页"系统设置"里的模板文件路径传入；有效则写入模板、预览取自填好的模板，
-    无效/未提供则自动回退到内置官方模板；仍无效则回退到独立生成一份 Word。
+    无效/未提供则自动回退到模板包内置模板；仍无效则回退到独立生成一份 Word。
 
     预览只对"编辑区内容"负责：不调用大模型、不因 skill/planning 改动而重跑；
     只有本章已保存内容(JSON)变化时才真正重新渲染，否则直接复用上次结果。
     """
     _valid_chapter(n)
+    pid = project_id or None
+    key = (_norm_pid(project_id), n)
     cfg = skill_runner.CHAPTERS[n]
-    docx_path = str(skill_runner.chapter_docx_path(n))
+    docx_path = str(skill_runner.chapter_docx_path(n, pid))
 
     tpl_resolved = _resolve_template_path(template_path)
-    sig = _preview_signature(n, tpl_resolved)
-    cached = _PREVIEW_CACHE.get(n)
+    sig = _preview_signature(n, tpl_resolved, project_id)
+    cached = _PREVIEW_CACHE.get(key)
     if cached and cached[0] == sig:
         return {"status": "ok", "cached": True, **cached[1]}
 
     def _do():
-        sections = skill_runner.get_chapter_structured(n)
+        sections = skill_runner.get_chapter_structured(n, pid)
         if not sections:
             return {"has_content": False, "html": "", "used_template": False}
         wr = _load_web_render()
@@ -431,7 +435,7 @@ async def chapter_preview(n: int, template_path: str = ""):
     try:
         result = await asyncio.to_thread(_do)
         if result.get("has_content"):
-            _PREVIEW_CACHE[n] = (sig, result)
+            _PREVIEW_CACHE[key] = (sig, result)
         return {"status": "ok", **result}
     except Exception as e:
         logger.error(f"生成第{n}章预览失败: {e}", exc_info=True)
@@ -439,10 +443,10 @@ async def chapter_preview(n: int, template_path: str = ""):
 
 
 @router.get("/chapter/{n}/download")
-async def chapter_download(n: int):
-    """下载 reits-writing skill 生成的第 n 章 Word 文件。"""
+async def chapter_download(n: int, project_id: str = ""):
+    """下载该项目第 n 章生成的 Word 文件。"""
     _valid_chapter(n)
-    path = skill_runner.chapter_docx_path(n)
+    path = skill_runner.chapter_docx_path(n, project_id or None)
     if not path.exists():
         raise HTTPException(status_code=404, detail="尚未生成 Word，请先在预览处生成")
     title = skill_runner.CHAPTERS[n]["title"]
