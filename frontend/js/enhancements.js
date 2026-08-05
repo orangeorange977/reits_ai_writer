@@ -4,59 +4,66 @@
  */
 
 // ===== 增强功能 API 调用封装 =====
+
+// 后端统一返回 {success, data} 包裹，这里解出 data 供各面板直接使用
+function _unwrapEnhanceResp(resp) {
+    return (resp && resp.data !== undefined) ? resp.data : (resp || {});
+}
+
 const EnhancementsAPI = {
-    // --- 释义表 ---
+    // --- 释义表 ---（后端仅提供整体读取/整体保存两个路由）
     async getGlossary(projectId) {
-        return API.get(`/projects/${projectId}/glossary`);
+        return _unwrapEnhanceResp(await API.get(`/projects/${projectId}/glossary`));
     },
     async updateGlossary(projectId, entries) {
         return API.put(`/projects/${projectId}/glossary`, { entries });
     },
-    async addGlossaryEntry(projectId, entry) {
-        return API.post(`/projects/${projectId}/glossary`, entry);
-    },
-    async deleteGlossaryEntry(projectId, entryId) {
-        return API.delete(`/projects/${projectId}/glossary/${entryId}`);
-    },
 
     // --- 承诺函 ---
     async getCommitments(projectId) {
-        return API.get(`/projects/${projectId}/commitments`);
+        return _unwrapEnhanceResp(await API.get(`/projects/${projectId}/commitments`));
     },
     async fillCommitment(projectId, templateId, variables) {
         return API.post(`/projects/${projectId}/commitments/fill`, { template_id: templateId, variables });
     },
 
-    // --- 财务数据 ---
+    // --- 财务数据 ---（后端路由为 /financial-data）
     async getFinancialData(projectId) {
-        return API.get(`/projects/${projectId}/financial`);
+        return _unwrapEnhanceResp(await API.get(`/projects/${projectId}/financial-data`));
     },
     async saveFinancialData(projectId, data) {
-        return API.put(`/projects/${projectId}/financial`, { data });
+        return API.put(`/projects/${projectId}/financial-data`, { data });
     },
 
-    // --- 不涉及模块 ---
+    // --- 不涉及模块 ---（后端请求体为 {sections, reason}）
     async getInapplicable(projectId) {
-        return API.get(`/projects/${projectId}/inapplicable`);
+        return _unwrapEnhanceResp(await API.get(`/projects/${projectId}/inapplicable`));
     },
     async updateInapplicable(projectId, sectionIds, reason) {
-        return API.put(`/projects/${projectId}/inapplicable`, { section_ids: sectionIds, reason });
+        return API.put(`/projects/${projectId}/inapplicable`, { sections: sectionIds, reason });
     },
 
-    // --- 基准日 ---
+    // --- 基准日 ---（后端请求体为 {base_date, query_point, extra}）
     async getQueryDates(projectId) {
-        return API.get(`/projects/${projectId}/query-dates`);
+        return _unwrapEnhanceResp(await API.get(`/projects/${projectId}/query-dates`));
     },
     async updateQueryDates(projectId, dates) {
-        return API.put(`/projects/${projectId}/query-dates`, { dates });
+        // 评估基准日 → base_date；申报日期 → query_point；其余日期收入 extra 原样保存
+        const { evaluation_date = '', report_date = '', ...extra } = dates || {};
+        return API.put(`/projects/${projectId}/query-dates`, {
+            base_date: evaluation_date,
+            query_point: report_date,
+            extra,
+        });
     },
 
-    // --- 附件 ---
+    // --- 附件 ---（后端条目格式为 {id, title, filename}，前端展示用 {id, name, type}，此处互转）
     async getAttachments(projectId) {
-        return API.get(`/projects/${projectId}/attachments`);
+        return _unwrapEnhanceResp(await API.get(`/projects/${projectId}/attachments`));
     },
     async updateAttachments(projectId, attachments) {
-        return API.put(`/projects/${projectId}/attachments`, { attachments });
+        const items = (attachments || []).map(a => ({ id: a.id, title: a.name, filename: a.type || '' }));
+        return API.put(`/projects/${projectId}/attachments`, { attachments: items });
     },
 };
 
@@ -428,15 +435,18 @@ async function renderFinancialInput(containerId) {
 
     container.innerHTML = '<div class="enhancement-section"><div class="enhancement-loading"><div class="enhancement-spinner"></div><span>加载财务数据模板...</span></div></div>';
 
-    let financialData = null;
+    let financialData = getDefaultFinancialData();
     if (currentProjectId) {
         try {
-            financialData = await EnhancementsAPI.getFinancialData(currentProjectId);
+            // 后端返回 {financial_data, template}，仅当已保存过带 rows 的数据时才采用
+            const resp = await EnhancementsAPI.getFinancialData(currentProjectId);
+            const saved = resp && resp.financial_data;
+            if (saved && Array.isArray(saved.rows)) {
+                financialData = saved;
+            }
         } catch (e) {
             financialData = getDefaultFinancialData();
         }
-    } else {
-        financialData = getDefaultFinancialData();
     }
     EnhancementsState.financial = financialData;
 
@@ -518,17 +528,23 @@ async function renderInapplicableMarker(containerId) {
 
     container.innerHTML = '<div class="enhancement-section"><div class="enhancement-loading"><div class="enhancement-spinner"></div><span>加载模块结构...</span></div></div>';
 
-    let sections = [];
+    // 后端只保存已勾选的模块ID列表，树结构仍用默认结构，按ID回填勾选状态
+    let markedIds = [];
     if (currentProjectId) {
         try {
             const data = await EnhancementsAPI.getInapplicable(currentProjectId);
-            sections = data.sections || [];
+            markedIds = data.sections || [];
         } catch (e) {
-            sections = getDefaultSections();
+            markedIds = [];
         }
-    } else {
-        sections = getDefaultSections();
     }
+    const sections = getDefaultSections();
+    (function applyChecked(list) {
+        list.forEach(s => {
+            if (markedIds.includes(s.id)) s.checked = true;
+            if (s.children) applyChecked(s.children);
+        });
+    })(sections);
     EnhancementsState.inapplicable.sections = sections;
 
     container.innerHTML = `
@@ -644,16 +660,17 @@ async function renderQueryDateConfig(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    let dates = {};
+    let dates = getDefaultDates();
     if (currentProjectId) {
         try {
+            // 后端返回 {base_date, query_point, extra}，反向还原为前端的日期字段
             const data = await EnhancementsAPI.getQueryDates(currentProjectId);
-            dates = data.dates || {};
+            dates = { ...dates, ...(data.extra || {}) };
+            if (data.base_date) dates.evaluation_date = data.base_date;
+            if (data.query_point) dates.report_date = data.query_point;
         } catch (e) {
             dates = getDefaultDates();
         }
-    } else {
-        dates = getDefaultDates();
     }
     EnhancementsState.queryDates.dates = dates;
 
@@ -716,7 +733,13 @@ async function renderAttachmentManager(containerId) {
     if (currentProjectId) {
         try {
             const data = await EnhancementsAPI.getAttachments(currentProjectId);
-            attachments = data.attachments || [];
+            // 后端条目为 {id, title, filename}，转回前端展示用的 {id, name, type}
+            attachments = (data.attachments || []).map(a => ({
+                id: a.id || ('att_' + Math.random().toString(36).slice(2, 8)),
+                name: a.title,
+                type: a.filename || 'PDF',
+                number: a.number ? `附件${a.number}` : '',
+            }));
         } catch (e) {
             attachments = getDefaultAttachments();
         }
