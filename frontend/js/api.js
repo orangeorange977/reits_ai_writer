@@ -53,6 +53,11 @@ const API = {
             delete config._download;
         }
 
+        // FormData 上传（multipart）：Content-Type 交给浏览器自动带 boundary
+        if (options.body instanceof FormData) {
+            delete config.headers['Content-Type'];
+        }
+
         try {
             const response = await fetch(url, config);
 
@@ -182,6 +187,37 @@ const API = {
         return this.delete(`/projects/${id}`);
     },
 
+    // ===== 申报材料上传（步骤 3.4：上传模式替代本机路径）=====
+
+    /**
+     * 上传申报材料（多文件，支持 zip 自动解压）到当前项目
+     * @param {FileList|File[]} files - 选中的文件
+     * @returns {Promise<object>} {uploaded, extracted_from_zip, skipped}
+     */
+    async uploadMaterials(files) {
+        const form = new FormData();
+        for (const f of files) form.append('files', f);
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.request(`/projects/${pid}/materials`, { method: 'POST', body: form });
+    },
+
+    /**
+     * 列出当前项目已上传的申报材料（递归，含多级子文件夹）
+     * @returns {Promise<object>} {total_files, total_size, files:[{path,size}]}
+     */
+    async listMaterials() {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.get(`/projects/${pid}/materials`);
+    },
+
+    /**
+     * 清空当前项目的全部申报材料
+     */
+    async clearMaterials() {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.delete(`/projects/${pid}/materials`);
+    },
+
     // ===== 已生成文档列表（新管线）=====
 
     /**
@@ -217,14 +253,12 @@ const API = {
     },
 
     /**
-     * 启动第 n 章 Kimi 生成（异步）
-     * @param {number} n - 章节号 1-7
+     * 启动第 n 章 Kimi 生成（异步）；材料目录由后端自动解析到项目上传目录（步骤 3.4）
+     * @param {number} n - 章节号
      * @returns {Promise<object>} {status: 'started', ...}
      */
-    async runChapter(n, templatePath = '', materialsPath = '') {
+    async runChapter(n) {
         const params = new URLSearchParams();
-        if (templatePath) params.set('template_path', templatePath);
-        if (materialsPath) params.set('materials_path', materialsPath);
         params.set('project_id', this._currentProjectId());
         return this.post(`/skills/chapter/${n}/run?${params.toString()}`);
     },
@@ -238,13 +272,11 @@ const API = {
     },
 
     /**
-     * 获取第 n 章可编辑内容（每个子标题一块可读富文本）
+     * 获取第 n 章可编辑内容（每个子标题一块可读富文本）；模板骨架由后端自动回退到材料包内置模板
      * @returns {Promise<object>} {source:'ready'|'none', sections:[{id,title,html}]}
      */
-    async getChapterContent(n, templatePath = '') {
-        const params = { project_id: this._currentProjectId() };
-        if (templatePath) params.template_path = templatePath;
-        return this.get(`/skills/chapter/${n}/content`, params);
+    async getChapterContent(n) {
+        return this.get(`/skills/chapter/${n}/content`, { project_id: this._currentProjectId() });
     },
 
     /**
@@ -258,15 +290,12 @@ const API = {
     },
 
     /**
-     * 生成第 n 章 Word 并返回预览 HTML（写入官方模板对应章节）
+     * 生成第 n 章 Word 并返回预览 HTML（写入官方模板对应章节；模板自动回退材料包内置）
      * @param {number} n
-     * @param {string} templatePath - 官方模板文件路径（来自系统设置）
      * @returns {Promise<object>} {status, has_content, html, used_template}
      */
-    async getChapterPreview(n, templatePath = '') {
-        const params = { project_id: this._currentProjectId() };
-        if (templatePath) params.template_path = templatePath;
-        return this.get(`/skills/chapter/${n}/preview`, params);
+    async getChapterPreview(n) {
+        return this.get(`/skills/chapter/${n}/preview`, { project_id: this._currentProjectId() });
     },
 
     /**

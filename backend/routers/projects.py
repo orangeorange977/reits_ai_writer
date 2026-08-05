@@ -1,21 +1,85 @@
 """项目管理路由
 
 提供项目的CRUD操作（新管线：项目↔模板包绑定，章节生成走 skills 路由）。
+步骤 3.4：新增申报材料上传/列表/清空接口（上传模式替代本机路径）。
 """
 
+import asyncio
 import logging
+import os
+import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
+from backend.config import PROJECTS_DIR
 from backend.database.db import get_db, is_preset_project
 from backend.services import pack_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["项目管理"])
+
+# ===== 材料上传（步骤 3.4） =====
+
+# 接受的材料文件类型（zip 会被解压，里面的文件不限后缀）
+_MATERIAL_UPLOAD_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+                        ".txt", ".md", ".csv", ".png", ".jpg", ".jpeg", ".zip"}
+_MAX_UNCOMPRESSED_SIZE = 2 * 1024 * 1024 * 1024   # zip 解压后总大小上限 2GB（防 zip 炸弹）
+_MAX_MATERIAL_FILES = 3000                          # 解压后文件数上限
+_CHUNK = 1024 * 1024                                # 大文件分块读写 1MB
+
+
+def _materials_dir(project_id: int) -> Path:
+    """项目材料目录：workspace/projects/<id>/materials/（项目 ID 为 DB 自增整数，无穿越风险）。"""
+    return PROJECTS_DIR / str(project_id) / "materials"
+
+
+def _zip_member_name(info: zipfile.ZipInfo) -> str:
+    """修正 zip 内中文文件名乱码：无 UTF-8 标志位时，zipfile 默认按 cp437 解码，
+    而 Windows 打包的 zip 实际是 GBK——转回 bytes 再按 GBK 解。"""
+    if info.flag_bits & 0x800:
+        return info.filename
+    try:
+        return info.filename.encode("cp437").decode("gbk")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return info.filename
+
+
+def _safe_extract_zip(file_obj, dest: Path) -> int:
+    """安全解压 zip 到 dest：逐成员校验路径穿越/解压炸弹，分块写出。返回解压出的文件数。"""
+    dest = dest.resolve()
+    count = 0
+    total_size = 0
+    with zipfile.ZipFile(file_obj) as zf:
+        # 先全量校验，全部通过再落盘，避免解到一半发现恶意成员
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            name = _zip_member_name(info)
+            target = (dest / name).resolve()
+            if not target.is_relative_to(dest):
+                raise HTTPException(status_code=400, detail=f"zip 含非法路径（拒绝解压）：{name}")
+            total_size += info.file_size
+            count += 1
+            if total_size > _MAX_UNCOMPRESSED_SIZE:
+                raise HTTPException(status_code=400, detail="zip 解压后超过 2GB 上限，拒绝解压")
+            if count > _MAX_MATERIAL_FILES:
+                raise HTTPException(status_code=400, detail=f"zip 内文件数超过 {_MAX_MATERIAL_FILES} 上限")
+        # 校验通过，逐个分块写出
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            name = _zip_member_name(info)
+            target = (dest / name).resolve()
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info) as src, open(target, "wb") as out:
+                shutil.copyfileobj(src, out, _CHUNK)
+    return count
 
 
 # ===== 请求/响应模型 =====
@@ -176,6 +240,9 @@ async def delete_project(project_id: int):
         await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         await db.commit()
 
+        # 同步清理项目数据目录（章节 JSON、上传材料等，步骤 3.4）
+        shutil.rmtree(PROJECTS_DIR / str(project_id), ignore_errors=True)
+
         logger.info(f"项目已删除: ID={project_id}")
         return {"message": f"项目已删除", "id": project_id}
     except HTTPException:
@@ -185,4 +252,93 @@ async def delete_project(project_id: int):
         raise HTTPException(status_code=500, detail=f"删除项目失败: {e}")
     finally:
         await db.close()
+
+
+# ===== 申报材料上传（步骤 3.4：上传模式替代本机路径） =====
+
+async def _assert_project_exists(project_id: int):
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT id FROM projects WHERE id = ?", (project_id,))
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=404, detail=f"项目不存在: ID={project_id}")
+    finally:
+        await db.close()
+
+
+@router.post("/projects/{project_id}/materials")
+async def upload_materials(project_id: int, files: List[UploadFile] = File(...)):
+    """上传申报材料（多文件，支持 zip 自动解压）。
+
+    落盘到 workspace/projects/<id>/materials/；zip 里的多级文件夹结构原样保留，
+    生成时由 materials_client 递归扫描。同名文件直接覆盖（重传即替换）。
+    """
+    await _assert_project_exists(project_id)
+    if not files:
+        raise HTTPException(status_code=400, detail="未选择任何文件")
+
+    dest = _materials_dir(project_id)
+    dest.mkdir(parents=True, exist_ok=True)
+
+    added, extracted, skipped = [], 0, []
+    for f in files:
+        ext = Path(f.filename or "").suffix.lower()
+        if ext not in _MATERIAL_UPLOAD_EXT:
+            skipped.append(f.filename or "(无名文件)")
+            continue
+        if ext == ".zip":
+            # UploadFile 的 spooled 对象不是完整文件对象（Python 3.9 缺 seekable），
+            # 先落盘成临时文件再解压，也避免大 zip 占用内存
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip")
+            try:
+                with os.fdopen(tmp_fd, "wb") as tmp_out:
+                    shutil.copyfileobj(f.file, tmp_out, _CHUNK)
+                with open(tmp_path, "rb") as zip_in:
+                    extracted += await asyncio.to_thread(_safe_extract_zip, zip_in, dest)
+            except zipfile.BadZipFile:
+                raise HTTPException(status_code=400, detail=f"文件不是有效的 zip：{f.filename}")
+            finally:
+                Path(tmp_path).unlink(missing_ok=True)
+        else:
+            target = dest / Path(f.filename).name
+            with open(target, "wb") as out:
+                shutil.copyfileobj(f.file, out, _CHUNK)
+            added.append(target.name)
+
+    return {
+        "uploaded": added,
+        "extracted_from_zip": extracted,
+        "skipped": skipped,
+        "materials_dir": str(dest),
+    }
+
+
+@router.get("/projects/{project_id}/materials")
+async def list_materials(project_id: int):
+    """列出当前项目已上传的申报材料（递归，含多级子文件夹）。"""
+    await _assert_project_exists(project_id)
+    root = _materials_dir(project_id)
+    files = []
+    if root.is_dir():
+        for p in sorted(root.rglob("*")):
+            if p.is_file():
+                files.append({
+                    "path": p.relative_to(root).as_posix(),
+                    "size": p.stat().st_size,
+                })
+    return {
+        "project_id": project_id,
+        "total_files": len(files),
+        "total_size": sum(f["size"] for f in files),
+        "files": files,
+    }
+
+
+@router.delete("/projects/{project_id}/materials")
+async def clear_materials(project_id: int):
+    """清空当前项目的全部申报材料。"""
+    await _assert_project_exists(project_id)
+    shutil.rmtree(_materials_dir(project_id), ignore_errors=True)
+    return {"message": "材料已清空", "project_id": project_id}
+
 

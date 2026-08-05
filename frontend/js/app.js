@@ -44,6 +44,11 @@ function navigate(pageId) {
         targetPage.classList.add('active');
     }
 
+    // 进设置页时刷新当前项目的材料列表（步骤 3.4）
+    if (pageId === 'settings') {
+        loadMaterialsUI();
+    }
+
     // 更新侧边栏激活状态
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
@@ -119,6 +124,75 @@ async function saveModelSetting(model) {
         showToast('已切换模型：' + model);
     } catch (e) {
         showToast('切换模型失败：' + e.message, 'error');
+    }
+}
+
+// ===== 申报材料管理（步骤 3.4：上传模式，按当前项目隔离）=====
+
+/** 文件大小友好显示 */
+function _fmtSize(bytes) {
+    if (bytes >= 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+    if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
+    return bytes + ' B';
+}
+
+/** 拉取当前项目的材料列表并渲染（设置页展示） */
+async function loadMaterialsUI() {
+    const stat = document.getElementById('materialsStat');
+    const list = document.getElementById('materialsFileList');
+    if (!stat || !list) return;
+    try {
+        const data = await API.listMaterials();
+        stat.textContent = data.total_files > 0
+            ? `已上传 ${data.total_files} 个文件，共 ${_fmtSize(data.total_size)}`
+            : '尚未上传材料';
+        if (data.total_files === 0) {
+            list.innerHTML = '<div class="text-muted text-sm">暂无材料</div>';
+            return;
+        }
+        list.innerHTML = data.files.map(f =>
+            `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 4px;font-size:13px">
+                <span style="word-break:break-all">📄 ${f.path}</span>
+                <span class="text-muted" style="flex-shrink:0">${_fmtSize(f.size)}</span>
+            </div>`).join('');
+    } catch (e) {
+        stat.textContent = '材料列表加载失败';
+    }
+}
+
+/** 选择文件后上传（支持多选，zip 后端自动解压） */
+async function onUploadMaterials(input) {
+    const files = input.files;
+    if (!files || files.length === 0) return;
+    const stat = document.getElementById('materialsStat');
+    const oldText = stat ? stat.textContent : '';
+    try {
+        if (stat) stat.textContent = `正在上传 ${files.length} 个文件…（大文件/解压需要一点时间）`;
+        const result = await API.uploadMaterials(files);
+        const parts = [];
+        if (result.uploaded && result.uploaded.length) parts.push(`直传 ${result.uploaded.length} 个`);
+        if (result.extracted_from_zip) parts.push(`zip 解压出 ${result.extracted_from_zip} 个`);
+        if (result.skipped && result.skipped.length) parts.push(`跳过不支持的格式 ${result.skipped.length} 个`);
+        showToast('上传完成：' + (parts.join('，') || '无新增文件'));
+        await loadMaterialsUI();
+    } catch (e) {
+        showToast('上传失败：' + e.message, 'error');
+        if (stat) stat.textContent = oldText;
+    } finally {
+        input.value = '';  // 允许重复选择同一个文件
+    }
+}
+
+/** 清空当前项目的全部材料（二次确认） */
+async function clearMaterialsUI() {
+    if (!confirm('确定清空当前项目的全部申报材料吗？此操作不可恢复。')) return;
+    try {
+        await API.clearMaterials();
+        showToast('材料已清空');
+        await loadMaterialsUI();
+    } catch (e) {
+        showToast('清空失败：' + e.message, 'error');
     }
 }
 
@@ -716,11 +790,10 @@ async function renderChapterEditor(n) {
     const container = document.getElementById('chapterDetail');
     if (!container) return;
 
-    // 小标题骨架来自系统设置里的官方模板；即使还没生成也能看到本章小标题
-    const templatePath = localStorage.getItem('reitai_settingTemplatePath') || '';
+    // 小标题骨架由后端自动回退到材料包内置官方模板；即使还没生成也能看到本章小标题
     let content = { source: 'none', sections: [] };
     try {
-        content = await API.getChapterContent(n, templatePath);
+        content = await API.getChapterContent(n);
     } catch (e) { /* 后端未就绪，按空处理 */ }
 
     const hasSections = content.sections && content.sections.length > 0;
@@ -815,11 +888,10 @@ async function refreshChapterPreview(force = false) {
         body.innerHTML = _previewCache[n];
         return;
     }
-    body.innerHTML = '<div class="text-muted text-sm" style="padding:8px 0;">正在写入模板并生成预览…</div>';
-    // 模板文件路径取自"系统设置"（localStorage）
-    const templatePath = localStorage.getItem('reitai_settingTemplatePath') || '';
+    body.innerHTML = '<div class="text-muted text-sm" style="padding:8px 0;">正 在写入模板并生成预览…</div>';
+    // 模板文件由后端自动回退到材料包内置 template.docx（步骤 3.4）
     try {
-        const resp = await API.getChapterPreview(n, templatePath);
+        const resp = await API.getChapterPreview(n);
         if (resp.has_content) {
             body.innerHTML = resp.html;
             _previewCache[n] = resp.html;  // 缓存，供下次开关预览直接用
@@ -838,10 +910,9 @@ async function refreshChapterPreview(force = false) {
  * 点击"用Kimi生成"：启动当前章生成（异步），轮询，完成后重渲染编辑视图
  */
 async function runKimiChapter() {
-    const templatePath = localStorage.getItem('reitai_settingTemplatePath') || '';
-    const materialsPath = localStorage.getItem('reitai_settingNdrcMaterialPath') || '';
+    // 材料目录由后端自动解析到当前项目的上传目录（步骤 3.4：无需再传本机路径）
     try {
-        await API.runChapter(_editorChapter, templatePath, materialsPath);
+        await API.runChapter(_editorChapter);
     } catch (error) {
         if (!String(error.message).includes('正在生成')) {
             showToast('启动失败: ' + error.message, 'error');

@@ -289,6 +289,24 @@
                             </div>
                         </div>
                         <div class="form-group">
+                            <label>申报材料（当前项目）</label>
+                            <div class="text-muted text-sm" style="margin-bottom:8px">
+                                上传申报/证明材料后，各章生成时 Kimi 会自动读取这些文件（支持多选，zip 会自动解压，文件夹结构原样保留）。
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                <button class="btn btn-primary" onclick="document.getElementById('materialsFileInput').click()">⬆️ 上传材料</button>
+                                <button class="btn btn-ghost" id="materialsClearBtn" onclick="clearMaterialsUI()">清空</button>
+                                <span class="text-muted text-sm" id="materialsStat">加载中…</span>
+                                <input type="file" id="materialsFileInput" multiple style="display:none"
+                                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.png,.jpg,.jpeg,.zip"
+                                    onchange="onUploadMaterials(this)">
+                            </div>
+                            <div id="materialsFileList" style="margin-top:10px;max-height:220px;overflow-y:auto;
+                                border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg-card)">
+                                <div class="text-muted text-sm">暂无材料</div>
+                            </div>
+                        </div>
+                        <div class="form-group">
                             <label>后端API地址</label>
                             <input type="text" class="form-input" style="width:100%;padding:8px 12px"
                                 value="/api" readonly>

@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from backend.config import NDRC_OFFICIAL_TEMPLATE, DEFAULT_PROJECT_ID
+from backend.config import NDRC_OFFICIAL_TEMPLATE, DEFAULT_PROJECT_ID, PROJECTS_DIR
 from backend.database.db import get_project_pack_id
 from backend.services import skill_runner, summary_service, materials_client, pack_service
 from backend.services.kimi_client import chat
@@ -326,8 +326,12 @@ async def _run_chapter_job_with_subs(key, n: int, subtitles: list,
 async def chapter_run(n: int, template_path: str = "", materials_path: str = "",
                       project_id: str = ""):
     """启动第 n 章生成（后台异步），立即返回。template_path 有效时强制用模板小标题；
-    materials_path 有效时把"读取申报材料"的工具挂给 Kimi；project_id 决定数据落在哪个项目目录，
-    并按项目绑定的模板包执行。"""
+    材料目录有效时把"读取申报材料"的工具挂给 Kimi；project_id 决定数据落在哪个项目目录，
+    并按项目绑定的模板包执行。
+
+    步骤 3.4：materials_path 不再需要前端传——留空时自动解析到项目上传的材料目录
+    workspace/projects/<id>/materials/（参数保留仅供向后兼容）。
+    """
     pack_id = await _project_pack_id(project_id)
     _valid_chapter(n, pack_id)
     pid = _norm_pid(project_id)
@@ -338,9 +342,15 @@ async def chapter_run(n: int, template_path: str = "", materials_path: str = "",
     tpl = _resolve_template_path(template_path, pack_id)
     if tpl:
         subs = await asyncio.to_thread(skill_runner.chapter_subtitles, n, tpl, pack_id)
+    # 材料目录：优先用显式传入的，否则落回项目上传的材料目录（非空才挂工具）
+    mat = materials_path.strip()
+    if not mat:
+        candidate = PROJECTS_DIR / pid / "materials"
+        if candidate.is_dir() and any(candidate.iterdir()):
+            mat = str(candidate)
     _jobs[key] = {"status": "running", "data": None, "error": None}
     _tasks[key] = asyncio.create_task(
-        _run_chapter_job_with_subs(key, n, subs, materials_path.strip(), pid, pack_id))
+        _run_chapter_job_with_subs(key, n, subs, mat, pid, pack_id))
     return {"status": "started", "message": f"第{n}章生成已启动，请稍候（Kimi 处理约需数分钟）"}
 
 
