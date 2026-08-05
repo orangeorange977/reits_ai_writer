@@ -57,6 +57,18 @@ def safe_project_id(project_id) -> str:
         return DEFAULT_PROJECT_ID
     return safe
 
+
+def _env_int(name: str, default: int) -> int:
+    """读整数环境变量；非法值回退默认并告警（避免配错直接崩进程，步骤 3.6 复查补强）。"""
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"[config] 警告：环境变量 {name}={raw!r} 不是合法整数，回退默认值 {default}")
+        return default
+
 # 输出目录
 OUTPUT_DIR = APP_DIR / "output"
 
@@ -66,14 +78,14 @@ DATABASE_PATH = APP_DIR / "backend" / "database" / "reits.db"
 # 服务配置（步骤 3.6：环境化）
 # 本地体验默认 127.0.0.1:8000；服务器部署时设 APP_HOST=0.0.0.0（由 Nginx 反代对外）
 APP_HOST = os.environ.get("APP_HOST", "127.0.0.1").strip() or "127.0.0.1"
-APP_PORT = int(os.environ.get("APP_PORT", "8000") or 8000)
+APP_PORT = _env_int("APP_PORT", 8000)
 
 # CORS 白名单（步骤 3.6）：逗号分隔的允许来源，如 "https://reit.example.com"。
 # 留空=不挂 CORS 中间件（前后端同源部署时浏览器不发跨域请求，最安全）。
 CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 
 # AI 接口限流（步骤 3.6）：每用户每分钟最多调用次数（防 Kimi key 被刷），0=不限
-AI_RATE_LIMIT_PER_MINUTE = int(os.environ.get("AI_RATE_LIMIT_PER_MINUTE", "10") or 0)
+AI_RATE_LIMIT_PER_MINUTE = _env_int("AI_RATE_LIMIT_PER_MINUTE", 10)
 
 # 模板目录
 TEMPLATES_DIR = APP_DIR / "backend" / "templates"
@@ -96,4 +108,4 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "").strip()
 # 初始管理员密码：首次启动创建 admin 账号用；未设置时自动生成随机强密码并打印到控制台。
 ADMIN_INIT_PASSWORD = os.environ.get("ADMIN_INIT_PASSWORD", "").strip()
 # token 有效期（小时）
-TOKEN_TTL_HOURS = int(os.environ.get("TOKEN_TTL_HOURS", "12") or 12)
+TOKEN_TTL_HOURS = _env_int("TOKEN_TTL_HOURS", 12)
