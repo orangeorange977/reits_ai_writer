@@ -330,7 +330,7 @@ async function renderCommitmentSelector(containerId) {
     if (currentProjectId) {
         try {
             const data = await EnhancementsAPI.getCommitments(currentProjectId);
-            templates = data.templates || [];
+            templates = (data.templates || []).map(normalizeCommitmentTemplate);
         } catch (e) {
             templates = getDefaultCommitments();
         }
@@ -345,6 +345,22 @@ async function renderCommitmentSelector(containerId) {
                 ${templates.map(t => renderCommitmentCard(t)).join('')}
             </div>
         </div>`;
+}
+
+/** 后端官方模板字段兼容（总复查修复）：官方模板无 category/preview，
+ *  variables 是 Python 风格列表字符串，直接渲染会出 undefined。 */
+function normalizeCommitmentTemplate(t) {
+    const chapterNames = { chapter1: '第一章', chapter2: '第二章', chapter3: '第三章', chapter4: '第四章', chapter5: '第五章', chapter6: '第六章', chapter7: '第七章' };
+    let vars = t.variables;
+    if (typeof vars === 'string') {
+        try { vars = JSON.parse(vars.replace(/'/g, '"')); } catch (e) { vars = []; }
+    }
+    if (!Array.isArray(vars)) vars = [];
+    return Object.assign({}, t, {
+        category: t.category || chapterNames[t.applicable_chapter] || '通用',
+        preview: t.preview || t.description || (t.template_text || '').slice(0, 100),
+        variables: vars,
+    });
 }
 
 function getDefaultCommitments() {

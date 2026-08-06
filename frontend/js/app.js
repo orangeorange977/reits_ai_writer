@@ -496,6 +496,22 @@ function renderChapterStepper() {
     }));
 
     renderStepper(container, [summaryStep, ...chapterSteps]);
+
+    // 异步核对各章实际生成状态，更新步骤条徽标（总复查修复：列表与编辑器状态不一致）
+    (PACK_CHAPTERS || []).forEach((ch, i) => {
+        API.getChapterContent(ch.n).then(content => {
+            if (content && content.source === 'ready') {
+                const step = container.querySelectorAll('.step')[i + 1];
+                if (step) {
+                    step.classList.add('done');
+                    const circle = step.querySelector('.step-circle');
+                    if (circle) circle.textContent = '✓';
+                    const desc = step.querySelector('.step-desc');
+                    if (desc) desc.textContent = '已生成';
+                }
+            }
+        }).catch(() => { /* 单章查不到不影响其他章 */ });
+    });
 }
 
 /**
@@ -1854,6 +1870,12 @@ async function continueInit() {
         console.warn('[REIT-AI] 项目数据加载失败:', error.message);
     }
     navigate('overview');
+}
+
+/** 退出登录（总复查补遗）：清除本地 token 后回到登录层。 */
+function logout() {
+    AuthToken.clear();
+    location.reload();
 }
 
 async function initApp() {
