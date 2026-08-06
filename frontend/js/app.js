@@ -1720,10 +1720,9 @@ function switchDocTab(tab) {
  */
 async function openNewProjectModal() {
     const nameInput = document.getElementById('newProjectName');
-    const pathInput = document.getElementById('newProjectDataSource');
     const packSel = document.getElementById('newProjectPack');
     if (nameInput) nameInput.value = '';
-    if (pathInput) pathInput.value = '';
+    clearLocalFolder();  // 重置上次选的本地文件夹
     if (packSel) {
         packSel.innerHTML = '<option value="">加载中…</option>';
         try {
@@ -1743,19 +1742,62 @@ async function openNewProjectModal() {
     openModal('modal-new-project');
 }
 
+// ===== 本地文件夹选择：直接选用户自己电脑上的文件夹（含桌面），
+// 创建项目成功后自动把里面的文件上传为申报材料 =====
+
+let _pickedFolderFiles = [];  // 选中的本地文件列表（File[]）
+
+/** 打开浏览器原生文件夹选择器 */
+function openLocalFolderPicker() {
+    const input = document.getElementById('localFolderInput');
+    if (input) { input.value = ''; input.click(); }
+}
+
+/** 选完本地文件夹：暂存文件列表，摘要框显示文件夹名与文件数 */
+function onLocalFolderPicked(fileList) {
+    const files = Array.from(fileList || []);
+    const summary = document.getElementById('localFolderSummary');
+    if (!files.length) { _pickedFolderFiles = []; if (summary) summary.value = ''; return; }
+    const rel = files[0].webkitRelativePath || '';
+    const folderName = rel ? rel.split('/')[0] : '已选文件夹';
+    _pickedFolderFiles = files;
+    if (summary) summary.value = `📁 ${folderName} · 共 ${files.length} 个文件（创建后自动上传）`;
+}
+
+/** 清空本地文件夹选择 */
+function clearLocalFolder() {
+    _pickedFolderFiles = [];
+    const input = document.getElementById('localFolderInput');
+    const summary = document.getElementById('localFolderSummary');
+    if (input) input.value = '';
+    if (summary) summary.value = '';
+}
+
 /**
- * 提交新建项目：名称 + 数据源文件夹 + 材料模板（后端校验路径与包）
+ * 提交新建项目：名称 + 可选本地文件夹（创建成功后自动上传其中的文件）
  */
 async function submitNewProject() {
     const name = (document.getElementById('newProjectName').value || '').trim();
-    const path = (document.getElementById('newProjectDataSource').value || '').trim();
     const packId = document.getElementById('newProjectPack').value || '';
     if (!name) { showToast('请填写项目名称', 'warning'); return; }
-    // 数据源文件夹可选：网页版用户通过「系统设置 → 申报材料」上传自己电脑里的文件
     try {
-        await API.createProject(name, path, packId || undefined);
+        const created = await API.createProject(name, '', packId || undefined);
+        if (_pickedFolderFiles.length) {
+            showToast(`项目已创建，正在上传文件夹里的 ${_pickedFolderFiles.length} 个文件…`);
+            try {
+                currentProjectId = created.id;  // uploadMaterials 按当前项目上传
+                const result = await API.uploadMaterials(_pickedFolderFiles);
+                const uploaded = (result.uploaded || []).length;
+                const skipped = (result.skipped || []).length;
+                showToast(`完成：已上传 ${uploaded} 份材料${skipped ? `，${skipped} 个不支持类型的文件已跳过` : ''}`);
+            } catch (ue) {
+                showToast('项目已创建，但材料上传失败：' + (ue.message || '') + '；可到「系统设置 → 申报材料」重传', 'error');
+            }
+            clearLocalFolder();
+        } else {
+            showToast('项目创建成功，可随时到「系统设置 → 申报材料」上传您电脑里的文件');
+        }
         closeModal('modal-new-project');
-        showToast(path ? '项目创建成功' : '项目创建成功，请到「系统设置 → 申报材料」上传您电脑里的文件');
         await loadOverviewData();
     } catch (e) {
         showToast('创建失败：' + (e.message || '未知错误'), 'error');

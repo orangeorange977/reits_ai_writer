@@ -371,15 +371,16 @@
                     <input type="text" class="form-input" id="newProjectName" placeholder="如：XX数据中心基础设施REITs">
                 </div>
                 <div class="form-group">
-                    <label>数据源文件夹（可选）</label>
+                    <label>申报材料文件夹（可选）</label>
+                    <input type="file" id="localFolderInput" webkitdirectory multiple style="display:none" onchange="onLocalFolderPicked(this.files)">
                     <div class="path-input-group">
-                        <input type="text" class="form-input" id="newProjectDataSource" readonly
+                        <input type="text" class="form-input" id="localFolderSummary" readonly
                             style="cursor:pointer;background:var(--bg-hover)"
-                            onclick="openSourcePicker('newProjectDataSource')"
-                            placeholder="可不填；网页版用户请在建好项目后通过「系统设置 → 申报材料」上传文件">
-                        <button class="btn btn-ghost" onclick="openSourcePicker('newProjectDataSource')">选择文件夹</button>
+                            onclick="openLocalFolderPicker()"
+                            placeholder="选择您电脑上的文件夹（如桌面文件夹），创建项目后自动上传">
+                        <button class="btn btn-ghost" onclick="openLocalFolderPicker()">选择文件夹</button>
                     </div>
-                    <div class="text-sm text-muted" style="margin-top:4px">此项仅供选择服务器数据目录内的文件夹（高级选项）；您电脑上的文件请在建好项目后通过「系统设置 → 申报材料」上传。</div>
+                    <div class="text-sm text-muted" style="margin-top:4px">支持选择您电脑任意位置的文件夹（含桌面）；文件夹内的 PDF/Word/Excel/PPT/图片/zip 等文件会在创建项目后自动上传为申报材料。可先不选，建好项目后到「系统设置 → 申报材料」再传。</div>
                 </div>
                 <div class="form-group">
                     <label>材料模板</label>
