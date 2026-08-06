@@ -508,17 +508,26 @@ function renderChapterStepper() {
     (PACK_CHAPTERS || []).forEach((ch, i) => {
         API.getChapterContent(ch.n).then(content => {
             if (content && content.source === 'ready') {
-                const step = container.querySelectorAll('.step')[i + 1];
-                if (step) {
-                    step.classList.add('done');
-                    const circle = step.querySelector('.step-circle');
-                    if (circle) circle.textContent = '✓';
-                    const desc = step.querySelector('.step-desc');
-                    if (desc) desc.textContent = '已生成';
-                }
+                _markStepperDone(ch.n);
             }
         }).catch(() => { /* 单章查不到不影响其他章 */ });
     });
+}
+
+/** 立即把第 n 章在步骤条上标记为“已生成”（✓ + 文案），
+ * 避免生成完成后要切页重进步骤条才更新的“延迟”问题。 */
+function _markStepperDone(n) {
+    const container = document.getElementById('chapterStepper');
+    if (!container) return;
+    const idx = (PACK_CHAPTERS || []).findIndex(ch => ch.n === n);
+    if (idx < 0) return;
+    const step = container.querySelectorAll('.step')[idx + 1];  // +1：首项是摘要表
+    if (!step) return;
+    step.classList.add('done');
+    const circle = step.querySelector('.step-circle');
+    if (circle) circle.textContent = '✓';
+    const desc = step.querySelector('.step-desc');
+    if (desc) desc.textContent = '已生成';
 }
 
 /**
@@ -818,6 +827,8 @@ async function renderChapterEditor(n) {
     try {
         content = await API.getChapterContent(n);
     } catch (e) { /* 后端未就绪，按空处理 */ }
+    // 本章已生成→同步刷新步骤条状态（兜底：覆盖跨设备/后台已生成的情况）
+    if (content.source === 'ready') _markStepperDone(n);
 
     const hasSections = content.sections && content.sections.length > 0;
     const srcBadge = content.source === 'ready'
@@ -961,6 +972,7 @@ function _pollChapterGeneration() {
             clearInterval(_kimiTimer); _kimiTimer = null;
             delete _previewCache[n];   // 重新生成了，预览缓存作废
             await renderChapterEditor(n);
+            _markStepperDone(n);       // 步骤条立即变“✓ 已生成”，不再等切页
             showToast('生成完成，请核对编辑');
         } else if (st.status === 'error') {
             clearInterval(_kimiTimer); _kimiTimer = null;
