@@ -76,13 +76,16 @@ def chat(messages: list[dict], model: str = None, temperature: float = 1.0) -> s
     """最基础的对话调用：传入messages（OpenAI格式），返回模型回复的文本。"""
     model = model or MOONSHOT_MODEL
     client = get_client(model)
+    extra = {}
     if _is_deepseek(model):
         temperature = min(temperature, 1.0)  # DeepSeek 的 temperature 上限 1.0
+        extra["max_tokens"] = 8192           # 默认 4096 会把长章节 JSON 截断
     resp = _create(
         client,
         model=model,
         messages=messages,
         temperature=temperature,
+        **extra,
     )
     return resp.choices[0].message.content
 
@@ -136,8 +139,10 @@ def chat_with_tools(messages: list[dict], tools: list, tool_executor,
         logger.warning(f"[chat_with_tools] {model} 不支持函数调用，自动降级为 {DEEPSEEK_MODEL}")
         model = DEEPSEEK_MODEL
     client = get_client(model)
+    extra = {}
     if _is_deepseek(model):
         temperature = min(temperature, 1.0)  # DeepSeek 的 temperature 上限 1.0
+        extra["max_tokens"] = 8192           # 默认 4096 会把长章节 JSON 截断
         # DeepSeek 只认 type=function：过滤掉 Moonshot 内置工具（builtin_function 等）
         tools = [t for t in (tools or []) if t.get("type") == "function"]
     msgs = list(messages)
@@ -147,6 +152,7 @@ def chat_with_tools(messages: list[dict], tools: list, tool_executor,
             client,
             model=model, messages=msgs, tools=tools,
             tool_choice="auto", temperature=temperature,
+            **extra,
         )
         msg = resp.choices[0].message
         tool_calls = getattr(msg, "tool_calls", None)
@@ -207,6 +213,7 @@ def chat_with_tools(messages: list[dict], tools: list, tool_executor,
     for _ in range(2):
         resp = _create(
             client, model=model, messages=msgs, temperature=temperature,
+            **extra,
         )
         content = resp.choices[0].message.content or ""
         if content.strip():
