@@ -1774,33 +1774,61 @@ function clearLocalFolder() {
 }
 
 /**
- * 提交新建项目：名称 + 可选本地文件夹（创建成功后自动上传其中的文件）
+ * 提交新建项目：名称 + 可选本地文件夹（创建成功后分批上传其中的文件，
+ * 弹窗内实时显示进度，避免用户以为卡住）
  */
 async function submitNewProject() {
     const name = (document.getElementById('newProjectName').value || '').trim();
     const packId = document.getElementById('newProjectPack').value || '';
     if (!name) { showToast('请填写项目名称', 'warning'); return; }
+
+    const btn = document.getElementById('btnSubmitNewProject');
+    const progress = document.getElementById('newProjectProgress');
+    const pText = document.getElementById('newProjectProgressText');
+    const pBar = document.getElementById('newProjectProgressBar');
+    const setProgress = (text, pct) => {
+        if (pText) pText.textContent = text;
+        if (pBar) pBar.style.width = Math.max(0, Math.min(100, Math.round(pct))) + '%';
+    };
+    if (btn) { btn.disabled = true; btn.textContent = '处理中…'; }
+    if (progress) progress.style.display = 'block';
+
     try {
+        setProgress('正在创建项目…', 5);
         const created = await API.createProject(name, '', packId || undefined);
         if (_pickedFolderFiles.length) {
-            showToast(`项目已创建，正在上传文件夹里的 ${_pickedFolderFiles.length} 个文件…`);
+            // 分批上传（每批 15 个文件），逐批刷新进度条
+            const files = _pickedFolderFiles;
+            const BATCH = 15;
+            let uploaded = 0, skipped = 0;
+            currentProjectId = created.id;  // uploadMaterials 按当前项目上传
             try {
-                currentProjectId = created.id;  // uploadMaterials 按当前项目上传
-                const result = await API.uploadMaterials(_pickedFolderFiles);
-                const uploaded = (result.uploaded || []).length;
-                const skipped = (result.skipped || []).length;
+                for (let i = 0; i < files.length; i += BATCH) {
+                    const batch = files.slice(i, i + BATCH);
+                    const to = Math.min(i + BATCH, files.length);
+                    setProgress(`正在上传申报材料（第 ${to}/${files.length} 个文件）…`, 5 + 90 * i / files.length);
+                    const result = await API.uploadMaterials(batch);
+                    uploaded += (result.uploaded || []).length;
+                    skipped += (result.skipped || []).length;
+                }
+                setProgress('上传完成', 100);
                 showToast(`完成：已上传 ${uploaded} 份材料${skipped ? `，${skipped} 个不支持类型的文件已跳过` : ''}`);
             } catch (ue) {
-                showToast('项目已创建，但材料上传失败：' + (ue.message || '') + '；可到「系统设置 → 申报材料」重传', 'error');
+                showToast('项目已创建，但部分材料上传失败：' + (ue.message || '') + '；可到「系统设置 → 申报材料」重传', 'error');
             }
             clearLocalFolder();
         } else {
+            setProgress('创建完成', 100);
             showToast('项目创建成功，可随时到「系统设置 → 申报材料」上传您电脑里的文件');
         }
         closeModal('modal-new-project');
         await loadOverviewData();
     } catch (e) {
         showToast('创建失败：' + (e.message || '未知错误'), 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '创 建项目'; }
+        if (progress) progress.style.display = 'none';
+        if (pBar) pBar.style.width = '0';
     }
 }
 
