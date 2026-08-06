@@ -403,7 +403,7 @@ async def chapter_run(n: int, http_req: Request, template_path: str = "",
     await _save_job_to_db(key, _jobs[key])
     _tasks[key] = asyncio.create_task(
         _run_chapter_job_with_subs(key, n, subs, mat, pid, pack_id))
-    return {"status": "started", "message": f"第{n}章生成已启动，请稍候（Kimi 处理约需数分钟）"}
+    return {"status": "started", "message": f"第{n}章生成已启动，请稍候（AI 处理约需数分钟）"}
 
 
 @router.get("/chapter/{n}/status")
@@ -416,6 +416,13 @@ async def chapter_status(n: int, http_req: Request, project_id: str = ""):
     if key in _jobs:
         return _jobs[key]
     stored = await get_generation_job(key[0], n)
+    if stored and stored.get("status") == "running":
+        # 服务重启后原任务已不存在：DB 里遗留的 running 是僵尸状态，
+        # 标记为中断并落库，让用户可以重新生成（否则永远卡在“生成中”）
+        stored = {"status": "error", "data": None,
+                  "error": "生成因系统重启被中断，请点“重新生成”继续"}
+        _jobs[key] = stored
+        await _save_job_to_db(key, stored)
     return stored or {"status": "idle", "data": None, "error": None}
 
 
