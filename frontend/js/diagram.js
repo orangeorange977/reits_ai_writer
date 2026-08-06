@@ -33,13 +33,29 @@ const DrawioEditor = (function () {
         _overlay.className = 'drawio-overlay';
         _overlay.innerHTML = `
             <div class="drawio-modal">
+                <div class="drawio-loading" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#f8fafc;z-index:2">
+                    <div style="font-size:15px;color:#475569">正在加载画图工具（首次加载约需数十秒）…</div>
+                    <div style="font-size:12px;color:#94a3b8">若长时间无响应，请点右上角关闭后重试</div>
+                </div>
+                <button class="drawio-exit" title="关闭画图" style="position:absolute;top:10px;right:12px;z-index:3;width:32px;height:32px;border-radius:50%;border:1px solid #e2e8f0;background:#fff;color:#64748b;font-size:16px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.15)" onclick="DrawioEditor.abort()">✕</button>
                 <iframe class="drawio-frame" src="${DRAWIO_URL}"
-                        frameborder="0"></iframe>
+                        frameborder="0" style="position:relative;z-index:1"></iframe>
             </div>`;
         document.body.appendChild(_overlay);
         _iframe = _overlay.querySelector('.drawio-frame');
 
         window.addEventListener('message', _onMessage);
+        window.addEventListener('keydown', _onKeydown);
+    }
+
+    /** ESC 关闭画图（未保存内容丢弃，与点 ✕ 一致） */
+    function _onKeydown(e) {
+        if (e.key === 'Escape' && !_done) _close();
+    }
+
+    /** 用户主动关闭（✕ 按钮 / ESC） */
+    function abort() {
+        _close();
     }
 
     function _post(msg) {
@@ -50,6 +66,7 @@ const DrawioEditor = (function () {
 
     function _close() {
         window.removeEventListener('message', _onMessage);
+        window.removeEventListener('keydown', _onKeydown);
         if (_overlay) _overlay.remove();
         _overlay = _iframe = null;
     }
@@ -61,7 +78,11 @@ const DrawioEditor = (function () {
         if (!msg || !msg.event) return;
 
         if (msg.event === 'init') {
-            // 编辑器就绪：加载初始 XML
+            // 编辑器就绪：隐藏加载指示，加载初始 XML
+            if (_overlay) {
+                const loading = _overlay.querySelector('.drawio-loading');
+                if (loading) loading.remove();
+            }
             _post({ action: 'load', xml: _initXml, autosave: 1 });
         } else if (msg.event === 'save') {
             // 用户点保存：记住 xml，再请求导出 xmlpng（PNG 内嵌 xml）
@@ -80,5 +101,5 @@ const DrawioEditor = (function () {
         }
     }
 
-    return { open };
+    return { open, abort };
 })();

@@ -1745,6 +1745,7 @@ body {
     padding: 2vh 2vw;
 }
 .drawio-modal {
+    position: relative;
     width: 96vw;
     height: 96vh;
     background: #fff;

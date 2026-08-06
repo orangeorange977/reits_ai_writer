@@ -460,12 +460,12 @@ async function loadProjectPack() {
     _applyPackLabels();
 }
 
-/** 按绑定包刷新界面文案（侧边栏/页面标题里的材料类型名称） */
+/** 按绑定包刷新界面文案：侧边栏固定为"申报材料"（避免长包名显示不全），页面标题用包名 */
 function _applyPackLabels() {
-    const label = (PACK_INFO && PACK_INFO.name) ? PACK_INFO.name : '材料生成';
+    const label = (PACK_INFO && PACK_INFO.name) ? PACK_INFO.name : '申报材料';
     const navLabel = document.getElementById('navMaterialLabel');
     if (navLabel) {
-        navLabel.textContent = label;
+        navLabel.textContent = '申报材料';
     }
     if (currentPage === 'ndrc') {
         const titleEl = document.getElementById('pageTitle');
@@ -480,12 +480,12 @@ function renderChapterStepper() {
     const container = document.getElementById('chapterStepper');
     if (!container) return;
 
-    // 第一项固定为"摘要表和释义"（不属于章节，走独立的点击逻辑）
+    // 第一项固定为"摘要表和释义"（不属于章节，走独立的点击逻辑）；
+    // 圆圈不指定 circle，由 renderStepper 统一按序号显示（1，章节依次 2~8）
     const summaryStep = {
         title: '摘要表和释义',
         status: '',
         desc: '项目基础信息',
-        circle: '摘',
         onClick: 'selectSummary()',
     };
 
