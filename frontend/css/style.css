@@ -730,13 +730,6 @@ body {
 .step.current .step-title { color: var(--warning); font-weight: 700; }
 .step.current .step-desc { color: var(--warning); font-weight: 600; }
 
-.project-header-bar {
-    background:
-        linear-gradient(120deg, rgba(76,175,80,.07), transparent 55%),
-        var(--bg-surface);
-    box-shadow: var(--shadow-sm);
-}
-
 .chapter-detail-header {
     background: linear-gradient(180deg, var(--bg-elevated), transparent);
 }
@@ -1113,7 +1106,9 @@ body {
 
 /* ===== 项目头部栏 ===== */
 .project-header-bar {
-    background: var(--bg-surface);
+    background:
+        linear-gradient(120deg, rgba(76,175,80,.07), transparent 55%),
+        var(--bg-surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 20px 24px;
@@ -1123,6 +1118,7 @@ body {
     gap: 20px;
     flex-wrap: wrap;
     margin-bottom: var(--spacing-xl);
+    box-shadow: var(--shadow-sm);
 }
 
 .ph-left {
