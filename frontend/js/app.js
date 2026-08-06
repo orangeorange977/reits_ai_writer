@@ -1750,11 +1750,11 @@ async function submitNewProject() {
     const path = (document.getElementById('newProjectDataSource').value || '').trim();
     const packId = document.getElementById('newProjectPack').value || '';
     if (!name) { showToast('请填写项目名称', 'warning'); return; }
-    if (!path) { showToast('请选择数据源文件夹', 'warning'); return; }
+    // 数据源文件夹可选：网页版用户通过「系统设置 → 申报材料」上传自己电脑里的文件
     try {
         await API.createProject(name, path, packId || undefined);
         closeModal('modal-new-project');
-        showToast('项目创建成功');
+        showToast(path ? '项目创建成功' : '项目创建成功，请到「系统设置 → 申报材料」上传您电脑里的文件');
         await loadOverviewData();
     } catch (e) {
         showToast('创建失败：' + (e.message || '未知错误'), 'error');

@@ -371,14 +371,15 @@
                     <input type="text" class="form-input" id="newProjectName" placeholder="如：XX数据中心基础设施REITs">
                 </div>
                 <div class="form-group">
-                    <label>数据源文件夹</label>
+                    <label>数据源文件夹（可选）</label>
                     <div class="path-input-group">
                         <input type="text" class="form-input" id="newProjectDataSource" readonly
                             style="cursor:pointer;background:var(--bg-hover)"
                             onclick="openSourcePicker('newProjectDataSource')"
-                            placeholder="选择存放申报材料的文件夹">
+                            placeholder="可不填；网页版用户请在建好项目后通过「系统设置 → 申报材料」上传文件">
                         <button class="btn btn-ghost" onclick="openSourcePicker('newProjectDataSource')">选择文件夹</button>
                     </div>
+                    <div class="text-sm text-muted" style="margin-top:4px">此项仅供选择服务器数据目录内的文件夹（高级选项）；您电脑上的文件请在建好项目后通过「系统设置 → 申报材料」上传。</div>
                 </div>
                 <div class="form-group">
                     <label>材料模板</label>

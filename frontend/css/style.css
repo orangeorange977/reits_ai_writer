@@ -831,6 +831,11 @@ body {
     animation: fadeIn var(--transition-normal);
 }
 
+/* 文件夹浏览弹窗从新建项目弹窗内打开，z-index 必须高于普通弹窗，否则会被盖住 */
+#modal-folder-browser {
+    z-index: 1300;
+}
+
 .modal {
     background: var(--bg-surface);
     border: 1px solid var(--border);

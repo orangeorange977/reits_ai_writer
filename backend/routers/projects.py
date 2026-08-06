@@ -103,7 +103,7 @@ def _safe_extract_zip(file_obj, dest: Path) -> int:
 class CreateProjectRequest(BaseModel):
     """创建项目请求"""
     name: str
-    data_source_path: str
+    data_source_path: Optional[str] = ""  # 可选：网页版用户经上传接口传材料，无需指定服务器目录
     pack_id: Optional[str] = None  # 绑定的模板包；不传时绑默认包
 
 
@@ -157,12 +157,14 @@ async def list_projects(http_req: Request):
 async def create_project(request: CreateProjectRequest, http_req: Request):
     """创建新项目（归属当前登录用户，步骤 3.5）"""
     user_id = _current_user_id(http_req)
-    # 验证路径是否存在
-    source_path = Path(request.data_source_path)
-    if not source_path.exists():
-        raise HTTPException(status_code=400, detail=f"数据源路径不存在: {request.data_source_path}")
-    if not source_path.is_dir():
-        raise HTTPException(status_code=400, detail=f"数据源路径不是文件夹: {request.data_source_path}")
+    # 数据源路径可选：填了才校验存在性（网页版用户通过上传接口传材料，无需指定）
+    source_path_str = (request.data_source_path or "").strip()
+    if source_path_str:
+        source_path = Path(source_path_str)
+        if not source_path.exists():
+            raise HTTPException(status_code=400, detail=f"数据源路径不存在: {request.data_source_path}")
+        if not source_path.is_dir():
+            raise HTTPException(status_code=400, detail=f"数据源路径不是文件夹: {request.data_source_path}")
 
     # 校验/解析要绑定的模板包：不传时绑默认包，传了不存在的包则报错
     try:
@@ -178,7 +180,7 @@ async def create_project(request: CreateProjectRequest, http_req: Request):
     try:
         cursor = await db.execute(
             "INSERT INTO projects (name, data_source_path, status, pack_id, user_id) VALUES (?, ?, ?, ?, ?)",
-            (request.name, request.data_source_path, "active", pack_id, user_id)
+            (request.name, source_path_str, "active", pack_id, user_id)
         )
         await db.commit()
         project_id = cursor.lastrowid
