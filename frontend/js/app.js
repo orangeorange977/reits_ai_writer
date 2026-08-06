@@ -511,6 +511,12 @@ function renderChapterStepper() {
                 _markStepperDone(ch.n);
             }
         }).catch(() => { /* 单章查不到不影响其他章 */ });
+        // 刷新页面/重进后恢复“生成中”状态：橙色脉冲 + 全局横幅 + 继续轮询
+        API.getChapterStatus(ch.n).then(st => {
+            if (st && st.status === 'running' && !_kimiTimer) {
+                _pollChapterGeneration(ch.n);
+            }
+        }).catch(() => {});
     });
 }
 
@@ -519,15 +525,70 @@ function renderChapterStepper() {
 function _markStepperDone(n) {
     const container = document.getElementById('chapterStepper');
     if (!container) return;
-    const idx = (PACK_CHAPTERS || []).findIndex(ch => ch.n === n);
-    if (idx < 0) return;
-    const step = container.querySelectorAll('.step')[idx + 1];  // +1：首项是摘要表
+    const step = _stepperStepFor(container, n);
     if (!step) return;
+    step.classList.remove('current');
     step.classList.add('done');
     const circle = step.querySelector('.step-circle');
     if (circle) circle.textContent = '✓';
     const desc = step.querySelector('.step-desc');
     if (desc) desc.textContent = '已生成';
+}
+
+/** 把第 n 章在步骤条上标记为“生成中”（橙色圆圈 + 脉冲动画），一眼可见当前在生成哪章 */
+function _markStepperRunning(n) {
+    const container = document.getElementById('chapterStepper');
+    if (!container) return;
+    const step = _stepperStepFor(container, n);
+    if (!step) return;
+    step.classList.remove('done');
+    step.classList.add('current');
+    const circle = step.querySelector('.step-circle');
+    if (circle) circle.textContent = '⏳';
+    const desc = step.querySelector('.step-desc');
+    if (desc) desc.textContent = '生成中…';
+}
+
+/** 生成失败/中断时把第 n 章步骤条恢复为待生成 */
+function _markStepperIdle(n) {
+    const container = document.getElementById('chapterStepper');
+    if (!container) return;
+    const step = _stepperStepFor(container, n);
+    if (!step) return;
+    step.classList.remove('current', 'done');
+    const idx = (PACK_CHAPTERS || []).findIndex(ch => ch.n === n);
+    const circle = step.querySelector('.step-circle');
+    if (circle && idx >= 0) circle.textContent = idx + 2;  // 首项是摘要表，章节从 2 开始
+    const desc = step.querySelector('.step-desc');
+    if (desc) desc.textContent = '待生成';
+}
+
+function _stepperStepFor(container, n) {
+    const idx = (PACK_CHAPTERS || []).findIndex(ch => ch.n === n);
+    if (idx < 0) return null;
+    return container.querySelectorAll('.step')[idx + 1];  // +1：首项是摘要表
+}
+
+// ===== 全局生成中横幅：固定悬浮在页面顶部，切到任何章节/页面都能看到当前在生成哪章 =====
+function _showGlobalGenBanner(n) {
+    let banner = document.getElementById('globalGenBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'globalGenBanner';
+        document.body.appendChild(banner);
+    }
+    const title = _chapterTitle(n) || `第 ${n} 章`;
+    banner.innerHTML = `
+        <span class="ggb-dot"></span>
+        <span>🤖 AI 正在生成：<b>${_escHtmlAttr(title)}</b>&nbsp;约需数分钟，期间可继续做别的</span>
+        <button class="ggb-go" onclick="selectChapter(${n})">去看看 →</button>`;
+    banner.style.display = 'flex';
+    banner.dataset.chapter = n;
+}
+
+function _hideGlobalGenBanner() {
+    const banner = document.getElementById('globalGenBanner');
+    if (banner) banner.style.display = 'none';
 }
 
 /**
@@ -956,13 +1017,19 @@ async function runKimiChapter() {
     _pollChapterGeneration();
 }
 
-/** 轮询生成进度；完成后重渲染当前章编辑视图 */
-function _pollChapterGeneration() {
-    const n = _editorChapter;
+/** 轮询生成进度；完成后重渲染当前章编辑视图。
+ * n 缺省用当前编辑章；支持在其它章节上为正在生成的章轮询（全局横幅场景）。 */
+function _pollChapterGeneration(n) {
+    n = n || _editorChapter;
     const btn = document.getElementById('btnChapterGen');
     const banner = document.getElementById('chapterGenBanner');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ 生成中...'; }
-    if (banner) { banner.style.display = 'block'; banner.textContent = `🤖 AI 正在生成${_chapterTitle(n) || '本章'}，约需数分钟，请稍候…`; }
+    // 步骤条橙色脉冲 + 全局悬浮横幅：无论用户在哪个章节/页面，都能一眼看到正在生成哪章
+    _markStepperRunning(n);
+    _showGlobalGenBanner(n);
+    if (_editorChapter === n) {
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ 生成中...'; }
+        if (banner) { banner.style.display = 'block'; banner.textContent = `🤖 AI 正在生成${_chapterTitle(n) || '本章'}，约需数分钟，请稍候…`; }
+    }
 
     if (_kimiTimer) clearInterval(_kimiTimer);
     _kimiTimer = setInterval(async () => {
@@ -971,14 +1038,23 @@ function _pollChapterGeneration() {
         if (st.status === 'done') {
             clearInterval(_kimiTimer); _kimiTimer = null;
             delete _previewCache[n];   // 重新生成了，预览缓存作废
-            await renderChapterEditor(n);
+            _hideGlobalGenBanner();
             _markStepperDone(n);       // 步骤条立即变“✓ 已生成”，不再等切页
-            showToast('生成完成，请核对编辑');
+            if (_editorChapter === n) {
+                await renderChapterEditor(n);   // 只有正看着这章才重渲染，不打断用户看别的章
+            }
+            showToast(`生成完成：${_chapterTitle(n) || '本章'}，请核对编辑`);
         } else if (st.status === 'error') {
             clearInterval(_kimiTimer); _kimiTimer = null;
-            if (btn) { btn.disabled = false; btn.textContent = '🤖 AI 生成'; }
-            if (banner) { banner.className = 'kimi-status error'; banner.textContent = '生成失败：' + (st.error || '未知错误'); }
-            showToast('生成失败', 'error');
+            _hideGlobalGenBanner();
+            _markStepperIdle(n);
+            if (_editorChapter === n) {
+                const btn2 = document.getElementById('btnChapterGen');
+                const banner2 = document.getElementById('chapterGenBanner');
+                if (btn2) { btn2.disabled = false; btn2.textContent = '🤖 AI 生成'; }
+                if (banner2) { banner2.className = 'kimi-status error'; banner2.textContent = '生成失败：' + (st.error || '未知错误'); }
+            }
+            showToast(`生成失败：${_chapterTitle(n) || '本章'}`, 'error');
         }
     }, 3000);
 }

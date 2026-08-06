@@ -715,6 +715,76 @@ body {
 
 .step:last-child .step-connector { display: none; }
 .step.done .step-connector { background: var(--success); }
+.step.current .step-connector { background: linear-gradient(90deg, var(--warning), var(--border)); }
+
+/* ===== 步骤条/章节页美化 ===== */
+.stepper-card {
+    box-shadow: var(--shadow-sm);
+    background:
+        linear-gradient(90deg, rgba(76,175,80,.06), transparent 40%),
+        var(--bg-surface);
+}
+.step { transition: transform var(--transition-fast); }
+.step:hover .step-circle { transform: scale(1.12); }
+.step.current .step-circle { transform: scale(1.1); }
+.step.current .step-title { color: var(--warning); font-weight: 700; }
+.step.current .step-desc { color: var(--warning); font-weight: 600; }
+
+.project-header-bar {
+    background:
+        linear-gradient(120deg, rgba(76,175,80,.07), transparent 55%),
+        var(--bg-surface);
+    box-shadow: var(--shadow-sm);
+}
+
+.chapter-detail-header {
+    background: linear-gradient(180deg, var(--bg-elevated), transparent);
+}
+
+/* ===== 全局“生成中”悬浮横幅：切到任何章节/页面都能看到正在生成哪章 ===== */
+#globalGenBanner {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 950;   /* 高于页面内容，低于弹窗(1000)/画图(9999) */
+    display: none;
+    align-items: center;
+    gap: 10px;
+    max-width: min(680px, 92vw);
+    padding: 10px 16px;
+    border-radius: 999px;
+    background: linear-gradient(120deg, #FB8C00, #FFA726);
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.4;
+    box-shadow: 0 6px 22px rgba(251, 140, 0, 0.35);
+}
+#globalGenBanner b { font-weight: 700; }
+#globalGenBanner .ggb-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #fff;
+    flex-shrink: 0;
+    animation: ggbBlink 1.2s infinite;
+}
+@keyframes ggbBlink {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.8); }
+}
+#globalGenBanner .ggb-go {
+    flex-shrink: 0;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+    font-size: 12px;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+#globalGenBanner .ggb-go:hover { background: rgba(255, 255, 255, 0.4); }
 
 /* ===== 进度条 (Progress Bar) ===== */
 .progress-bar {
