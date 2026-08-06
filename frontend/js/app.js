@@ -1988,6 +1988,9 @@ async function initApp() {
         const me = await API.getMe();
         console.log('[REIT-AI] 已登录用户:', me.username);
         hideLoginOverlay();
+        // 概览页欢迎横幅：按用户名个性化问候
+        const heroGreeting = document.getElementById('heroGreeting');
+        if (heroGreeting && me.username) heroGreeting.textContent = `${me.username}，欢迎回来 👋`;
         if (me.must_change_password) {
             document.getElementById('modal-change-password').classList.add('show');
             return;

@@ -87,6 +87,20 @@
 
             <!-- ==================== 页面1：系统概览 ==================== -->
             <div class="page active" id="page-overview">
+                <!-- 欢迎横幅 -->
+                <div class="overview-hero">
+                    <div class="hero-deco hero-deco-1"></div>
+                    <div class="hero-deco hero-deco-2"></div>
+                    <div class="hero-content">
+                        <h2 id="heroGreeting">您好，欢迎回来 👋</h2>
+                        <p>REITs 发改委申报材料智能生成平台：上传材料 → 填写摘要表 → AI 逐章生成 → 在线编辑 → 下载 Word。</p>
+                        <div class="hero-actions">
+                            <button class="btn hero-btn-primary" onclick="openNewProjectModal()">➕ 新建项目</button>
+                            <button class="btn hero-btn-ghost" onclick="navigate('ndrc')">继续工作 →</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 统计卡片行（数值由 JS 按真实项目数据渲染） -->
                 <div class="stat-row" id="overviewStats">
                     <div class="stat-card">
@@ -107,48 +121,32 @@
                     </div>
                 </div>
 
-                <!-- 左右分栏 -->
-                <div class="two-col left-wide">
-                    <!-- 左：项目列表 -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h3>📋 项目列表</h3>
-                            <div class="flex gap-8">
-                                <button class="btn btn-primary btn-sm" onclick="openNewProjectModal()">➕ 新建项目</button>
-                            </div>
-                        </div>
-                        <div class="card-body" style="padding:0">
-                            <table class="data-table" id="projectTable">
-                                <thead>
-                                    <tr>
-                                        <th>项目名称</th>
-                                        <th>资产类型</th>
-                                        <th>当前阶段</th>
-                                        <th>状态</th>
-                                        <th>更新时间</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td colspan="6" class="text-muted" style="text-align:center;padding:24px">加载中…</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                <!-- 项目列表（全宽） -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>📋 项目列表</h3>
+                        <div class="flex gap-8">
+                            <button class="btn btn-primary btn-sm" onclick="openNewProjectModal()">➕ 新建项目</button>
                         </div>
                     </div>
-
-                    <!-- 右侧 -->
-                    <div class="flex flex-col gap-16">
-                        <!-- 最近任务时间线 -->
-                        <div class="card">
-                            <div class="card-header"><h3>📌 最近任务</h3></div>
-                            <div class="card-body">
-                                <div class="timeline" id="recentTimeline">
-                                    <div class="text-muted text-sm" style="padding:12px 0">暂无最近任务</div>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="card-body" style="padding:0">
+                        <table class="data-table" id="projectTable">
+                            <thead>
+                                <tr>
+                                    <th>项目名称</th>
+                                    <th>资产类型</th>
+                                    <th>当前阶段</th>
+                                    <th>状态</th>
+                                    <th>更新时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-muted" style="text-align:center;padding:24px">加载中…</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
