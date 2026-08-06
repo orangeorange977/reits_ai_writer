@@ -17,7 +17,14 @@ MOONSHOT_BASE_URL = os.environ.get("MOONSHOT_BASE_URL", "https://api.moonshot.cn
 MOONSHOT_MODEL = os.environ.get("MOONSHOT_MODEL", "kimi-k3")
 # 视觉识别（识别扫描件/图片文字）用的模型。默认空=直接用主模型（kimi-k3 本身支持读图）；
 # 如需指定专门的视觉模型，用环境变量 MOONSHOT_VISION_MODEL 覆盖。
+# 注意：DeepSeek 不支持读图，视觉识别始终走 Moonshot。
 MOONSHOT_VISION_MODEL = os.environ.get("MOONSHOT_VISION_MODEL", "")
+
+# ===== DeepSeek 大模型接入配置 =====
+# 同样兼容 OpenAI 接口；模型名以 deepseek 开头，客户端据此自动路由到 DeepSeek。
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 
 # ===== 天眼查 MCP（企业数据）接入 =====
 # 密钥从 .env 读；服务地址为天眼查官方 MCP 端点（Streamable HTTP / JSON-RPC 2.0）

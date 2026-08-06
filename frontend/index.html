@@ -278,20 +278,20 @@
                     <div class="card-header"><h3>⚙️ 系统设置</h3></div>
                     <div class="card-body">
                         <div class="form-group">
-                            <label>Kimi 模型</label>
+                            <label>AI 模型</label>
                             <select class="form-input" id="settingModel"
                                 style="width:100%;padding:8px 12px"
                                 onchange="saveModelSetting(this.value)">
                                 <option value="">加载中…</option>
                             </select>
                             <div class="text-muted text-sm" id="settingModelHint" style="margin-top:4px">
-                                各章生成调用的 Kimi 模型；选择后即时生效，无需重启。写申报材料建议用最新旗舰通用模型（kimi-k3）。
+                                各章生成调用的 AI 模型（DeepSeek/Kimi 可选）；选择后即时生效，无需重启。默认使用 deepseek-chat；识别扫描件等读图任务始终由 Kimi 完成。
                             </div>
                         </div>
                         <div class="form-group">
                             <label>申报材料（当前项目）</label>
                             <div class="text-muted text-sm" style="margin-bottom:8px">
-                                上传申报/证明材料后，各章生成时 Kimi 会自动读取这些文件（支持多选，zip 会自动解压，文件夹结构原样保留）。
+                                上传申报/证明材料后，各章生成时 AI 会自动读取这些文件（支持多选，zip 会自动解压，文件夹结构原样保留）。
                             </div>
                             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                                 <button class="btn btn-primary" onclick="document.getElementById('materialsFileInput').click()">⬆️ 上传材料</button>

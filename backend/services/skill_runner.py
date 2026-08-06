@@ -12,7 +12,7 @@ from pathlib import Path
 from html.parser import HTMLParser
 
 from backend.config import (DATA_SOURCE_BASE, PROJECTS_DIR, safe_project_id,
-                            MOONSHOT_MODEL)
+                            DEEPSEEK_MODEL)
 from backend.services.kimi_client import chat, chat_with_tools
 from backend.services import summary_service, tianyancha_client, materials_client
 from backend.services import pack_service
@@ -48,13 +48,13 @@ def chapter_docx_path(n: int, project_id: str = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
-# 网页上选择的 Kimi 模型（全局设置，持久化在 workspace 根；各章生成都用它，
-# 缺省用 .env 里的 MOONSHOT_MODEL）
+# 网页上选择的大模型（DeepSeek/Kimi，全局设置，持久化在 workspace 根；各章生成都用它，
+# 缺省用 DeepSeek 主力模型 deepseek-chat）
 _MODEL_SETTING_PATH = DATA_SOURCE_BASE / "model_setting.json"
 
 
 def get_selected_model() -> str:
-    """当前所选模型：优先读网页保存的，缺省回退到 .env 的 MOONSHOT_MODEL。"""
+    """当前所选模型：优先读网页保存的，缺省回退到默认的 DeepSeek 模型。"""
     try:
         if _MODEL_SETTING_PATH.exists():
             data = json.loads(_MODEL_SETTING_PATH.read_text(encoding="utf-8-sig"))
@@ -63,7 +63,7 @@ def get_selected_model() -> str:
                 return m
     except Exception as e:
         logger.warning(f"读取模型设置失败: {e}")
-    return MOONSHOT_MODEL
+    return DEEPSEEK_MODEL
 
 
 def set_selected_model(model: str) -> None:

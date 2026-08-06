@@ -96,7 +96,7 @@ async function onPageEnter(pageId) {
     }
 }
 
-/** 加载 Kimi 模型下拉：列出 key 可用的模型，选中当前使用的 */
+/** 加载 AI 模型下拉：列出 DeepSeek/Kimi 两厂商可用模型（分组），选中当前使用的 */
 async function loadModelSetting() {
     const sel = document.getElementById('settingModel');
     if (!sel) return;
@@ -108,15 +108,21 @@ async function loadModelSetting() {
             sel.innerHTML = `<option value="${_escHtmlAttr(current)}">${_escHtmlAttr(current || '（无法获取模型列表）')}</option>`;
             return;
         }
-        sel.innerHTML = models.map(m =>
-            `<option value="${_escHtmlAttr(m)}"${m === current ? ' selected' : ''}>${_escHtmlAttr(m)}</option>`
-        ).join('');
+        // 按厂商分组：deepseek 前缀 → DeepSeek，其余 → Kimi
+        const deepseek = models.filter(m => m.toLowerCase().startsWith('deepseek'));
+        const kimi = models.filter(m => !m.toLowerCase().startsWith('deepseek'));
+        const optHtml = m =>
+            `<option value="${_escHtmlAttr(m)}"${m === current ? ' selected' : ''}>${_escHtmlAttr(m)}</option>`;
+        let html = '';
+        if (deepseek.length) html += `<optgroup label="DeepSeek">${deepseek.map(optHtml).join('')}</optgroup>`;
+        if (kimi.length) html += `<optgroup label="Kimi（Moonshot）">${kimi.map(optHtml).join('')}</optgroup>`;
+        sel.innerHTML = html;
     } catch (e) {
         sel.innerHTML = `<option value="">获取失败：${_escHtmlAttr(e.message)}</option>`;
     }
 }
 
-/** 保存所选 Kimi 模型（即时生效，各章生成都用它） */
+/** 保存所选 AI 模型（即时生效，各章生成都用它） */
 async function saveModelSetting(model) {
     if (!model) return;
     try {
@@ -827,7 +833,7 @@ async function renderChapterEditor(n) {
                 ${srcBadge}
             </div>
             <div class="flex gap-8">
-                <button class="btn btn-ghost btn-sm" id="btnChapterGen" onclick="runKimiChapter()">🤖 ${content.source === 'ready' ? '重新生成' : '用Kimi生成'}</button>
+                <button class="btn btn-ghost btn-sm" id="btnChapterGen" onclick="runKimiChapter()">🤖 ${content.source === 'ready' ? '重新生成' : 'AI 生成'}</button>
                 <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="insertFootnote()" title="把光标放到正文中要加脚注的位置，再点此">➕ 脚注</button>
                 <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="insertDiagram()" title="把光标放到正文中要插图的位置，再点此画框图">🖼 画图</button>
                 <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="openAIAssist()" title="先在正文里选中一段文字，再点此让AI润色/改写/扩写等">✨ AI辅助</button>
@@ -846,7 +852,7 @@ async function renderChapterEditor(n) {
         html += `<div class="text-sm text-muted" style="padding:8px 0;">未读到本章小标题。请先到"系统设置"里选择官方模板文件路径——本章的小标题会按模板自动列在下面，每个小标题一个编辑区。</div>`;
     } else {
         if (content.source === 'template') {
-            html += `<div class="text-sm text-muted" style="padding:4px 0 8px;">以下小标题来自官方模板。点右上角"用Kimi生成"自动填写，或直接在各小标题下编辑。</div>`;
+            html += `<div class="text-sm text-muted" style="padding:4px 0 8px;">以下小标题来自官方模板。点右上角"AI 生成"自动填写，或直接在各小标题下编辑。</div>`;
         }
         content.sections.forEach(sec => {
             html += `
@@ -945,7 +951,7 @@ function _pollChapterGeneration() {
     const btn = document.getElementById('btnChapterGen');
     const banner = document.getElementById('chapterGenBanner');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ 生成中...'; }
-    if (banner) { banner.style.display = 'block'; banner.textContent = `🤖 Kimi 正在生成${_chapterTitle(n) || '本章'}，约需数分钟，请稍候…`; }
+    if (banner) { banner.style.display = 'block'; banner.textContent = `🤖 AI 正在生成${_chapterTitle(n) || '本章'}，约需数分钟，请稍候…`; }
 
     if (_kimiTimer) clearInterval(_kimiTimer);
     _kimiTimer = setInterval(async () => {
@@ -958,7 +964,7 @@ function _pollChapterGeneration() {
             showToast('生成完成，请核对编辑');
         } else if (st.status === 'error') {
             clearInterval(_kimiTimer); _kimiTimer = null;
-            if (btn) { btn.disabled = false; btn.textContent = '🤖 用Kimi生成'; }
+            if (btn) { btn.disabled = false; btn.textContent = '🤖 AI 生成'; }
             if (banner) { banner.className = 'kimi-status error'; banner.textContent = '生成失败：' + (st.error || '未知错误'); }
             showToast('生成失败', 'error');
         }

@@ -91,15 +91,28 @@ def _load_web_render(pack_id: str = None):
 
 @router.get("/models")
 async def list_models():
-    """列出该 key 可用的 Kimi 模型 + 当前所选（供系统设置页下拉）。"""
+    """列出可用的大模型（DeepSeek + Kimi 两厂商）+ 当前所选（供系统设置页下拉）。"""
     def _query():
+        from backend.services.kimi_client import get_client
+        from backend.config import DEEPSEEK_API_KEY, DEEPSEEK_MODEL
+        deepseek_models, kimi_models = [], []
+        # DeepSeek：优先查接口，失败回退固定候选（deepseek-chat 为主力对话模型）
+        if DEEPSEEK_API_KEY:
+            try:
+                client = get_client(DEEPSEEK_MODEL)
+                deepseek_models = [m.id for m in client.models.list().data]
+            except Exception as e:
+                logger.warning(f"查询 DeepSeek 模型列表失败: {e}")
+            # 确保默认模型（deepseek-chat 官方别名）在下拉里可选
+            if DEEPSEEK_MODEL not in deepseek_models:
+                deepseek_models.insert(0, DEEPSEEK_MODEL)
+        # Kimi(Moonshot)
         try:
-            from backend.services.kimi_client import get_client
             client = get_client()
-            return [m.id for m in client.models.list().data]
+            kimi_models = [m.id for m in client.models.list().data]
         except Exception as e:
-            logger.warning(f"查询模型列表失败: {e}")
-            return []
+            logger.warning(f"查询 Kimi 模型列表失败: {e}")
+        return deepseek_models + kimi_models
     models = await asyncio.to_thread(_query)
     return {"models": models, "current": skill_runner.get_selected_model()}
 
@@ -110,7 +123,7 @@ class ModelBody(BaseModel):
 
 @router.post("/model")
 async def set_model(body: ModelBody):
-    """保存所选 Kimi 模型（各章生成即时生效，无需重启）。"""
+    """保存所选模型（DeepSeek/Kimi，各章生成即时生效，无需重启）。"""
     if not body.model.strip():
         raise HTTPException(status_code=400, detail="模型名不能为空")
     await asyncio.to_thread(skill_runner.set_selected_model, body.model.strip())

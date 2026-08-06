@@ -1,9 +1,14 @@
 """
-Kimi (Moonshot AI) 大模型客户端封装
+大模型客户端封装（Kimi/Moonshot + DeepSeek 双厂商）
 
-Moonshot 的 API 兼容 OpenAI 的接口格式，所以直接用 openai SDK，
-只是把 base_url 换成 Moonshot 的地址。API Key 从 backend.config 读取
-（config.py 里是从 .env 环境变量加载的，不要在这里硬编码）。
+两家 API 都兼容 OpenAI 的接口格式，直接用 openai SDK，只是 base_url 不同。
+路由规则：模型名以 deepseek 开头 → DeepSeek，否则 → Moonshot(Kimi)。
+API Key 从 backend.config 读取（config.py 里是从 .env 环境变量加载的，不要在这里硬编码）。
+
+能力差异（重要）：
+- DeepSeek 不支持读图：ocr_images 始终走 Moonshot；
+- deepseek-reasoner 不支持函数调用：chat_with_tools 自动降级为 deepseek-chat；
+- Moonshot 内置联网搜索($web_search)：仅 Moonshot 模型可用。
 """
 import base64
 import json
@@ -15,7 +20,8 @@ from openai import (OpenAI, RateLimitError, InternalServerError,
                     APITimeoutError, APIConnectionError, APIStatusError)
 
 from backend.config import (MOONSHOT_API_KEY, MOONSHOT_BASE_URL, MOONSHOT_MODEL,
-                            MOONSHOT_VISION_MODEL)
+                            MOONSHOT_VISION_MODEL,
+                            DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL)
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +32,18 @@ _MAX_RETRIES = 5          # 首次之外最多再重试的次数
 _BASE_DELAY = 2.0         # 退避基准秒数（指数增长 + 抖动）
 
 
-def get_client() -> OpenAI:
+def _is_deepseek(model: str) -> bool:
+    return bool(model) and model.lower().startswith("deepseek")
+
+
+def get_client(model: str = None) -> OpenAI:
+    """按模型名路由到对应厂商的 OpenAI 兼容客户端。"""
+    if _is_deepseek(model):
+        if not DEEPSEEK_API_KEY:
+            raise RuntimeError(
+                "未配置 DEEPSEEK_API_KEY，请在项目根目录的 .env 文件里设置后重启服务"
+            )
+        return OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     if not MOONSHOT_API_KEY:
         raise RuntimeError(
             "未配置 MOONSHOT_API_KEY，请在项目根目录的 .env 文件里设置后重启服务"
@@ -57,10 +74,13 @@ def _create(client: OpenAI, **kwargs):
 
 def chat(messages: list[dict], model: str = None, temperature: float = 1.0) -> str:
     """最基础的对话调用：传入messages（OpenAI格式），返回模型回复的文本。"""
-    client = get_client()
+    model = model or MOONSHOT_MODEL
+    client = get_client(model)
+    if _is_deepseek(model):
+        temperature = min(temperature, 1.0)  # DeepSeek 的 temperature 上限 1.0
     resp = _create(
         client,
-        model=model or MOONSHOT_MODEL,
+        model=model,
         messages=messages,
         temperature=temperature,
     )
@@ -74,7 +94,8 @@ def ocr_images(images: list, model: str = None, instruction: str = "") -> str:
     “某科目金额”），不必通读全页——用于大扫描件定点取数，输出更短更准。"""
     if not images:
         return ""
-    client = get_client()
+    # DeepSeek 不支持读图：视觉识别始终走 Moonshot（忽略传入的 model）
+    client = get_client(MOONSHOT_MODEL)
     if (instruction or "").strip():
         prompt = (
             f"请在下面的图片中查找与“{instruction.strip()}”相关的内容，"
@@ -94,7 +115,7 @@ def ocr_images(images: list, model: str = None, instruction: str = "") -> str:
                         "image_url": {"url": f"data:image/png;base64,{b64}"}})
     resp = _create(
         client,
-        model=model or MOONSHOT_VISION_MODEL or MOONSHOT_MODEL,  # 默认用主模型（kimi-k3 支持读图）
+        model=MOONSHOT_VISION_MODEL or MOONSHOT_MODEL,  # 视觉识别固定走 Moonshot（kimi-k3 支持读图）
         messages=[{"role": "user", "content": content}],
         temperature=1.0,   # kimi-k3 要求 temperature=1.0
     )
@@ -104,13 +125,19 @@ def ocr_images(images: list, model: str = None, instruction: str = "") -> str:
 def chat_with_tools(messages: list[dict], tools: list, tool_executor,
                     model: str = None, temperature: float = 1.0,
                     max_rounds: int = 16) -> str:
-    """带函数调用(function calling)的对话：Kimi 若请求调用工具，就用 tool_executor 执行、
-    把结果回喂，循环直到 Kimi 给出最终文本回复。
+    """带函数调用(function calling)的对话：模型若请求调用工具，就用 tool_executor 执行、
+    把结果回喂，循环直到模型给出最终文本回复。
+    注：deepseek-reasoner 官方不支持函数调用，自动降级为 deepseek-chat。
 
     tool_executor(name: str, arguments: dict) -> str
     """
-    client = get_client()
     model = model or MOONSHOT_MODEL
+    if _is_deepseek(model) and "reasoner" in model.lower():
+        logger.warning(f"[chat_with_tools] {model} 不支持函数调用，自动降级为 {DEEPSEEK_MODEL}")
+        model = DEEPSEEK_MODEL
+    client = get_client(model)
+    if _is_deepseek(model):
+        temperature = min(temperature, 1.0)  # DeepSeek 的 temperature 上限 1.0
     msgs = list(messages)
 
     for i in range(max_rounds):
@@ -147,10 +174,15 @@ def chat_with_tools(messages: list[dict], tools: list, tool_executor,
         for tc in tool_calls:
             name = tc.function.name
             # Moonshot 内置联网搜索：不自己执行，把参数原样回传，由 Moonshot 服务端完成搜索
+            # （仅 Moonshot 模型支持；DeepSeek 无此能力，返回提示让其基于已有信息作答）
             if name == "$web_search":
                 logger.info(f"[工具调用] $web_search 参数={tc.function.arguments}")
-                msgs.append({"role": "tool", "tool_call_id": tc.id, "name": name,
-                             "content": tc.function.arguments or "{}"})
+                if _is_deepseek(model):
+                    msgs.append({"role": "tool", "tool_call_id": tc.id, "name": name,
+                                 "content": "（当前模型无联网搜索能力，请基于已提供的材料信息作答）"})
+                else:
+                    msgs.append({"role": "tool", "tool_call_id": tc.id, "name": name,
+                                 "content": tc.function.arguments or "{}"})
                 continue
             try:
                 args = json.loads(tc.function.arguments or "{}")
