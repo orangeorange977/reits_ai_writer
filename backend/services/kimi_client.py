@@ -138,6 +138,8 @@ def chat_with_tools(messages: list[dict], tools: list, tool_executor,
     client = get_client(model)
     if _is_deepseek(model):
         temperature = min(temperature, 1.0)  # DeepSeek 的 temperature 上限 1.0
+        # DeepSeek 只认 type=function：过滤掉 Moonshot 内置工具（builtin_function 等）
+        tools = [t for t in (tools or []) if t.get("type") == "function"]
     msgs = list(messages)
 
     for i in range(max_rounds):

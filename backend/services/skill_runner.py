@@ -13,7 +13,7 @@ from html.parser import HTMLParser
 
 from backend.config import (DATA_SOURCE_BASE, PROJECTS_DIR, safe_project_id,
                             DEEPSEEK_MODEL)
-from backend.services.kimi_client import chat, chat_with_tools
+from backend.services.kimi_client import chat, chat_with_tools, _is_deepseek
 from backend.services import summary_service, tianyancha_client, materials_client
 from backend.services import pack_service
 
@@ -743,12 +743,14 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
             "**绝不要把几十页审计报告整篇 OCR。** 扫描件表格数字 OCR 可能读错，拿不准的数字标"
             "“【注：OCR识别，请人工核对】”；识别不出或缺关键项才标“【注：…，请人工核对】”，绝不编造。"
         )
-    system_prompt += (
-        "\n\n你还能**联网搜索**（$web_search）。当某项公开信息在“已保存摘要/释义/其他基本信息”、天眼查、"
-        "证明材料里都找不到的公开披露数据（如机构某时点的规模、业绩等），可以联网搜索后填写。"
-        "但**联网所得务必谨慎核对**：优先采信官方/权威来源（公司官网、中基协、交易所、监管公示），"
-        "注明是截至哪个时点/什么口径；若时点或口径对不上、或来源不可靠，宁可标“【注：网络来源，待人工核实】”，绝不凑数。"
-    )
+    # 联网搜索是 Moonshot 内置能力：仅非 DeepSeek 模型时在提示词里告知
+    if not _is_deepseek(get_selected_model()):
+        system_prompt += (
+            "\n\n你还能**联网搜索**（$web_search）。当某项公开信息在“已保存摘要/释义/其他基本信息”、天眼查、"
+            "证明材料里都找不到的公开披露数据（如机构某时点的规模、业绩等），可以联网搜索后填写。"
+            "但**联网所得务必谨慎核对**：优先采信官方/权威来源（公司官网、中基协、交易所、监管公示），"
+            "注明是截至哪个时点/什么口径；若时点或口径对不上、或来源不可靠，宁可标“【注：网络来源，待人工核实】”，绝不凑数。"
+        )
 
     subtitle_rule = ""
     if subtitles:
@@ -777,8 +779,9 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    # 组合工具集：天眼查（企业数据）+ 证明材料读取 + 联网搜索（Moonshot 内置，始终可用）
-    tools = [_WEB_SEARCH_TOOL]
+    # 组合工具集：天眼查（企业数据）+ 证明材料读取；
+    # 联网搜索为 Moonshot 内置工具（builtin_function），DeepSeek 不支持，仅非 DeepSeek 时加入
+    tools = [] if _is_deepseek(get_selected_model()) else [_WEB_SEARCH_TOOL]
     if tianyancha_client.is_enabled():
         tools += _TYC_TOOLS
     mat_exec = None
