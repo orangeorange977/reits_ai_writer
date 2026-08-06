@@ -51,6 +51,7 @@ function renderProjectTable(container, projects) {
             <td class="text-sm text-muted">${proj.updateTime}</td>
             <td>
                 <button class="btn btn-ghost btn-sm" onclick="selectProject(${proj.id})">编辑</button>
+                ${proj.isDemo ? '' : `<button class="btn btn-ghost btn-sm" style="color:#d9534f" onclick="confirmDeleteProject(${proj.id})">删除</button>`}
             </td>
         </tr>
     `).join('');

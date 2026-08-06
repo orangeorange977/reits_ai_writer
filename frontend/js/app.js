@@ -256,6 +256,7 @@ async function loadOverviewData() {
                     status: _mapProjectStatus(p.status),
                     updateTime: p.updated_at || p.created_at || '-',
                     id: p.id,
+                    isDemo: !!p.is_demo,
                 })));
                 // 自动选择第一个项目
                 if (!currentProjectId && projects.length > 0) {
@@ -1769,6 +1770,21 @@ function selectProject(projectId) {
     currentProjectId = projectId;
     updateProjectHeaderBar();
     navigate('ndrc');
+}
+
+/** 删除项目（确认后调后端；示范项目不展示删除按钮，后端另有 403 保护） */
+async function confirmDeleteProject(projectId) {
+    const proj = (_projectsCache || []).find(p => p.id === projectId);
+    const name = proj ? proj.name : `项目 ${projectId}`;
+    if (!confirm(`确定删除项目“${name}”？\n删除将同时清除该项目已上传的材料和已生成的内容，且不可恢复。`)) return;
+    try {
+        await API.deleteProject(projectId);
+        if (currentProjectId === projectId) currentProjectId = null;
+        showToast('项目已删除');
+        await loadOverviewData();
+    } catch (e) {
+        showToast('删除失败：' + (e.message || '未知错误'), 'error');
+    }
 }
 
 /**
