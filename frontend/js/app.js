@@ -234,13 +234,23 @@ async function _showMissingMaterialTip(fileName) {
     showToast(`${head}——依据里的文件需在当前项目的“申报材料”里上传后才能回查原文`, 'warning');
 }
 
-/** 点“参考材料”清单项（只有文件名）：按名定位后打开原文预览 */
+/** 点“参考材料”清单项（只有文件名）：按名定位后打开原文预览。
+ * 依据可能把多个文件用“、”混写在一起（还夹带“待人工核对”之类的提示），
+ * 拆开逐个尝试，打开第一个能定位到的真实文件。 */
 async function openRefByName(text) {
-    try {
-        const path = await _findMaterialPath(text);
-        if (path) { openMaterialPreview(path, ''); return; }
-    } catch (e) { /* 材料列表拉取失败则提示 */ }
-    _showMissingMaterialTip(String(text || '').replace(/^📄\s*/, '').replace(/[《》]/g, '').split('/').pop() || '该文件');
+    const parts = String(text || '').split(/[、，,]/)
+        .map(s => s.trim())
+        .filter(s => s && !/待(人工)?核对|待补充|待确认/.test(s));
+    for (const part of parts) {
+        try {
+            const path = await _findMaterialPath(part);
+            if (path) {
+                if (parts.length > 1) showToast(`依据提及多个文件，已打开第一个可定位的：《${path.split('/').pop()}》`);
+                openMaterialPreview(path, ''); return;
+            }
+        } catch (e) { /* 材料列表拉取失败则继续试下一项 */ }
+    }
+    _showMissingMaterialTip(parts[0] || String(text || '').replace(/^📄\s*/, '').replace(/[《》]/g, '').split('/').pop() || '该文件');
 }
 
 /** 解析一条依据标注并跳转：申报材料→预览原文并高亮摘录；同上文件→复用上一条；摘要表→定位字段行 */
