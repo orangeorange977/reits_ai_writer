@@ -186,12 +186,14 @@ async function _findMaterialPath(nameRaw) {
     return hit || null;
 }
 
-/** 依据里的路径可能只有文件名：先模糊匹配出真实路径再预览，匹配不到再按原路径试 */
+/** 依据里的路径可能缺失或与磁盘不一致（长目录名被截断等）：先按原路径试，找不到再按文件名模糊匹配 */
 async function openMaterialPreviewResolved(path, quote) {
-    if (!path.includes('/')) {
+    try {
+        const files = await _getMaterialFiles();
+        if (files.includes(path)) { openMaterialPreview(path, quote); return; }
         const real = await _findMaterialPath(path);
         if (real) { openMaterialPreview(real, quote); return; }
-    }
+    } catch (e) { /* 清单拉取失败则按原路径尝试 */ }
     openMaterialPreview(path, quote);
 }
 
@@ -204,19 +206,33 @@ async function openRefByName(text) {
     showToast('未在当前项目材料库中找到该文件（可能已被删除或未上传）', 'warning');
 }
 
-/** 解析一条依据标注并跳转：申报材料→预览原文并高亮摘录；摘要表→定位字段行 */
+/** 解析一条依据标注并跳转：申报材料→预览原文并高亮摘录；同上文件→复用上一条；摘要表→定位字段行 */
+let _lastSrcMaterialPath = '';
 function openSrcLink(rawText) {
     const text = String(rawText || '').replace(/^📎\s*依据[：:]/, '').trim();
     if (!text) return;
-    for (const seg of text.split(/[；;]/).map(s => s.trim()).filter(Boolean)) {
+    // 先按〈数字〉拆出多条依据（〈1〉…〈2〉…），再按“；”拆（兼容旧格式）
+    const items = [];
+    for (const part of text.split(/〈\d+〉/)) {
+        for (const seg of part.split(/[；;]/).map(s => s.trim()).filter(Boolean)) items.push(seg);
+    }
+    for (const seg of items) {
         let m;
         if ((m = seg.match(/^申报材料[：:](.+)$/))) {
             const body = m[1].trim();
-            const qm = body.match(/〈([^〉]*)〉/);
-            let path = body.replace(/〈[^〉]*〉/, '').trim();
-            // 兼容文件名被《》包裹的写法：《xx.xlsx》→ xx.xlsx
-            path = path.replace(/^《(.+)》$/, '$1').trim();
-            if (path) { openMaterialPreviewResolved(path, qm ? qm[1].trim() : ''); return; }
+            // 摘录以〈原文摘录〉为界：前为文件路径，后为摘录内容
+            const pm = body.split('〈原文摘录〉');
+            let path = pm[0].trim()
+                .replace(/^《(.+)》$/, '$1')      // 兼容《xx.docx》包裹写法
+                .replace(/〈[^〉]*〉.*$/, '')          // 兼容旧式〈摘录〉后缀
+                .trim();
+            const quote = (pm[1] || '').replace(/[；;]\s*$/, '').trim();
+            if (path) { _lastSrcMaterialPath = path; openMaterialPreviewResolved(path, quote); return; }
+        }
+        if (/^同上文件/.test(seg)) {
+            const quote = ((seg.split('〈原文摘录〉')[1] || '')).replace(/[；;]\s*$/, '').trim();
+            if (_lastSrcMaterialPath) { openMaterialPreviewResolved(_lastSrcMaterialPath, quote); return; }
+            showToast('未能定位“同上文件”所指的上一条依据', 'warning'); return;
         }
         if ((m = seg.match(/^摘要表[：:](.+)$/))) { jumpToSummaryField(m[1].trim()); return; }
     }
