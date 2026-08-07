@@ -363,7 +363,7 @@ async def upload_materials(project_id: int, http_req: Request, files: List[Uploa
     dest = _materials_dir(project_id)
     dest.mkdir(parents=True, exist_ok=True)
 
-    added, extracted, skipped = [], 0, []
+    added, extracted, skipped, existed = [], 0, [], []
     for f in files:
         if _is_junk_name(f.filename or ""):
             continue
@@ -388,6 +388,11 @@ async def upload_materials(project_id: int, http_req: Request, files: List[Uploa
             # 文件夹上传时文件名携带相对路径（webkitRelativePath），按目录结构落盘
             parts = _rel_parts(f.filename) or [Path(f.filename or "").name or "未命名文件"]
             target = dest.joinpath(*parts)
+            # 补传场景：同名同大小的文件已存在则跳过（不重传不覆盖），只补缺失的
+            fsize = getattr(f, "size", None)
+            if target.is_file() and fsize is not None and target.stat().st_size == fsize:
+                existed.append(target.relative_to(dest).as_posix())
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
             with open(target, "wb") as out:
                 shutil.copyfileobj(f.file, out, _CHUNK)
@@ -397,6 +402,7 @@ async def upload_materials(project_id: int, http_req: Request, files: List[Uploa
         "uploaded": added,
         "extracted_from_zip": extracted,
         "skipped": skipped,
+        "existed": existed,
         "materials_dir": str(dest),
     }
 

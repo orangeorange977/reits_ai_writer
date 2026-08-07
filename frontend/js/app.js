@@ -452,9 +452,23 @@ async function onUploadMaterials(input) {
     const pStat = document.getElementById('matPanelStat');
     const oldText = stat ? stat.textContent : '';
     try {
-        // 按大小分批（单批 ≤120MB 且 ≤15 个），避免大批次超服务器请求上限整批失败
-        const arr = Array.from(files);
-        const result = { uploaded: [], extracted_from_zip: 0, skipped: [] };
+        // 补传场景：先拉现有清单，同路径同大小的文件直接跳过（不重复传输），只补缺失的
+        let arr = Array.from(files);
+        let preSkipped = 0;
+        try {
+            const d = await API.listMaterials();
+            const existing = new Set(((d && d.files) || []).map(f => f.path + '|' + f.size));
+            const before = arr.length;
+            arr = arr.filter(f => !existing.has((f.webkitRelativePath || f.name) + '|' + f.size));
+            preSkipped = before - arr.length;
+        } catch (e) { /* 拉清单失败则全量上传，后端会按同名同大小兑底跳过 */ }
+        if (!arr.length) {
+            showToast(`所选 ${files.length} 个文件均已存在，无需重复上传`);
+            return;
+        }
+        if (preSkipped) showToast(`已跳过 ${preSkipped} 个已存在的文件，只上传缺失的 ${arr.length} 个`);
+        // 按大小分批（单批 ≤40MB 且 ≤15 个），避免大批次超服务器请求上限整批失败
+        const result = { uploaded: [], extracted_from_zip: 0, skipped: [], existed: [] };
         let i = 0, batchNo = 0;
         while (i < arr.length) {
             let j = i, size = 0;
@@ -462,21 +476,24 @@ async function onUploadMaterials(input) {
                 size += arr[j].size || 0; j++;
             }
             batchNo++;
-            const tip = `正在上传 ${files.length} 个文件（第 ${batchNo} 批）…（大文件/解压需要一点时间）`;
+            const tip = `正在补传缺失文件（${arr.length} 个中的第 ${batchNo} 批）…（大文件/解压需要一点时间）`;
             if (stat) stat.textContent = tip;
             if (pStat) pStat.textContent = tip;
             const r = await API.uploadMaterials(arr.slice(i, j));
             result.uploaded = result.uploaded.concat(r.uploaded || []);
             result.extracted_from_zip += (r.extracted_from_zip || 0);
             result.skipped = result.skipped.concat(r.skipped || []);
+            result.existed = result.existed.concat(r.existed || []);
             i = j;
         }
         _invalidateMatCache();
         const parts = [];
-        if (result.uploaded && result.uploaded.length) parts.push(`直传 ${result.uploaded.length} 个`);
+        if (result.uploaded && result.uploaded.length) parts.push(`新增 ${result.uploaded.length} 个`);
         if (result.extracted_from_zip) parts.push(`zip 解压出 ${result.extracted_from_zip} 个`);
+        const existTotal = preSkipped + result.existed.length;
+        if (existTotal) parts.push(`已存在自动跳过 ${existTotal} 个`);
         if (result.skipped && result.skipped.length) parts.push(`跳过不支持的格式 ${result.skipped.length} 个`);
-        showToast('上传完成：' + (parts.join('，') || '无新增文件'));
+        showToast('补传完成：' + (parts.join('，') || '无新增文件'));
         await loadMaterialsUI();
     } catch (e) {
         showToast('上传失败：' + e.message, 'error');
