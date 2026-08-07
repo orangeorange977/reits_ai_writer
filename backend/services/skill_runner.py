@@ -807,8 +807,23 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
     try:
         data = _parse_json(raw)
     except Exception as e:
-        logger.warning(f"ch{n} 解析模型输出失败：{e}；原始输出前 500 字：{raw[:500]!r}")
-        raise RuntimeError(f"模型输出不是有效 JSON（{e}），请重试生成") from e
+        logger.warning(f"ch{n} 解析模型输出失败：{e}；原始输出前 500 字：{raw[:500]!r}；自动纠偏重试一次")
+        # 自动纠偏：要求模型把上次的内容重新输出为纯 JSON（常见于输出被截断/夹带说明文字），
+        # 免去用户手动重生成又要等几分钟
+        try:
+            fix_msgs = messages + [
+                {"role": "assistant", "content": raw[-3000:]},
+                {"role": "user", "content": "你上次的输出不是有效 JSON（可能被截断或夹带了说明文字）。"
+                                             "请重新输出符合要求格式的完整有效 JSON 本身："
+                                             "不要任何解释、不要用 ``` 包裹、不要省略或截断，"
+                                             "直接以 { 开头、以 } 结尾。"},
+            ]
+            raw2 = chat(fix_msgs, model=get_selected_model(), temperature=0.3)
+            data = _parse_json(raw2)
+            logger.info(f"ch{n} 纠偏重试成功")
+        except Exception as e2:
+            logger.warning(f"ch{n} 纠偏重试仍失败：{e2}")
+            raise RuntimeError(f"模型输出不是有效 JSON（{e2}），请重试生成") from e2
     # 锁定小标题结构＝模板：把 Kimi 误当成 section 的编号项（“1.奥飞数据”等）折回其所属模板小标题
     if isinstance(data, dict) and data.get("sections"):
         data["sections"] = _fold_enumerated_sections(data["sections"], subtitles)
