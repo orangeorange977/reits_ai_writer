@@ -143,6 +143,14 @@ function _fmtSize(bytes) {
     return bytes + ' B';
 }
 
+/** 后端存的是 UTC 时间字符串（SQLite CURRENT_TIMESTAMP），展示时统一换算为北京时间 */
+function _fmtTime(t) {
+    if (!t || t === '-') return '-';
+    const d = new Date(String(t).trim().replace(' ', 'T') + 'Z');
+    if (isNaN(d.getTime())) return t;
+    return d.toLocaleString('sv-SE', { timeZone: 'Asia/Shanghai' }).slice(0, 16);
+}
+
 /** 申报材料面板展开/收起（自包含切换，不走增强面板的 tab 逻辑，避免重置其他面板状态） */
 function toggleMaterialsPanel(headerEl) {
     const body = document.getElementById('materials-body');
@@ -323,7 +331,7 @@ async function loadOverviewData() {
                     assetType: '数据中心',
                     stage: '发改委申报',
                     status: _mapProjectStatus(p.status),
-                    updateTime: p.updated_at || p.created_at || '-',
+                    updateTime: _fmtTime(p.updated_at || p.created_at),
                     id: p.id,
                     isDemo: !!p.is_demo,
                 })));
@@ -382,7 +390,7 @@ function updateProjectHeaderBar() {
         return;
     }
     titleEl.textContent = proj.name || '未命名项目';
-    metaEl.textContent = `状态：${_mapProjectStatus(proj.status)} | 更新时间：${proj.updated_at || proj.created_at || '-'}`;
+    metaEl.textContent = `状态：${_mapProjectStatus(proj.status)} | 更新时间：${_fmtTime(proj.updated_at || proj.created_at)}`;
 }
 
 // ===== 发改委材料生成页面功能 =====
@@ -1857,7 +1865,7 @@ async function loadDocuments() {
         tbody.innerHTML = docs.map(doc => `
             <tr>
                 <td><strong>${_escHtmlAttr(doc.title)}</strong><br><span class="text-muted text-sm">${_escHtmlAttr(doc.filename)}</span></td>
-                <td>${_escHtmlAttr(doc.updated_at)}</td>
+                <td>${_escHtmlAttr(_fmtTime(doc.updated_at))}</td>
                 <td>${_escHtmlAttr(doc.size_formatted)}</td>
                 <td><span class="badge badge-success">已完成</span></td>
                 <td><button class="btn btn-primary btn-sm" onclick="API.downloadChapterDocx(${doc.chapter})">下载</button></td>
