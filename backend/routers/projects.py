@@ -74,14 +74,22 @@ def _materials_dir(project_id: int) -> Path:
 
 
 def _zip_member_name(info: zipfile.ZipInfo) -> str:
-    """修正 zip 内中文文件名乱码：无 UTF-8 标志位时，zipfile 默认按 cp437 解码，
-    而 Windows 打包的 zip 实际是 GBK——转回 bytes 再按 GBK 解。"""
+    """修正 zip 内中文文件名乱码：无 UTF-8 标志位时，zipfile 默认按 cp437 解码。
+    Windows 打包的 zip 实际是 GBK；而 macOS zip 命令存 UTF-8 字节却不置标志位，
+    因此先试 UTF-8（UTF-8 字节被 GBK 解会成乱码但“合法”，而 GBK 字节大多
+    无法通过严格的 UTF-8 解码），失败再试 GBK，都失败保持原样。"""
     if info.flag_bits & 0x800:
         return info.filename
     try:
-        return info.filename.encode("cp437").decode("gbk")
-    except (UnicodeEncodeError, UnicodeDecodeError):
+        raw = info.filename.encode("cp437")
+    except UnicodeEncodeError:
         return info.filename
+    for enc in ("utf-8", "gbk"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return info.filename
 
 
 def _safe_extract_zip(file_obj, dest: Path) -> int:
