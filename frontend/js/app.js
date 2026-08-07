@@ -458,7 +458,7 @@ async function onUploadMaterials(input) {
         let i = 0, batchNo = 0;
         while (i < arr.length) {
             let j = i, size = 0;
-            while (j < arr.length && (j === i || (size + (arr[j].size || 0) <= 120 * 1024 * 1024 && j - i < 15))) {
+            while (j < arr.length && (j === i || (size + (arr[j].size || 0) <= 40 * 1024 * 1024 && j - i < 15))) {
                 size += arr[j].size || 0; j++;
             }
             batchNo++;
@@ -2285,23 +2285,31 @@ async function submitNewProject() {
             // 项目创建完立刻进入上传文案；按“已传字节”估算剩余时间（第一个文件没传完也能估），每秒刷新
             const totalBytes = files.reduce((s, f) => s + (f.size || 0), 0);
             let doneBytes = 0, curBatchBytes = 0, lastDone = 0;
+            let curBatch = [];  // 当前正在传的批次，用于按字节推算已完成的文件数
             const fmtBytes = (b) => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
             const renderUploadProgress = () => {
                 const elapsed = (Date.now() - t0) / 1000;
                 const sent = doneBytes + curBatchBytes;
                 const speed = elapsed > 2 ? sent / elapsed : 0;  // 字节/秒
                 const eta = (speed > 1024 && totalBytes > sent) ? (totalBytes - sent) / speed : null;
-                const pct = totalBytes ? Math.min(95, 5 + 90 * sent / totalBytes) : 5 + 90 * lastDone / files.length;
+                // 批内按字节顺序推算已传完的文件数，让计数跟着字节一起动（不必等整批结束）
+                let acc = 0, inBatchDone = 0;
+                for (const f of curBatch) {
+                    if (acc + (f.size || 0) <= curBatchBytes) { acc += f.size || 0; inBatchDone++; }
+                    else break;
+                }
+                const doneCount = Math.min(files.length, lastDone + inBatchDone);
+                const pct = totalBytes ? Math.min(95, 5 + 90 * sent / totalBytes) : 5 + 90 * doneCount / files.length;
                 const tip = eta === null
                     ? `｜已用 ${_fmtDur(elapsed)}，正在估算时间…`
                     : `｜已用 ${_fmtDur(elapsed)}，预计还需 ${_fmtDur(eta)}`;
-                setProgress(`正在上传申报材料（第 ${lastDone}/${files.length} 个文件）${fmtBytes(sent)}${totalBytes ? ' / ' + fmtBytes(totalBytes) : ''}…${tip}`, pct);
+                setProgress(`正在上传申报材料（第 ${doneCount}/${files.length} 个文件）${fmtBytes(sent)}${totalBytes ? ' / ' + fmtBytes(totalBytes) : ''}…${tip}`, pct);
             };
             renderUploadProgress();
             const ticker = setInterval(renderUploadProgress, 1000);
             try {
-                // 按大小分批：单批 ≤120MB 且 ≤BATCH 个文件（防大批次超服务器请求上限整批失败）
-                const MAX_BATCH_BYTES = 120 * 1024 * 1024;
+                // 按大小分批：单批 ≤40MB 且 ≤BATCH 个文件（小批快传，计数/预估刷新更频繁）
+                const MAX_BATCH_BYTES = 40 * 1024 * 1024;
                 let idx = 0;
                 while (idx < files.length) {
                     let j = idx, bsize = 0;
@@ -2310,6 +2318,7 @@ async function submitNewProject() {
                     }
                     const batch = files.slice(idx, j);
                     const to = j;
+                    curBatch = batch;
                     curBatchBytes = 0;
                     const result = await API.uploadMaterials(batch, (p) => { curBatchBytes = p.loaded || 0; });
                     doneBytes += batch.reduce((s, f) => s + (f.size || 0), 0);
