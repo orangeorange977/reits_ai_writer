@@ -165,7 +165,9 @@ async function _getMaterialFiles() {
 }
 function _invalidateMatCache() { _matFileCache = null; }
 
-/** 按文件名（可无目录）模糊匹配材料库中的真实路径 */
+/** 按文件名（可无目录）模糊匹配材料库中的真实路径。
+ * AI 常把官方全称简化（如“9-1 法律意见书.docx” vs 磁盘“9-1 律师事务所就项目权属…出具的法律意见书.docx”），
+ * 因此除精确/互含外，还用“编号前缀相同 + 核心词命中”规则兜底。 */
 async function _findMaterialPath(nameRaw) {
     let name = String(nameRaw || '').trim().replace(/^📄\s*/, '').replace(/[《》]/g, '').trim();
     if (name.includes('/')) name = name.split('/').pop();
@@ -181,6 +183,25 @@ async function _findMaterialPath(nameRaw) {
                 const s2 = base(p).replace(/\.[^.]+$/, '');
                 return s2.includes(stem) || stem.includes(s2);
             });
+        }
+    }
+    if (!hit) {
+        // 编号+核心词：依据里“9-1 法律意见书” → 磁盘上同为“9-1 …”开头且含“法律意见书”的文件
+        const m = name.match(/^(\d+(?:[-—]\d+)?)\s*[、.．]?(.+)$/);
+        if (m) {
+            const num = m[1].replace(/—/g, '-');
+            const core = m[2].replace(/\.[^.]+$/, '').trim();
+            if (core) {
+                const cands = files.filter(p => {
+                    const s2 = base(p).replace(/\.[^.]+$/, '');
+                    return s2.startsWith(num) && s2.includes(core);
+                });
+                if (cands.length) {
+                    // 同名编号常有 docx/pdf 双版本：优先与依据里相同扩展名
+                    const ext = (name.match(/\.([^.]+)$/) || [])[1];
+                    hit = (ext && cands.find(p => p.toLowerCase().endsWith('.' + ext.toLowerCase()))) || cands[0];
+                }
+            }
         }
     }
     return hit || null;
