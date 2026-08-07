@@ -1121,8 +1121,8 @@ async function renderChapterEditor(n) {
     // 本章参考材料（业务化清单：只列 AI 写作时参考了哪些材料，不展示技术细节）
     if (content.refs && content.refs.length) {
         const items = content.refs.map(r => `<div class="ref-item">📄 ${_escHtmlAttr(r)}</div>`).join('');
-        html += `<details class="refs-panel" open>
-            <summary>📋 本章生成参考了以下材料（共 ${content.refs.length} 项，正文每段下方另有“依据”标注）</summary>
+        html += `<details class="refs-panel">
+            <summary>📋 本章生成参考了以下材料（共 ${content.refs.length} 项，正文每段下方另有“依据”标注） · 点击展开</summary>
             <div class="refs-list">${items}</div>
         </details>`;
     }
