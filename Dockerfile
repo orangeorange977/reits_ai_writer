@@ -13,6 +13,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
 
+# 本地 OCR（tesseract + 简体中文语言包）：扫描件免费识别兜底，不依赖付费视觉 API。
+# Debian 官方源在国内很慢，先换阿里云镜像源再装。
+RUN sed -i 's#deb.debian.org#mirrors.aliyun.com#g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-chi-sim \
+    && rm -rf /var/lib/apt/lists/*
+
 # 应用代码（引擎 + 前端 + 模板包）。workspace/ 数据目录由卷挂载提供，不进镜像。
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
