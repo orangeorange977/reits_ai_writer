@@ -153,6 +153,57 @@ function _fmtTime(t) {
 
 // ===== 溯源跳转：点“📎 依据”/参考材料清单，直接定位到对应出处 =====
 
+/** 材料文件清单缓存（按项目缓存；上传/清空后失效） */
+let _matFileCache = null; // {pid, files}
+async function _getMaterialFiles() {
+    const pid = currentProjectId;
+    if (!_matFileCache || _matFileCache.pid !== pid) {
+        const d = await API.listMaterials();
+        _matFileCache = { pid, files: ((d && d.files) || []).map(f => f.path).filter(Boolean) };
+    }
+    return _matFileCache.files;
+}
+function _invalidateMatCache() { _matFileCache = null; }
+
+/** 按文件名（可无目录）模糊匹配材料库中的真实路径 */
+async function _findMaterialPath(nameRaw) {
+    let name = String(nameRaw || '').trim().replace(/^📄\s*/, '').replace(/[《》]/g, '').trim();
+    if (name.includes('/')) name = name.split('/').pop();
+    if (!name) return null;
+    const files = await _getMaterialFiles();
+    const base = p => p.split('/').pop();
+    let hit = files.find(p => base(p) === name);
+    if (!hit) hit = files.find(p => base(p).includes(name) || name.includes(base(p)));
+    if (!hit) {
+        const stem = name.replace(/\.[^.]+$/, '');
+        if (stem.length >= 4) {
+            hit = files.find(p => {
+                const s2 = base(p).replace(/\.[^.]+$/, '');
+                return s2.includes(stem) || stem.includes(s2);
+            });
+        }
+    }
+    return hit || null;
+}
+
+/** 依据里的路径可能只有文件名：先模糊匹配出真实路径再预览，匹配不到再按原路径试 */
+async function openMaterialPreviewResolved(path, quote) {
+    if (!path.includes('/')) {
+        const real = await _findMaterialPath(path);
+        if (real) { openMaterialPreview(real, quote); return; }
+    }
+    openMaterialPreview(path, quote);
+}
+
+/** 点“参考材料”清单项（只有文件名）：按名定位后打开原文预览 */
+async function openRefByName(text) {
+    try {
+        const path = await _findMaterialPath(text);
+        if (path) { openMaterialPreview(path, ''); return; }
+    } catch (e) { /* 材料列表拉取失败则提示 */ }
+    showToast('未在当前项目材料库中找到该文件（可能已被删除或未上传）', 'warning');
+}
+
 /** 解析一条依据标注并跳转：申报材料→预览原文并高亮摘录；摘要表→定位字段行 */
 function openSrcLink(rawText) {
     const text = String(rawText || '').replace(/^📎\s*依据[：:]/, '').trim();
@@ -161,11 +212,17 @@ function openSrcLink(rawText) {
         let m;
         if ((m = seg.match(/^申报材料[：:](.+)$/))) {
             const body = m[1].trim();
-            const qm = body.match(/[〈《]([^〉》]*)[〉》]/);
-            const path = body.replace(/[〈《][^〉》]*[〉》]/, '').trim();
-            if (path) { openMaterialPreview(path, qm ? qm[1].trim() : ''); return; }
+            const qm = body.match(/〈([^〉]*)〉/);
+            let path = body.replace(/〈[^〉]*〉/, '').trim();
+            // 兼容文件名被《》包裹的写法：《xx.xlsx》→ xx.xlsx
+            path = path.replace(/^《(.+)》$/, '$1').trim();
+            if (path) { openMaterialPreviewResolved(path, qm ? qm[1].trim() : ''); return; }
         }
         if ((m = seg.match(/^摘要表[：:](.+)$/))) { jumpToSummaryField(m[1].trim()); return; }
+    }
+    // 无类型前缀的裸文件名（部分旧格式）：尝试按名定位
+    if (text.length <= 60 && !/^(天眼查|网络公开|固定表述|planning)/.test(text)) {
+        openRefByName(text); return;
     }
     showToast('这类依据无法定位原文（如天眼查实时查询、网络信息、固定表述等）', 'warning');
 }
@@ -259,7 +316,7 @@ document.addEventListener('click', (e) => {
     const srcEl = e.target.closest && e.target.closest('.doc-src');
     if (srcEl) { openSrcLink(srcEl.textContent); return; }
     const refEl = e.target.closest && e.target.closest('.ref-item');
-    if (refEl) { openSrcLink(refEl.textContent); return; }
+    if (refEl) { openRefByName(refEl.textContent); return; }
 });
 
 /** 申报材料面板展开/收起（自包含切换，不走增强面板的 tab 逻辑，避免重置其他面板状态） */
@@ -357,6 +414,7 @@ async function onUploadMaterials(input) {
         if (stat) stat.textContent = tip;
         if (pStat) pStat.textContent = tip;
         const result = await API.uploadMaterials(files);
+        _invalidateMatCache();
         const parts = [];
         if (result.uploaded && result.uploaded.length) parts.push(`直传 ${result.uploaded.length} 个`);
         if (result.extracted_from_zip) parts.push(`zip 解压出 ${result.extracted_from_zip} 个`);
@@ -380,6 +438,7 @@ async function clearMaterialsUI() {
     if (v.trim() !== '清空') { showToast('已取消清空（未输入确认词）', 'warning'); return; }
     try {
         await API.clearMaterials();
+        _invalidateMatCache();
         showToast('材料已清空');
         await loadMaterialsUI();
     } catch (e) {
