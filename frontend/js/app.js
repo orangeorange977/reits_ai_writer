@@ -2243,6 +2243,7 @@ function selectProject(projectId) {
     currentProjectId = projectId;
     updateProjectHeaderBar();
     navigate('ndrc');
+    loadMaterialsUI();  // 面板默认展开态，toggle 不会触发加载，这里主动刷新
 }
 
 /** 删除项目（确认后调后端；示范项目不展示删除按钮，后端另有 403 保护） */
