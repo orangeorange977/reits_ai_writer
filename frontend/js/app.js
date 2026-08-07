@@ -766,7 +766,7 @@ function _showGlobalGenBanner(n) {
     banner.innerHTML = `
         <span class="ggb-dot"></span>
         <span>🤖 AI 正在生成：<b>${_escHtmlAttr(title)}</b>&nbsp;约需数分钟，期间可继续做别的</span>
-        <button class="ggb-go" onclick="selectChapter(${n})">去看看 →</button>`;
+        <button class="ggb-go" onclick="_goToChapter(${n})">去看看 →</button>`;
     banner.style.display = 'flex';
     banner.dataset.chapter = n;
 }
@@ -774,6 +774,12 @@ function _showGlobalGenBanner(n) {
 function _hideGlobalGenBanner() {
     const banner = document.getElementById('globalGenBanner');
     if (banner) banner.style.display = 'none';
+}
+
+/** 横幅“去看看”：先切到申报材料页，再打开正在生成的章（修 bug：之前只渲染编辑区不切页） */
+function _goToChapter(n) {
+    navigate('ndrc');
+    selectChapter(n);
 }
 
 /**
@@ -1075,6 +1081,18 @@ async function renderChapterEditor(n) {
     } catch (e) { /* 后端未就绪，按空处理 */ }
     // 本章已生成→同步刷新步骤条状态（兜底：覆盖跨设备/后台已生成的情况）
     if (content.source === 'ready') _markStepperDone(n);
+    // 本章正在生成→显示生成中状态并接入轮询（覆盖“去看看”跳进来/切章进来的场景）
+    API.getChapterStatus(n).then(st => {
+        if (st && st.status === 'running') {
+            _markStepperRunning(n);
+            _showGlobalGenBanner(n);
+            const btn2 = document.getElementById('btnChapterGen');
+            const banner2 = document.getElementById('chapterGenBanner');
+            if (btn2) { btn2.disabled = true; btn2.textContent = '⏳ 生成中...'; }
+            if (banner2) { banner2.style.display = 'block'; banner2.textContent = `🤖 AI 正在生成${_chapterTitle(n) || '本章'}，约需数分钟，请稍候…`; }
+            if (!_kimiTimer) _pollChapterGeneration(n);
+        }
+    }).catch(() => {});
 
     const hasSections = content.sections && content.sections.length > 0;
     const srcBadge = content.source === 'ready'
