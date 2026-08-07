@@ -197,13 +197,29 @@ async function openMaterialPreviewResolved(path, quote) {
     openMaterialPreview(path, quote);
 }
 
+/** 当前项目名（用于提示文案；拉不到则空） */
+async function _curProjectName() {
+    try {
+        const ps = await API.listProjects();
+        const p = (ps || []).find(x => String(x.id) === String(currentProjectId));
+        return p ? p.name : '';
+    } catch (e) { return ''; }
+}
+
+/** 依据文件找不到时的统一提示：说清“哪个项目、缺什么、怎么办” */
+async function _showMissingMaterialTip(fileName) {
+    const proj = await _curProjectName();
+    const head = proj ? `当前项目“${proj}”的材料库中没有《${fileName}》` : `未在当前项目材料库中找到《${fileName}》`;
+    showToast(`${head}——依据里的文件需在当前项目的“申报材料”里上传后才能回查原文`, 'warning');
+}
+
 /** 点“参考材料”清单项（只有文件名）：按名定位后打开原文预览 */
 async function openRefByName(text) {
     try {
         const path = await _findMaterialPath(text);
         if (path) { openMaterialPreview(path, ''); return; }
     } catch (e) { /* 材料列表拉取失败则提示 */ }
-    showToast('未在当前项目材料库中找到该文件（可能已被删除或未上传）', 'warning');
+    _showMissingMaterialTip(String(text || '').replace(/^📄\s*/, '').replace(/[《》]/g, '').split('/').pop() || '该文件');
 }
 
 /** 解析一条依据标注并跳转：申报材料→预览原文并高亮摘录；同上文件→复用上一条；摘要表→定位字段行 */
@@ -299,8 +315,13 @@ async function openMaterialPreview(path, quote) {
         }
     } catch (e) {
         document.getElementById('matPreviewTitle').textContent = '材料加载失败';
+        const proj = await _curProjectName();
+        const fname = String(path || '').split('/').pop() || '该文件';
+        const hint = proj
+            ? `当前项目“${proj}”的材料库里没有《${fname}》。若该文件在压缩包其他章节目录里，请到“申报材料”补传对应文件夹后重试；若确未上传，需先上传才能回查原文。`
+            : `材料库里没有《${fname}》，请先在“申报材料”里上传对应文件后重试。`;
         document.getElementById('matPreviewBody').innerHTML =
-            `<div style="padding:20px;color:var(--danger)">${_escHtmlAttr(e.message)}</div>`;
+            `<div style="padding:20px;color:var(--danger);line-height:1.7">${_escHtmlAttr(hint)}</div>`;
     }
 }
 
