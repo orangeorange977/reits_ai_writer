@@ -330,9 +330,8 @@ function toggleMaterialsPanel(headerEl) {
     if (!open) loadMaterialsUI();
 }
 
-/** 把材料路径列表按目录层级建树并渲染为树形 HTML（申报材料页面板用） */
-function _renderMaterialsTree(files) {
-    // 建树：{dirs: Map(名称->节点), files: [{name,size}]}
+/** 把材料路径列表按目录层级建树：{dirs: Map(名称->节点), files:[{name,size}]} */
+function _buildMaterialsTree(files) {
     const root = { dirs: new Map(), files: [] };
     for (const f of files) {
         const segs = String(f.path || '').split('/').filter(Boolean);
@@ -344,23 +343,60 @@ function _renderMaterialsTree(files) {
         }
         node.files.push({ name: fname, size: f.size });
     }
-    const renderNode = (node, depth) => {
+    return root;
+}
+
+/** 递归统计节点下文件总数（分栏里文件夹后面显示数量） */
+function _countTreeFiles(node) {
+    let n = node.files.length;
+    for (const sub of node.dirs.values()) n += _countTreeFiles(sub);
+    return n;
+}
+
+/** 仿 Finder 分栏浏览：点文件夹右侧展开下一栏，点文件选中（可横向滚动） */
+function renderColumnBrowser(container, files) {
+    const root = _buildMaterialsTree(files);
+    container.innerHTML = '';
+    container.classList.add('mc-browser');
+    const cols = [];
+
+    const makeCol = (node, level) => {
+        const col = document.createElement('div');
+        col.className = 'mc-col';
         let h = '';
-        const pad = `padding-left:${8 + depth * 16}px`;
-        const dirNames = Array.from(node.dirs.keys()).sort();
+        const dirNames = Array.from(node.dirs.keys()).sort((a, b) => a.localeCompare(b, 'zh'));
         for (const d of dirNames) {
-            h += `<div style="${pad};padding-top:3px;padding-bottom:3px;font-size:13px;font-weight:600">📁 ${_escHtmlAttr(d)}/</div>`;
-            h += renderNode(node.dirs.get(d), depth + 1);
+            h += `<div class="mc-row mc-dir" data-name="${_escHtmlAttr(d)}" data-type="dir">
+                <span class="mc-ico">📁</span><span class="mc-name" title="${_escHtmlAttr(d)}">${_escHtmlAttr(d)}</span>
+                <span class="mc-meta">${_countTreeFiles(node.dirs.get(d))}</span><span class="mc-arrow">▸</span></div>`;
         }
         for (const f of node.files.sort((a, b) => a.name.localeCompare(b.name, 'zh'))) {
-            h += `<div style="${pad};display:flex;justify-content:space-between;gap:8px;padding-top:3px;padding-bottom:3px;font-size:13px">
-                <span style="word-break:break-all">📄 ${_escHtmlAttr(f.name)}</span>
-                <span class="text-muted" style="flex-shrink:0">${_fmtSize(f.size)}</span>
-            </div>`;
+            h += `<div class="mc-row mc-file" data-name="${_escHtmlAttr(f.name)}" data-type="file" title="${_escHtmlAttr(f.name)}">
+                <span class="mc-ico">📄</span><span class="mc-name">${_escHtmlAttr(f.name)}</span>
+                <span class="mc-meta">${_fmtSize(f.size)}</span></div>`;
         }
-        return h;
+        col.innerHTML = h || '<div class="mc-empty">（空文件夹）</div>';
+        col.addEventListener('click', (e) => {
+            const row = e.target.closest('.mc-row');
+            if (!row) return;
+            // 移除更深的栏（重新选择后右侧作废）
+            cols.slice(level + 1).forEach(c => c.remove());
+            cols.length = level + 1;
+            col.querySelectorAll('.mc-row.selected').forEach(r => r.classList.remove('selected'));
+            row.classList.add('selected');
+            if (row.dataset.type === 'dir') {
+                const nc = makeCol(node.dirs.get(row.dataset.name), level + 1);
+                cols.push(nc);
+                container.appendChild(nc);
+                container.scrollLeft = container.scrollWidth;
+            }
+        });
+        return col;
     };
-    return renderNode(root, 0);
+
+    const first = makeCol(root, 0);
+    cols.push(first);
+    container.appendChild(first);
 }
 
 /** 拉取当前项目的材料列表并渲染（设置页平铺 + 申报材料页树形面板） */
@@ -370,18 +406,17 @@ async function loadMaterialsUI() {
         const statText = data.total_files > 0
             ? `已上传 ${data.total_files} 个文件，共 ${_fmtSize(data.total_size)}`
             : '尚未上传材料';
-        // 设置页（平铺列表）
+        // 设置页（仿 Finder 分栏浏览）
         const stat = document.getElementById('materialsStat');
         const list = document.getElementById('materialsFileList');
         if (stat) stat.textContent = statText;
         if (list) {
-            list.innerHTML = data.total_files === 0
-                ? '<div class="text-muted text-sm">暂无材料</div>'
-                : data.files.map(f =>
-                    `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 4px;font-size:13px">
-                        <span style="word-break:break-all">📄 ${f.path}</span>
-                        <span class="text-muted" style="flex-shrink:0">${_fmtSize(f.size)}</span>
-                    </div>`).join('');
+            if (data.total_files === 0) {
+                list.classList.remove('mc-browser');
+                list.innerHTML = '<div class="text-muted text-sm">暂无材料</div>';
+            } else {
+                renderColumnBrowser(list, data.files);
+            }
         }
         // 申报材料页面板（树形列表，保留文件夹层级）
         const pCount = document.getElementById('matPanelCount');
@@ -390,9 +425,12 @@ async function loadMaterialsUI() {
         if (pCount) pCount.textContent = data.total_files > 0 ? `（${data.total_files} 个文件）` : '';
         if (pStat) pStat.textContent = statText;
         if (pList) {
-            pList.innerHTML = data.total_files === 0
-                ? '<div class="text-muted text-sm">暂无材料，请上传项目相关的申报材料（支持整个文件夹）</div>'
-                : _renderMaterialsTree(data.files);
+            if (data.total_files === 0) {
+                pList.classList.remove('mc-browser');
+                pList.innerHTML = '<div class="text-muted text-sm">暂无材料，请上传项目相关的申报材料（支持整个文件夹）</div>';
+            } else {
+                renderColumnBrowser(pList, data.files);
+            }
         }
     } catch (e) {
         const stat = document.getElementById('materialsStat');

@@ -3043,3 +3043,46 @@ body {
     animation: fieldBlink 1s ease 3;
 }
 @keyframes fieldBlink { 50% { outline-color: transparent; } }
+
+/* ===== 仿 Finder 分栏浏览（申报材料文件列表） ===== */
+.mc-browser {
+    display: flex;
+    overflow-x: auto;
+    border: 1px solid #e2e6ee;
+    border-radius: 8px;
+    background: #fff;
+    height: 300px;
+    scroll-behavior: smooth;
+}
+.mc-col {
+    flex: 0 0 220px;
+    width: 220px;
+    overflow-y: auto;
+    border-right: 1px solid #eef0f4;
+    background: #fbfcfe;
+}
+.mc-col:last-child { border-right: none; }
+.mc-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+}
+.mc-row:hover { background: #f2f5fa; }
+.mc-row.selected { background: #2f6fed; color: #fff; }
+.mc-row.selected .mc-meta,
+.mc-row.selected .mc-arrow { color: rgba(255, 255, 255, 0.85); }
+.mc-ico { flex-shrink: 0; }
+.mc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.mc-dir .mc-name { font-weight: 600; }
+.mc-meta { color: #9aa3b2; font-size: 11px; flex-shrink: 0; }
+.mc-arrow { color: #b6bec9; font-size: 12px; flex-shrink: 0; }
+.mc-empty { padding: 12px; color: #9aa3b2; font-size: 12px; }
+@media (max-width: 720px) {
+    .mc-col { flex: 0 0 180px; width: 180px; }
+    .mc-browser { height: 240px; }
+}
