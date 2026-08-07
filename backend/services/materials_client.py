@@ -43,16 +43,49 @@ def _parse_pages(spec: str, total: int) -> list:
     return out
 
 
+def _ocr_local(images, query: str = "") -> str:
+    """本地 OCR 兜底（tesseract 中英文）：不花钱、不依赖外部 API。
+    精度不如视觉大模型（复杂表格/印章可能认错），但对承诺函/营业执照这类清晰扫描件够用。
+    query 在本地模式无法“只答相关内容”，只能整页识别后原样返回。失败返回空串。"""
+    try:
+        import pytesseract
+        from PIL import Image
+        import io
+        parts = []
+        for i, img in enumerate(images, 1):
+            try:
+                t = pytesseract.image_to_string(
+                    Image.open(io.BytesIO(img)).convert("RGB"), lang="chi_sim+eng")
+            except Exception:
+                # 个别容器缺中文语言包时退回纯英文识别，别整体失败
+                t = pytesseract.image_to_string(Image.open(io.BytesIO(img)).convert("RGB"))
+            t = (t or "").strip()
+            if t:
+                parts.append(f"〔第{i}张〕\n{t}" if len(images) > 1 else t)
+        return "\n\n".join(parts).strip()
+    except Exception as e:
+        logger.warning(f"本地 OCR 失败: {e}")
+        return ""
+
+
 def _ocr(images, query: str = "") -> str:
-    """把图片交给视觉模型识别文字；query 非空则只找与该问题相关的内容。失败返回可读说明（不抛异常）。"""
+    """图片文字识别：优先 Moonshot 视觉模型；未配置/key 失效时自动降级本地 OCR（免费兜底）。
+    query 非空则只找与该问题相关的内容（仅视觉模型支持）。失败返回可读说明（不抛异常）。"""
     if not images:
         return ""
-    try:
-        from backend.services import kimi_client
-        return (kimi_client.ocr_images(images, instruction=query) or "").strip()
-    except Exception as e:
-        logger.warning(f"视觉识别失败: {e}")
-        return f"（扫描件视觉识别失败：{e}）"
+    from backend.config import MOONSHOT_API_KEY
+    if MOONSHOT_API_KEY:
+        try:
+            from backend.services import kimi_client
+            txt = (kimi_client.ocr_images(images, instruction=query) or "").strip()
+            if txt:
+                return txt
+        except Exception as e:
+            logger.warning(f"视觉识别失败（将转本地 OCR）: {e}")
+    local = _ocr_local(images, query)
+    if local:
+        return "【以下为本地文字识别结果（精度有限，关键数字请核对原件）】\n" + local
+    return ""
 
 
 def _safe_join(root: Path, rel: str):
