@@ -185,10 +185,18 @@ def _block_to_html(blk, fn_counter):
         thead, body = _grid_rows_html(blk.get("headers", []) or [], blk.get("rows", []) or [])
         html = f'<table class="doc-grid-table">{cap_html}{thead}<tbody>{body}</tbody></table>'
     # 溯源：块级来源标注渲染为块下方的“依据”行（仅编辑区可见，不进 Word）；
-    # contenteditable=false：点击它跳转原文核对出处，不参与正文编辑
+    # contenteditable=false：点击它跳转原文核对出处，不参与正文编辑；
+    # 逐句引注格式（每条以〈n〉开头）拆成多条可点引注项，与正文句尾的〈n〉一一对应
     src = str(blk.get("src") or "").strip()
     if html and src:
-        html += f'<div class="doc-src" contenteditable="false" title="点击查看原文出处">📎 依据：{_esc_html(src)}</div>'
+        notes = [s.strip() for s in re.split(r"[；;]", src) if s.strip()]
+        if len(notes) > 1 and any(re.match(r"〈\d{1,2}〉", nt) for nt in notes):
+            inner = "；".join(
+                f'<span class="src-item" title="点击查看原文出处">{_esc_html(nt)}</span>'
+                for nt in notes)
+            html += f'<div class="doc-src src-notes" contenteditable="false">📎 依据：{inner}</div>'
+        else:
+            html += f'<div class="doc-src" contenteditable="false" title="点击查看原文出处">📎 依据：{_esc_html(src)}</div>'
     return html
 
 
@@ -597,15 +605,20 @@ def _output_contract(chapter_title: str) -> str:
         "**输出时一律把这些引号改成中文引号“”**（例如原文 承诺：\"本公司…\" → 输出 承诺：“本公司…”），"
         "只改引号符号、不改里面的文字。字符串里也不要出现真实换行（用一段连续文本），"
         "如含反斜杠 \\ 需写成 \\\\。记住：值里面只允许中文引号“”‘’，不允许裸的英文 \"。\n"
-        "8. 【来源溯源】每个块必须带 \"src\" 字段，写明该段正文/表格内容的来源依据，供人工核对：\n"
+        "8. 【来源溯源：逐句引注】要求每一句正文都能追溯到出处，做法仿照论文引注：\n"
+        "   a) 每个块的正文里，**每个有实质内容的句子末尾**都标注引注号〈n〉（全角尖括号+数字，如〈1〉〈2〉）；"
+        "引注号按“来源”编号：同一来源的多句话用同一个号；本块内从〈1〉起递增；表格块不用逐句标，在 src 里写明整表来源即可；\n"
+        "   b) 块的 \"src\" 字段按引注号顺序列出每个号对应的来源，每条以“〈n〉”开头，条与条之间用“；”分隔，"
+        "如：\"〈1〉申报材料：xxx.pdf 〈原文摘录〉；〈2〉摘要表：项目名称\"；\n"
+        "   c) 每条来源的写法规范：\n"
         "   · 来自上传的申报材料/证明文件：写“申报材料：<文件相对路径> 〈原文摘录〉”（路径用 list_materials 返回的真实路径；"
-        "〈〉里从该文件原文逐字摘录 10~30 字最能佐证本段内容的一句，不得改写；如一个文件多处佐证可只录最核心一处）；\n"
+        "〈〉里从该文件原文逐字摘录 10~30 字最能佐证对应句子的一句，不得改写；如一个文件多处佐证可只录最核心一处）；\n"
         "   · 来自已保存的摘要表/释义/其他基本信息：写“摘要表：<字段名>”或“释义”“其他基本信息”；\n"
         "   · 来自天眼查查询：写“天眼查查询：<企业名>”；\n"
         "   · 来自联网搜索：写“网络公开信息：<来源/时点>”；\n"
         "   · 来自 planning.md：写“planning.md”；\n"
         "   · 模板固定表述/无具体依据：写“固定表述（无具体依据）”；拿不准的写“待核实”。\n"
-        "   多个来源用“；”分隔；**绝不允许编造不存在的来源**——src 必须真实对应你实际参考过的材料。\n"
+        "   **绝不允许编造不存在的来源**——src 必须真实对应你实际参考过的材料；正文里的每个引注号都必须在 src 里有对应条目。\n"
     )
 
 

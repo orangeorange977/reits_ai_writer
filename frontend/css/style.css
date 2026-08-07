@@ -2962,6 +2962,24 @@ body {
 .doc-editor .doc-src { cursor: pointer; }
 .doc-editor .doc-src:hover { background: #e3f5ea; text-decoration: underline; }
 
+/* 逐句引注：每条〈n〉来源单独成块，点哪条跳哪条 */
+.doc-editor .doc-src.src-notes { display: block; line-height: 1.8; }
+.doc-editor .doc-src.src-notes:hover { text-decoration: none; }
+.doc-editor .src-item {
+    display: inline-block;
+    cursor: pointer;
+    padding: 1px 6px;
+    margin: 1px 2px;
+    border-radius: 5px;
+    background: rgba(76, 175, 80, 0.1);
+    transition: background var(--transition-fast);
+    word-break: break-all;
+}
+.doc-editor .src-item:hover {
+    background: #cdeeda;
+    text-decoration: underline;
+}
+
 .mat-preview-overlay {
     position: fixed;
     inset: 0;

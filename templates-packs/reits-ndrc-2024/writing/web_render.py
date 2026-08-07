@@ -134,6 +134,8 @@ def _apply_cell_format(cell):
 _FN_OPEN = ""
 _FN_CLOSE = ""
 _FN_RE = re.compile(_FN_OPEN + r"(.*?)" + _FN_CLOSE, re.DOTALL)
+# 逐句溯源引注号（网页编辑区可见可核对，导出 Word 时剔除）
+_CITE_RE = re.compile(r"〈\d{1,2}〉")
 
 
 def _split_fn(text):
@@ -150,7 +152,7 @@ def _split_fn(text):
 
 def _fn_to_inline(text):
     """降级用：把脚注标记转成文内括注（无脚注部件的场景，如独立文档兜底）。"""
-    return _FN_RE.sub(lambda m: f"（注：{m.group(1)}）", text or "")
+    return _FN_RE.sub(lambda m: f"（注：{m.group(1)}）", _CITE_RE.sub("", text or ""))
 
 
 def _xml_escape(s):
@@ -533,7 +535,10 @@ def _add_para_runs(paragraph, text, fn_state, collected):
             collected.append((fid, seg))
             _add_footnote_ref(paragraph, fid)
         elif seg:
-            _set_font(paragraph.add_run(seg), _BODY_PT)
+            # 逐句引注的〈n〉标记仅供网页端溯源核对，正式 Word 里剔除
+            seg = _CITE_RE.sub("", seg)
+            if seg:
+                _set_font(paragraph.add_run(seg), _BODY_PT)
 
 
 def _footnote_xml(fid, text):

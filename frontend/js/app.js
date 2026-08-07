@@ -252,8 +252,10 @@ async function jumpToSummaryField(field) {
     setTimeout(() => hit.classList.remove('field-highlight'), 4000);
 }
 
-// 事件委托：点“📎 依据”行/参考材料清单项 → 跳转出处
+// 事件委托：点“📎 依据”行/引注项/参考材料清单 → 跳转出处
 document.addEventListener('click', (e) => {
+    const item = e.target.closest && e.target.closest('.src-item');
+    if (item) { openSrcLink(item.textContent); return; }   // 逐句引注：点哪条跳哪条
     const srcEl = e.target.closest && e.target.closest('.doc-src');
     if (srcEl) { openSrcLink(srcEl.textContent); return; }
     const refEl = e.target.closest && e.target.closest('.ref-item');
@@ -370,9 +372,12 @@ async function onUploadMaterials(input) {
     }
 }
 
-/** 清空当前项目的全部材料（二次确认） */
+/** 清空当前项目的全部材料（双重确认：先确认意图，再输入“清空”防误触） */
 async function clearMaterialsUI() {
-    if (!confirm('确定清空当前项目的全部申报材料吗？此操作不可恢复。')) return;
+    if (!confirm('您即将清空当前项目的全部申报材料，此操作不可恢复！\n\n确定要继续吗？')) return;
+    const v = prompt('为防止误操作，请输入“清空”两个字确认：');
+    if (v === null) return;
+    if (v.trim() !== '清空') { showToast('已取消清空（未输入确认词）', 'warning'); return; }
     try {
         await API.clearMaterials();
         showToast('材料已清空');
