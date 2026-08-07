@@ -2949,4 +2949,79 @@ body {
     border: 1px solid #e4efe6;
     border-radius: 6px;
     word-break: break-all;
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
 }
+
+.ref-item:hover {
+    background: #eef8f1;
+    border-color: #bfe0cb;
+}
+
+/* ===== 溯源点击跳转：依据行可点；材料预览弹窗；字段高亮 ===== */
+.doc-editor .doc-src { cursor: pointer; }
+.doc-editor .doc-src:hover { background: #e3f5ea; text-decoration: underline; }
+
+.mat-preview-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    background: rgba(15, 30, 20, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 4vh 4vw;
+}
+.mat-preview-box {
+    background: var(--bg-surface);
+    border-radius: 12px;
+    width: min(860px, 100%);
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+}
+.mat-preview-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+}
+.mat-preview-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+.mat-preview-body { padding: 16px 20px; overflow-y: auto; }
+.mat-text {
+    font-size: 13.5px;
+    line-height: 2;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.src-mark {
+    background: #ffe58a;
+    padding: 1px 2px;
+    border-radius: 3px;
+    box-shadow: 0 0 0 2px #ffe58a;
+}
+.src-tip {
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    line-height: 1.6;
+}
+.src-tip.ok { background: #ecf9f1; color: #1d7a50; border: 1px solid #bfe6cf; }
+.src-tip.warn { background: #fff8e6; color: #9a6b00; border: 1px solid #f0dca0; }
+.field-highlight {
+    outline: 3px solid #ffb300;
+    border-radius: 8px;
+    animation: fieldBlink 1s ease 3;
+}
+@keyframes fieldBlink { 50% { outline-color: transparent; } }

@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from backend.config import PROJECTS_DIR
 from backend.database.db import get_db, get_project_owner_id, is_preset_project
-from backend.services import pack_service
+from backend.services import pack_service, materials_client
 
 logger = logging.getLogger(__name__)
 
@@ -367,6 +367,27 @@ async def list_materials(project_id: int, http_req: Request):
         "total_size": sum(f["size"] for f in files),
         "files": files,
     }
+
+
+@router.get("/projects/{project_id}/materials/preview")
+async def preview_material(project_id: int, http_req: Request, path: str = ""):
+    """解析上传材料的原文（供“依据”标注点击后核对出处用，非下载）。"""
+    await _assert_project_owned(project_id, _current_user_id(http_req))
+    root = _materials_dir(project_id)
+    parts = [seg for seg in (path or "").replace("\\", "/").split("/") if seg and seg != "."]
+    if not parts or any(seg == ".." for seg in parts):
+        raise HTTPException(status_code=400, detail="无效的文件路径")
+    fp = root
+    for seg in parts:
+        fp = fp / seg
+    if not fp.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在或已被删除")
+    try:
+        text = await asyncio.to_thread(materials_client.extract_file_text, fp, "")
+    except Exception as e:
+        logger.error(f"解析材料失败 {fp}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"解析失败：{e}")
+    return {"filename": fp.name, "path": path, "text": (text or "")[:120000]}
 
 
 @router.delete("/projects/{project_id}/materials")

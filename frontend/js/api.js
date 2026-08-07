@@ -212,6 +212,15 @@ const API = {
     },
 
     /**
+     * 预览材料原文（“依据”标注点击后核对出处用）
+     * @returns {Promise<object>} {filename, path, text}
+     */
+    async previewMaterial(path) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.get(`/projects/${pid}/materials/preview`, { path });
+    },
+
+    /**
      * 清空当前项目的全部申报材料
      */
     async clearMaterials() {

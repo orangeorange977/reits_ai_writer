@@ -151,6 +151,115 @@ function _fmtTime(t) {
     return d.toLocaleString('sv-SE', { timeZone: 'Asia/Shanghai' }).slice(0, 16);
 }
 
+// ===== 溯源跳转：点“📎 依据”/参考材料清单，直接定位到对应出处 =====
+
+/** 解析一条依据标注并跳转：申报材料→预览原文并高亮摘录；摘要表→定位字段行 */
+function openSrcLink(rawText) {
+    const text = String(rawText || '').replace(/^📎\s*依据[：:]/, '').trim();
+    if (!text) return;
+    for (const seg of text.split(/[；;]/).map(s => s.trim()).filter(Boolean)) {
+        let m;
+        if ((m = seg.match(/^申报材料[：:](.+)$/))) {
+            const body = m[1].trim();
+            const qm = body.match(/[〈《]([^〉》]*)[〉》]/);
+            const path = body.replace(/[〈《][^〉》]*[〉》]/, '').trim();
+            if (path) { openMaterialPreview(path, qm ? qm[1].trim() : ''); return; }
+        }
+        if ((m = seg.match(/^摘要表[：:](.+)$/))) { jumpToSummaryField(m[1].trim()); return; }
+    }
+    showToast('这类依据无法定位原文（如天眼查实时查询、网络信息、固定表述等）', 'warning');
+}
+
+/** 材料原文预览弹窗：加载解析文本，高亮“依据”里摘录的原句并滚动到该处 */
+async function openMaterialPreview(path, quote) {
+    let modal = document.getElementById('matPreviewModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'matPreviewModal';
+        modal.className = 'mat-preview-overlay';
+        modal.innerHTML = `
+            <div class="mat-preview-box">
+                <div class="mat-preview-head">
+                    <span class="mat-preview-title" id="matPreviewTitle">正在加载材料…</span>
+                    <button class="btn btn-ghost btn-sm" onclick="closeMaterialPreview()">✕ 关闭</button>
+                </div>
+                <div class="mat-preview-body" id="matPreviewBody"></div>
+            </div>`;
+        modal.addEventListener('click', (e) => { if (e.target === modal) closeMaterialPreview(); });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.style.display === 'flex') closeMaterialPreview();
+        });
+        document.body.appendChild(modal);
+    }
+    modal.style.display = 'flex';
+    document.getElementById('matPreviewTitle').textContent = '正在加载材料原文…';
+    document.getElementById('matPreviewBody').innerHTML =
+        '<div class="text-muted" style="padding:20px">正在解析材料，请稍候…（扫描件需要识别文字，会稍慢）</div>';
+    try {
+        const d = await API.previewMaterial(path);
+        document.getElementById('matPreviewTitle').textContent = `📄 《${d.filename}》原文`;
+        const body = document.getElementById('matPreviewBody');
+        const text = d.text || '（未能解析出该文件的文字）';
+        // 先逐字匹配摘录；不行再用摘录开头段兜底（标点空格可能有微小出入）
+        let idx = quote ? text.indexOf(quote) : -1;
+        let markLen = quote ? quote.length : 0;
+        if (idx < 0 && quote) {
+            const head = quote.slice(0, Math.max(6, Math.min(14, quote.length)));
+            idx = text.indexOf(head);
+            markLen = head.length;
+        }
+        let tip = '';
+        if (quote && idx >= 0) {
+            tip = '<div class="src-tip ok">✅ 已按“依据”摘录定位到原文（下方高亮处），可结合上下文核对。</div>';
+        } else if (quote) {
+            tip = `<div class="src-tip warn">⚠️ 摘录未能在本文档中逐字定位（可能略有出入），摘录内容：“${_escHtmlAttr(quote)}”，请人工核对。</div>`;
+        }
+        if (idx >= 0) {
+            body.innerHTML = tip
+                + `<div class="mat-text">${_escHtmlAttr(text.slice(0, idx))}`
+                + `<mark class="src-mark">${_escHtmlAttr(text.slice(idx, idx + markLen))}</mark>`
+                + `${_escHtmlAttr(text.slice(idx + markLen))}</div>`;
+            const mk = body.querySelector('.src-mark');
+            if (mk) setTimeout(() => mk.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+        } else {
+            body.innerHTML = tip + `<div class="mat-text">${_escHtmlAttr(text)}</div>`;
+        }
+    } catch (e) {
+        document.getElementById('matPreviewTitle').textContent = '材料加载失败';
+        document.getElementById('matPreviewBody').innerHTML =
+            `<div style="padding:20px;color:var(--danger)">${_escHtmlAttr(e.message)}</div>`;
+    }
+}
+
+function closeMaterialPreview() {
+    const modal = document.getElementById('matPreviewModal');
+    if (modal) modal.style.display = 'none';
+}
+
+/** “摘要表：字段”→跳到摘要表编辑页，高亮定位到对应字段行 */
+async function jumpToSummaryField(field) {
+    await selectSummary();
+    await new Promise(r => setTimeout(r, 500));
+    const rows = document.querySelectorAll('#chapterDetail .kv-row');
+    let hit = null;
+    for (const row of rows) {
+        const key = row.querySelector('.kv-key');
+        if (key && key.value && (key.value.includes(field) || field.includes(key.value))) { hit = row; break; }
+    }
+    if (!hit) { showToast(`摘要表里没找到“${field}”字段，可能在释义/其他基本信息里，或名称略有出入`, 'warning'); return; }
+    hit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    hit.classList.add('field-highlight');
+    setTimeout(() => hit.classList.remove('field-highlight'), 4000);
+}
+
+// 事件委托：点“📎 依据”行/参考材料清单项 → 跳转出处
+document.addEventListener('click', (e) => {
+    const srcEl = e.target.closest && e.target.closest('.doc-src');
+    if (srcEl) { openSrcLink(srcEl.textContent); return; }
+    const refEl = e.target.closest && e.target.closest('.ref-item');
+    if (refEl) { openSrcLink(refEl.textContent); return; }
+});
+
 /** 申报材料面板展开/收起（自包含切换，不走增强面板的 tab 逻辑，避免重置其他面板状态） */
 function toggleMaterialsPanel(headerEl) {
     const body = document.getElementById('materials-body');

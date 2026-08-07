@@ -184,10 +184,11 @@ def _block_to_html(blk, fn_counter):
         cap_html = f"<caption>{cap}</caption>" if cap else ""
         thead, body = _grid_rows_html(blk.get("headers", []) or [], blk.get("rows", []) or [])
         html = f'<table class="doc-grid-table">{cap_html}{thead}<tbody>{body}</tbody></table>'
-    # 溯源：块级来源标注渲染为块下方的“依据”行（仅编辑区可见，不进 Word）
+    # 溯源：块级来源标注渲染为块下方的“依据”行（仅编辑区可见，不进 Word）；
+    # contenteditable=false：点击它跳转原文核对出处，不参与正文编辑
     src = str(blk.get("src") or "").strip()
     if html and src:
-        html += f'<div class="doc-src">📎 依据：{_esc_html(src)}</div>'
+        html += f'<div class="doc-src" contenteditable="false" title="点击查看原文出处">📎 依据：{_esc_html(src)}</div>'
     return html
 
 
@@ -597,7 +598,8 @@ def _output_contract(chapter_title: str) -> str:
         "只改引号符号、不改里面的文字。字符串里也不要出现真实换行（用一段连续文本），"
         "如含反斜杠 \\ 需写成 \\\\。记住：值里面只允许中文引号“”‘’，不允许裸的英文 \"。\n"
         "8. 【来源溯源】每个块必须带 \"src\" 字段，写明该段正文/表格内容的来源依据，供人工核对：\n"
-        "   · 来自上传的申报材料/证明文件：写“申报材料：<文件相对路径>”（路径用 list_materials 返回的真实路径）；\n"
+        "   · 来自上传的申报材料/证明文件：写“申报材料：<文件相对路径> 〈原文摘录〉”（路径用 list_materials 返回的真实路径；"
+        "〈〉里从该文件原文逐字摘录 10~30 字最能佐证本段内容的一句，不得改写；如一个文件多处佐证可只录最核心一处）；\n"
         "   · 来自已保存的摘要表/释义/其他基本信息：写“摘要表：<字段名>”或“释义”“其他基本信息”；\n"
         "   · 来自天眼查查询：写“天眼查查询：<企业名>”；\n"
         "   · 来自联网搜索：写“网络公开信息：<来源/时点>”；\n"
