@@ -192,14 +192,40 @@ const API = {
     /**
      * 上传申报材料（多文件，支持 zip 自动解压）到当前项目
      * @param {FileList|File[]} files - 选中的文件
+     * @param {Function} [onProgress] - 可选，字节级进度回调 ({loaded, total})
      * @returns {Promise<object>} {uploaded, extracted_from_zip, skipped}
      */
-    async uploadMaterials(files) {
+    async uploadMaterials(files, onProgress) {
         const form = new FormData();
         // 文件夹上传时携带相对路径，后端按目录结构落盘
         for (const f of files) form.append('files', f, f.webkitRelativePath || f.name);
         const pid = encodeURIComponent(this._currentProjectId());
-        return this.request(`/projects/${pid}/materials`, { method: 'POST', body: form });
+        if (!onProgress) {
+            return this.request(`/projects/${pid}/materials`, { method: 'POST', body: form });
+        }
+        // 需要字节级进度时用 XHR（fetch 无法监听上传进度）
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `${API_BASE}/projects/${pid}/materials`);
+            const t = AuthToken.get();
+            if (t) xhr.setRequestHeader('Authorization', 'Bearer ' + t);
+            if (xhr.upload) xhr.upload.onprogress = (e) => onProgress({ loaded: e.loaded, total: e.total });
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try { resolve(JSON.parse(xhr.responseText)); }
+                    catch (e) { reject(new Error('响应解析失败')); }
+                } else if (xhr.status === 401) {
+                    handleUnauthorized();
+                    reject(new Error('未登录或登录已过期'));
+                } else {
+                    let detail = '';
+                    try { detail = JSON.parse(xhr.responseText).detail || ''; } catch (e) {}
+                    reject(new Error(typeof detail === 'string' && detail ? detail : '上传失败(' + xhr.status + ')'));
+                }
+            };
+            xhr.onerror = () => reject(new Error('网络错误，上传失败'));
+            xhr.send(form);
+        });
     },
 
     /**

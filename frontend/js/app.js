@@ -2267,15 +2267,20 @@ async function submitNewProject() {
             let skippedNames = [];
             const t0 = Date.now();
             currentProjectId = created.id;  // uploadMaterials 按当前项目上传
-            // 项目创建完立刻进入上传文案，且每秒刷新“已用时长”，不等批次传完
-            let lastDone = 0;
+            // 项目创建完立刻进入上传文案；按“已传字节”估算剩余时间（第一个文件没传完也能估），每秒刷新
+            const totalBytes = files.reduce((s, f) => s + (f.size || 0), 0);
+            let doneBytes = 0, curBatchBytes = 0, lastDone = 0;
+            const fmtBytes = (b) => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
             const renderUploadProgress = () => {
                 const elapsed = (Date.now() - t0) / 1000;
-                const eta = (lastDone > 0 && elapsed > 3) ? (files.length - lastDone) * elapsed / lastDone : null;
+                const sent = doneBytes + curBatchBytes;
+                const speed = elapsed > 2 ? sent / elapsed : 0;  // 字节/秒
+                const eta = (speed > 1024 && totalBytes > sent) ? (totalBytes - sent) / speed : null;
+                const pct = totalBytes ? Math.min(95, 5 + 90 * sent / totalBytes) : 5 + 90 * lastDone / files.length;
                 const tip = eta === null
                     ? `｜已用 ${_fmtDur(elapsed)}，正在估算时间…`
                     : `｜已用 ${_fmtDur(elapsed)}，预计还需 ${_fmtDur(eta)}`;
-                setProgress(`正在上传申报材料（第 ${lastDone}/${files.length} 个文件）…${tip}`, 5 + 90 * lastDone / files.length);
+                setProgress(`正在上传申报材料（第 ${lastDone}/${files.length} 个文件）${fmtBytes(sent)}${totalBytes ? ' / ' + fmtBytes(totalBytes) : ''}…${tip}`, pct);
             };
             renderUploadProgress();
             const ticker = setInterval(renderUploadProgress, 1000);
@@ -2283,7 +2288,10 @@ async function submitNewProject() {
                 for (let i = 0; i < files.length; i += BATCH) {
                     const batch = files.slice(i, i + BATCH);
                     const to = Math.min(i + BATCH, files.length);
-                    const result = await API.uploadMaterials(batch);
+                    curBatchBytes = 0;
+                    const result = await API.uploadMaterials(batch, (p) => { curBatchBytes = p.loaded || 0; });
+                    doneBytes += batch.reduce((s, f) => s + (f.size || 0), 0);
+                    curBatchBytes = 0;
                     lastDone = to;
                     uploaded += (result.uploaded || []).length;
                     skipped += (result.skipped || []).length;
