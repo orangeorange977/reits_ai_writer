@@ -2903,3 +2903,76 @@ body {
     font-size: 13px;
     margin-bottom: 10px;
 }
+
+/* ===== 溯源：正文每段/每表下方的来源依据行（编辑区可见可改，不进 Word） ===== */
+.doc-editor .doc-src {
+    margin: 2px 0 12px;
+    padding: 3px 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted);
+    background: rgba(76, 175, 80, 0.06);
+    border-left: 3px solid rgba(76, 175, 80, 0.55);
+    border-radius: 0 4px 4px 0;
+}
+
+/* ===== 溯源：本章生成依据（证据链）面板 ===== */
+.evidence-panel {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    padding: 8px 12px;
+}
+.evidence-panel summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.evidence-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 6px 0;
+}
+.evidence-list {
+    max-height: 240px;
+    overflow-y: auto;
+}
+.ev-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 4px 2px;
+    font-size: 12px;
+    border-top: 1px dashed var(--border);
+}
+.ev-row:first-child { border-top: none; }
+.ev-num {
+    flex-shrink: 0;
+    width: 18px;
+    text-align: right;
+    color: var(--text-muted);
+}
+.ev-tool {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.ev-args {
+    flex-shrink: 0;
+    max-width: 320px;
+    word-break: break-all;
+    color: var(--text-primary);
+}
+.ev-excerpt {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+.ev-time {
+    flex-shrink: 0;
+    color: var(--text-muted);
+}

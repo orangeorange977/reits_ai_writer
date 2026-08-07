@@ -50,6 +50,21 @@ _MAX_MATERIAL_FILES = 3000                          # 解压后文件数上限
 _CHUNK = 1024 * 1024                                # 大文件分块读写 1MB
 
 
+def _rel_parts(raw_name: str) -> list:
+    """把上传文件名（可能带子目录，如浏览器文件夹上传的 webkitRelativePath）
+    拆成安全的路径段：统一分隔符、丢弃空段与 '.'/'..'（防穿越），绝对路径也剥掉盘符/前缀。"""
+    parts = []
+    for seg in str(raw_name or "").replace("\\", "/").split("/"):
+        seg = seg.strip()
+        if not seg or seg in (".", ".."):
+            continue
+        # Windows 绝对路径（C:\\…）在浏览器里一般已转相对，保险起见再剥一次冒号前缀
+        if ":" in seg:
+            seg = seg.split(":", 1)[1].strip("/") or seg
+        parts.append(seg)
+    return parts
+
+
 def _materials_dir(project_id: int) -> Path:
     """项目材料目录：workspace/projects/<id>/materials/（项目 ID 为 DB 自增整数，无穿越风险）。"""
     return PROJECTS_DIR / str(project_id) / "materials"
@@ -314,10 +329,14 @@ async def upload_materials(project_id: int, http_req: Request, files: List[Uploa
             finally:
                 Path(tmp_path).unlink(missing_ok=True)
         else:
-            target = dest / Path(f.filename).name
+            # 文件名可能带子目录（文件夹上传时前端用 webkitRelativePath 作文件名）：
+            # 按相对路径落盘、保留文件夹结构；净化后无有效路径段的按原名兜底
+            parts = _rel_parts(f.filename) or [Path(f.filename or "").name or "未命名文件"]
+            target = dest.joinpath(*parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
             with open(target, "wb") as out:
                 shutil.copyfileobj(f.file, out, _CHUNK)
-            added.append(target.name)
+            added.append(target.relative_to(dest).as_posix())
 
     return {
         "uploaded": added,

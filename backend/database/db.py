@@ -187,6 +187,22 @@ async def get_project_owner_id(project_id) -> int | None:
     return int(row[0])
 
 
+async def touch_project_updated_at(project_id) -> None:
+    """项目内容发生变化（章节/摘要保存、生成完成）时刷新 updated_at，
+    项目列表的“更新时间”以此为准。失败不阻断主流程。"""
+    try:
+        pid = int(project_id)
+    except (TypeError, ValueError):
+        return
+    try:
+        async with aiosqlite.connect(str(DATABASE_PATH)) as db:
+            await db.execute(
+                "UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (pid,))
+            await db.commit()
+    except Exception:
+        pass
+
+
 async def upsert_generation_job(project_id: str, chapter_n: int, status: str,
                                 data_json: str = None, error: str = None) -> None:
     """写入/更新生成任务状态（步骤 3.5：状态入 DB，重启/多 worker 后可见）。"""

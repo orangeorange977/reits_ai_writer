@@ -44,8 +44,8 @@ function navigate(pageId) {
         targetPage.classList.add('active');
     }
 
-    // 进设置页时刷新当前项目的材料列表（步骤 3.4）
-    if (pageId === 'settings') {
+    // 进设置页/申报材料页时刷新当前项目的材料列表（步骤 3.4）
+    if (pageId === 'settings' || pageId === 'ndrc') {
         loadMaterialsUI();
     }
 
@@ -143,38 +143,83 @@ function _fmtSize(bytes) {
     return bytes + ' B';
 }
 
-/** 拉取当前项目的材料列表并渲染（设置页展示） */
+/** 把材料文件列表按文件夹结构渲染成树形列表（申报材料页面板用） */
+function _renderMaterialsTree(files) {
+    const root = { dirs: {}, files: [] };
+    for (const f of files) {
+        const parts = (f.path || '').split('/').filter(Boolean);
+        let node = root;
+        for (let i = 0; i < parts.length - 1; i++) {
+            node.dirs[parts[i]] = node.dirs[parts[i]] || { dirs: {}, files: [] };
+            node = node.dirs[parts[i]];
+        }
+        node.files.push({ name: parts[parts.length - 1] || f.path, size: f.size });
+    }
+    const renderNode = (node, depth) => {
+        let html = '';
+        const pad = 4 + depth * 16;
+        Object.keys(node.dirs).sort((a, b) => a.localeCompare(b, 'zh')).forEach(name => {
+            html += `<div style="padding:3px 4px 3px ${pad}px;font-size:13px;font-weight:600">📁 ${_escHtmlAttr(name)}/</div>`;
+            html += renderNode(node.dirs[name], depth + 1);
+        });
+        for (const f of node.files) {
+            html += `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 4px 3px ${pad}px;font-size:13px">
+                <span style="word-break:break-all">📄 ${_escHtmlAttr(f.name)}</span>
+                <span class="text-muted" style="flex-shrink:0">${_fmtSize(f.size)}</span>
+            </div>`;
+        }
+        return html;
+    };
+    return renderNode(root, 0);
+}
+
+/** 拉取当前项目的材料列表并渲染（申报材料页面板 + 系统设置页同步展示） */
 async function loadMaterialsUI() {
-    const stat = document.getElementById('materialsStat');
-    const list = document.getElementById('materialsFileList');
-    if (!stat || !list) return;
+    const statEls = ['materialsStat', 'matPanelStat']
+        .map(id => document.getElementById(id)).filter(Boolean);
+    const countEl = document.getElementById('matPanelCount');
     try {
         const data = await API.listMaterials();
-        stat.textContent = data.total_files > 0
+        const statText = data.total_files > 0
             ? `已上传 ${data.total_files} 个文件，共 ${_fmtSize(data.total_size)}`
             : '尚未上传材料';
-        if (data.total_files === 0) {
-            list.innerHTML = '<div class="text-muted text-sm">暂无材料</div>';
-            return;
+        statEls.forEach(el => el.textContent = statText);
+        if (countEl) countEl.textContent = data.total_files > 0
+            ? `（${data.total_files} 个文件 · ${_fmtSize(data.total_size)}）` : '（尚未上传）';
+
+        // 系统设置页：平铺列表
+        const list = document.getElementById('materialsFileList');
+        if (list) {
+            list.innerHTML = data.total_files === 0
+                ? '<div class="text-muted text-sm">暂无材料</div>'
+                : data.files.map(f =>
+                    `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 4px;font-size:13px">
+                        <span style="word-break:break-all">📄 ${_escHtmlAttr(f.path)}</span>
+                        <span class="text-muted" style="flex-shrink:0">${_fmtSize(f.size)}</span>
+                    </div>`).join('');
         }
-        list.innerHTML = data.files.map(f =>
-            `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 4px;font-size:13px">
-                <span style="word-break:break-all">📄 ${f.path}</span>
-                <span class="text-muted" style="flex-shrink:0">${_fmtSize(f.size)}</span>
-            </div>`).join('');
+        // 申报材料页面板：按文件夹分组的树形列表
+        const panel = document.getElementById('matPanelList');
+        if (panel) {
+            panel.innerHTML = data.total_files === 0
+                ? '<div class="text-muted text-sm">暂无材料</div>'
+                : _renderMaterialsTree(data.files);
+        }
     } catch (e) {
-        stat.textContent = '材料列表加载失败';
+        statEls.forEach(el => el.textContent = '材料列表加载失败');
+        if (countEl) countEl.textContent = '';
     }
 }
 
-/** 选择文件后上传（支持多选，zip 后端自动解压） */
+/** 选择文件后上传（支持多选/整个文件夹，zip 后端自动解压） */
 async function onUploadMaterials(input) {
     const files = input.files;
     if (!files || files.length === 0) return;
-    const stat = document.getElementById('materialsStat');
-    const oldText = stat ? stat.textContent : '';
+    const statEls = ['materialsStat', 'matPanelStat']
+        .map(id => document.getElementById(id)).filter(Boolean);
+    const oldTexts = statEls.map(el => el.textContent);
     try {
-        if (stat) stat.textContent = `正在上传 ${files.length} 个文件…（大文件/解压需要一点时间）`;
+        statEls.forEach(el => el.textContent = `正在上传 ${files.length} 个文件…（大文件/解压需要一点时间）`);
         const result = await API.uploadMaterials(files);
         const parts = [];
         if (result.uploaded && result.uploaded.length) parts.push(`直传 ${result.uploaded.length} 个`);
@@ -184,7 +229,7 @@ async function onUploadMaterials(input) {
         await loadMaterialsUI();
     } catch (e) {
         showToast('上传失败：' + e.message, 'error');
-        if (stat) stat.textContent = oldText;
+        statEls.forEach((el, i) => el.textContent = oldTexts[i]);
     } finally {
         input.value = '';  // 允许重复选择同一个文件
     }
@@ -914,6 +959,25 @@ async function renderChapterEditor(n) {
             </div>
         </div>
         <div id="chapterGenBanner" class="kimi-status" style="display:none;margin-bottom:12px"></div>`;
+
+    // 溯源证据链：本章生成时 AI 真实读过的材料文件/调用的工具（后端随内容返回），
+    // 逐条可核对“每一句内容从哪来”；正文每段下方的“📎 依据：…”则是逐块标注
+    if (content.evidence && content.evidence.length) {
+        const evRows = content.evidence.map((ev, i) => `
+            <div class="ev-row">
+                <span class="ev-num">${i + 1}</span>
+                <span class="ev-tool">${_escHtmlAttr(ev.tool || '')}</span>
+                <span class="ev-args">${_escHtmlAttr(ev.args || '')}</span>
+                ${ev.excerpt ? `<span class="ev-excerpt" title="${_escHtmlAttr(ev.excerpt)}">↩ ${_escHtmlAttr(ev.excerpt)}</span>` : ''}
+                <span class="ev-time">${_escHtmlAttr(ev.time || '')}</span>
+            </div>`).join('');
+        html += `
+        <details class="evidence-panel" style="margin-bottom:12px">
+            <summary>🔍 本章生成依据（AI 实际读取的材料与调用的工具，共 ${content.evidence.length} 条）</summary>
+            <div class="evidence-hint">以下是本次生成真实发生过的资料读取/工具调用记录，可与正文每段下方的“📎 依据”标注逐句对照。</div>
+            <div class="evidence-list">${evRows}</div>
+        </details>`;
+    }
 
     // 左右分栏：左=编辑区，右=Word 预览（默认隐藏，由开启按钮控制）
     html += `<div class="ch1-split">

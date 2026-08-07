@@ -19,7 +19,8 @@ from pydantic import BaseModel
 
 from backend.config import NDRC_OFFICIAL_TEMPLATE, DEFAULT_PROJECT_ID, PROJECTS_DIR
 from backend.database.db import (get_project_pack_id, get_project_owner_id,
-                                 upsert_generation_job, get_generation_job)
+                                 upsert_generation_job, get_generation_job,
+                                 touch_project_updated_at)
 from backend.services import skill_runner, summary_service, materials_client, pack_service
 from backend.services.kimi_client import chat
 
@@ -306,6 +307,7 @@ async def save_summary(data: SummaryData, http_req: Request, project_id: str = "
     await _assert_project_access(project_id, _current_user_id(http_req))
     try:
         await asyncio.to_thread(summary_service.save_summary_data, data.model_dump(), project_id or None)
+        await touch_project_updated_at(project_id)   # 刷新项目“更新时间”
         return {"status": "ok", "message": "已保存"}
     except Exception as e:
         logger.error(f"保存摘要表失败: {e}", exc_info=True)
@@ -347,6 +349,8 @@ async def _save_job_to_db(key, state: dict):
     try:
         data_json = _json.dumps(state.get("data"), ensure_ascii=False) if state.get("data") is not None else None
         await upsert_generation_job(pid, n, state.get("status", "idle"), data_json, state.get("error"))
+        if state.get("status") == "done":
+            await touch_project_updated_at(pid)   # 生成完成也算项目内容更新
     except Exception as e:
         logger.warning(f"生成任务状态落库失败（不影响生成）：{e}")
 
@@ -465,6 +469,7 @@ async def chapter_save(n: int, body: ChapterSaveBody, http_req: Request, project
     try:
         await asyncio.to_thread(
             skill_runner.save_chapter_content, n, body.sections, project_id or None, pack_id)
+        await touch_project_updated_at(project_id)   # 刷新项目“更新时间”
         return {"status": "ok", "message": "已保存"}
     except Exception as e:
         logger.error(f"保存第{n}章内容失败: {e}", exc_info=True)
