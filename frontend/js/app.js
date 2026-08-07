@@ -466,25 +466,35 @@ async function onUploadMaterials(input) {
             showToast(`所选 ${files.length} 个文件均已存在，无需重复上传`);
             return;
         }
-        if (preSkipped) showToast(`已跳过 ${preSkipped} 个已存在的文件，只上传缺失的 ${arr.length} 个`);
+        // 顶部状态与 toast 都说明白：共多少 / 已有多少 / 本次补多少
+        const planTip = `共 ${files.length} 个文件 · 已有 ${preSkipped} 个 · 本次补传 ${arr.length} 个缺失文件`;
+        if (stat) stat.textContent = planTip;
+        if (pStat) pStat.textContent = planTip;
+        if (preSkipped) showToast(planTip);
         // 按大小分批（单批 ≤40MB 且 ≤15 个），避免大批次超服务器请求上限整批失败
         const result = { uploaded: [], extracted_from_zip: 0, skipped: [], existed: [] };
-        let i = 0, batchNo = 0;
+        const batches = [];
+        let i = 0;
         while (i < arr.length) {
             let j = i, size = 0;
             while (j < arr.length && (j === i || (size + (arr[j].size || 0) <= 40 * 1024 * 1024 && j - i < 15))) {
                 size += arr[j].size || 0; j++;
             }
+            batches.push(arr.slice(i, j));
+            i = j;
+        }
+        let doneFiles = 0, batchNo = 0;
+        for (const b of batches) {
             batchNo++;
-            const tip = `正在补传缺失文件（${arr.length} 个中的第 ${batchNo} 批）…（大文件/解压需要一点时间）`;
+            const tip = `补传中（第 ${batchNo}/${batches.length} 批）· 共 ${files.length} 个 · 已有 ${preSkipped} 个 · 已补 ${doneFiles}/${arr.length} 个`;
             if (stat) stat.textContent = tip;
             if (pStat) pStat.textContent = tip;
-            const r = await API.uploadMaterials(arr.slice(i, j));
+            const r = await API.uploadMaterials(b);
             result.uploaded = result.uploaded.concat(r.uploaded || []);
             result.extracted_from_zip += (r.extracted_from_zip || 0);
             result.skipped = result.skipped.concat(r.skipped || []);
             result.existed = result.existed.concat(r.existed || []);
-            i = j;
+            doneFiles += b.length;
         }
         _invalidateMatCache();
         const parts = [];
