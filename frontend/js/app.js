@@ -2267,26 +2267,35 @@ async function submitNewProject() {
             let skippedNames = [];
             const t0 = Date.now();
             currentProjectId = created.id;  // uploadMaterials 按当前项目上传
+            // 项目创建完立刻进入上传文案，且每秒刷新“已用时长”，不等批次传完
+            let lastDone = 0;
+            const renderUploadProgress = () => {
+                const elapsed = (Date.now() - t0) / 1000;
+                const eta = (lastDone > 0 && elapsed > 3) ? (files.length - lastDone) * elapsed / lastDone : null;
+                const tip = eta === null
+                    ? `｜已用 ${_fmtDur(elapsed)}，正在估算时间…`
+                    : `｜已用 ${_fmtDur(elapsed)}，预计还需 ${_fmtDur(eta)}`;
+                setProgress(`正在上传申报材料（第 ${lastDone}/${files.length} 个文件）…${tip}`, 5 + 90 * lastDone / files.length);
+            };
+            renderUploadProgress();
+            const ticker = setInterval(renderUploadProgress, 1000);
             try {
                 for (let i = 0; i < files.length; i += BATCH) {
                     const batch = files.slice(i, i + BATCH);
                     const to = Math.min(i + BATCH, files.length);
                     const result = await API.uploadMaterials(batch);
+                    lastDone = to;
                     uploaded += (result.uploaded || []).length;
                     skipped += (result.skipped || []).length;
                     skippedNames = skippedNames.concat(result.skipped || []);
-                    // 已用时长 + 按已传均速估算剩余时间
-                    const elapsed = (Date.now() - t0) / 1000;
-                    const eta = (to > 0 && elapsed > 3) ? (files.length - to) * elapsed / to : null;
-                    const tip = eta === null
-                        ? `｜已用 ${_fmtDur(elapsed)}，正在估算时间…`
-                        : `｜已用 ${_fmtDur(elapsed)}，预计还需 ${_fmtDur(eta)}`;
-                    setProgress(`正在上传申报材料（第 ${to}/${files.length} 个文件）…${tip}`, 5 + 90 * to / files.length);
+                    renderUploadProgress();
                 }
                 setProgress('上传完成', 100);
                 showToast(`完成：已上传 ${uploaded} 份材料${skipped ? `，${skipped} 个不支持类型的文件已跳过：${skippedNames.slice(0, 3).join('、')}${skippedNames.length > 3 ? ' 等' : ''}` : ''}`);
             } catch (ue) {
                 showToast('项目已创建，但部分材料上传失败：' + (ue.message || '') + '；可到「系统设置 → 申报材料」重传', 'error');
+            } finally {
+                clearInterval(ticker);
             }
             clearLocalFolder();
         } else {
