@@ -2176,6 +2176,60 @@ function clearLocalFolder() {
     if (summary) summary.value = '';
 }
 
+// ===== 新建项目弹窗：上传中可收起为跳动小圆圈，点击找回进度 =====
+let _npUploadBusy = false;   // 新建项目弹窗是否正在创建/上传
+
+/** 点“—”收起：上传中会被观察器自动缩成小圆圈；非上传时等同关闭 */
+function minimizeNewProjectModal() {
+    closeModal('modal-new-project');
+}
+
+/** 获取/创建上传进度小圆圈（右下角固定、脉动） */
+function _getUploadBubble() {
+    let b = document.getElementById('uploadBubble');
+    if (!b) {
+        b = document.createElement('div');
+        b.id = 'uploadBubble';
+        b.className = 'upload-bubble';
+        b.title = '正在上传申报材料，点击查看进度';
+        b.innerHTML = '<span class="ub-ico">⬆️</span><span class="ub-pct">0%</span>';
+        b.addEventListener('click', () => {
+            b.style.display = 'none';
+            openModal('modal-new-project');
+        });
+        document.body.appendChild(b);
+    }
+    return b;
+}
+function showUploadBubble() { _getUploadBubble().style.display = 'flex'; }
+function hideUploadBubble() { const b = document.getElementById('uploadBubble'); if (b) b.style.display = 'none'; }
+function _updateBubble(pct) {
+    const b = document.getElementById('uploadBubble');
+    if (b && b.style.display !== 'none') {
+        const p = b.querySelector('.ub-pct');
+        if (p) p.textContent = Math.round(pct) + '%';
+    }
+}
+
+/** 监听新建项目弹窗：上传中被任何方式关闭（点外部/ESC/✕/取消/—）都自动缩成小圆圈 */
+function _watchNewProjectModalHide() {
+    const modal = document.getElementById('modal-new-project');
+    if (!modal || modal.dataset.hideWatched) return;
+    modal.dataset.hideWatched = '1';
+    new MutationObserver(() => {
+        if (!modal.classList.contains('show') && _npUploadBusy) showUploadBubble();
+    }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+}
+
+/** 时长格式化：X秒 / X分Y秒 / X小时Y分 */
+function _fmtDur(sec) {
+    sec = Math.max(0, Math.round(sec));
+    if (sec < 60) return `${sec}秒`;
+    const m = Math.floor(sec / 60), s = sec % 60;
+    if (m < 60) return s ? `${m}分${s}秒` : `${m}分钟`;
+    return `${Math.floor(m / 60)}小时${m % 60}分`;
+}
+
 /**
  * 提交新建项目：名称 + 可选本地文件夹（创建成功后分批上传其中的文件，
  * 弹窗内实时显示进度，避免用户以为卡住）
@@ -2192,27 +2246,36 @@ async function submitNewProject() {
     const setProgress = (text, pct) => {
         if (pText) pText.textContent = text;
         if (pBar) pBar.style.width = Math.max(0, Math.min(100, Math.round(pct))) + '%';
+        _updateBubble(pct);
     };
     if (btn) { btn.disabled = true; btn.textContent = '处理中…'; }
     if (progress) progress.style.display = 'block';
+    _npUploadBusy = true;
 
     try {
         setProgress('正在创建项目…', 5);
         const created = await API.createProject(name, '', packId || undefined);
         if (_pickedFolderFiles.length) {
-            // 分批上传（每批 15 个文件），逐批刷新进度条
+            // 分批上传（每批 15 个文件），逐批刷新进度条与耗时预估
             const files = _pickedFolderFiles;
             const BATCH = 15;
             let uploaded = 0, skipped = 0;
+            const t0 = Date.now();
             currentProjectId = created.id;  // uploadMaterials 按当前项目上传
             try {
                 for (let i = 0; i < files.length; i += BATCH) {
                     const batch = files.slice(i, i + BATCH);
                     const to = Math.min(i + BATCH, files.length);
-                    setProgress(`正在上传申报材料（第 ${to}/${files.length} 个文件）…`, 5 + 90 * i / files.length);
                     const result = await API.uploadMaterials(batch);
                     uploaded += (result.uploaded || []).length;
                     skipped += (result.skipped || []).length;
+                    // 已用时长 + 按已传均速估算剩余时间
+                    const elapsed = (Date.now() - t0) / 1000;
+                    const eta = (to > 0 && elapsed > 3) ? (files.length - to) * elapsed / to : null;
+                    const tip = eta === null
+                        ? `｜已用 ${_fmtDur(elapsed)}，正在估算时间…`
+                        : `｜已用 ${_fmtDur(elapsed)}，预计还需 ${_fmtDur(eta)}`;
+                    setProgress(`正在上传申报材料（第 ${to}/${files.length} 个文件）…${tip}`, 5 + 90 * to / files.length);
                 }
                 setProgress('上传完成', 100);
                 showToast(`完成：已上传 ${uploaded} 份材料${skipped ? `，${skipped} 个不支持类型的文件已跳过` : ''}`);
@@ -2229,6 +2292,8 @@ async function submitNewProject() {
     } catch (e) {
         showToast('创建失败：' + (e.message || '未知错误'), 'error');
     } finally {
+        _npUploadBusy = false;
+        hideUploadBubble();
         if (btn) { btn.disabled = false; btn.textContent = '创 建项目'; }
         if (progress) progress.style.display = 'none';
         if (pBar) pBar.style.width = '0';
@@ -2414,6 +2479,7 @@ async function initApp() {
  * 绑定全局事件监听器
  */
 function bindGlobalEvents() {
+    _watchNewProjectModalHide();  // 上传中弹窗被关 → 自动缩成小圆圈
     // 点击弹窗外部关闭（data-sticky 的强制弹窗除外，如首次登录改密）
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
         if (overlay.dataset.sticky === 'true') return;

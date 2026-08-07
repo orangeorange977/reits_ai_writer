@@ -384,7 +384,10 @@
         <div class="modal">
             <div class="modal-header">
                 <span class="modal-title">➕ 新建项目</span>
-                <button class="modal-close" onclick="closeModal('modal-new-project')">✕</button>
+                <span style="display:flex;gap:2px">
+                    <button class="modal-close" onclick="minimizeNewProjectModal()" title="收起窗口（上传在后台继续，点小圆圈可找回进度）">—</button>
+                    <button class="modal-close" onclick="closeModal('modal-new-project')">✕</button>
+                </span>
             </div>
             <div class="modal-body">
                 <div class="form-group">

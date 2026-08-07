@@ -3086,3 +3086,29 @@ body {
     .mc-col { flex: 0 0 180px; width: 180px; }
     .mc-browser { height: 240px; }
 }
+
+/* ===== 上传进度浮动小圆圈（新建项目弹窗上传中收起时显示） ===== */
+.upload-bubble {
+    position: fixed;
+    right: 26px;
+    bottom: 84px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #34a26a, #1f7a4d);
+    color: #fff;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    cursor: pointer;
+    z-index: 940;
+    animation: bubblePulse 1.6s ease-in-out infinite;
+}
+.upload-bubble .ub-ico { font-size: 15px; line-height: 1; }
+.upload-bubble .ub-pct { font-size: 11px; font-weight: 700; }
+@keyframes bubblePulse {
+    0%, 100% { box-shadow: 0 6px 16px rgba(31, 122, 77, 0.4); transform: scale(1); }
+    50% { box-shadow: 0 8px 26px rgba(31, 122, 77, 0.75); transform: scale(1.08); }
+}
