@@ -8,7 +8,6 @@ Skill 执行器 - 让 Kimi 按 reits-reading 各章 SKILL.md 的要求生成章�
 import json
 import logging
 import re
-from datetime import datetime
 from pathlib import Path
 from html.parser import HTMLParser
 
@@ -164,15 +163,17 @@ def _grid_rows_html(headers, rows):
 
 def _block_to_html(blk, fn_counter):
     t = blk.get("type")
+    html = ""
     if t == "p":
         text = blk.get("text", "")
         dm = _DIAGRAM_RE.fullmatch(text or "")
         if dm:
             png_b64, _, xml_b64 = dm.group(1).partition(_DIAGRAM_SEP)
-            return (f'<div class="doc-diagram" contenteditable="false" '
+            html = (f'<div class="doc-diagram" contenteditable="false" '
                     f'data-png="{png_b64}" data-xml="{xml_b64}">'
                     f'<img src="data:image/png;base64,{png_b64}" alt="框图"></div>')
-        html = f"<p>{_para_to_html(text, fn_counter)}</p>"
+        else:
+            html = f"<p>{_para_to_html(text, fn_counter)}</p>"
     elif t == "kv":
         cap = _esc_html(blk.get("caption", ""))
         cap_html = f"<caption>{cap}</caption>" if cap else ""
@@ -183,11 +184,9 @@ def _block_to_html(blk, fn_counter):
         cap_html = f"<caption>{cap}</caption>" if cap else ""
         thead, body = _grid_rows_html(blk.get("headers", []) or [], blk.get("rows", []) or [])
         html = f'<table class="doc-grid-table">{cap_html}{thead}<tbody>{body}</tbody></table>'
-    else:
-        return ""
-    # 溯源标注：每段/每表下面跟一行来源依据（编辑区可见可改，不进 Word）
-    src = (blk.get("src") or "").strip()
-    if src:
+    # 溯源：块级来源标注渲染为块下方的“依据”行（仅编辑区可见，不进 Word）
+    src = str(blk.get("src") or "").strip()
+    if html and src:
         html += f'<div class="doc-src">📎 依据：{_esc_html(src)}</div>'
     return html
 
@@ -226,7 +225,7 @@ class _HTMLToBlocks(HTMLParser):
         self._cell_span = (1, 1)  # 当前单元格的 (colspan, rowspan)
         self._in_fn = False  # 正处在脚注 <sup> 内（其可见编号要跳过）
         self._in_diagram = False  # 正处在图块 <div class="doc-diagram"> 内（内部 SVG 全部忽略）
-        self._in_src = False   # 正处在溯源行 <div class="doc-src"> 内
+        self._in_src = False  # 正处在溯源行 <div class="doc-src"> 内（收集其文本挂到上一块的 src）
         self._src_buf = []
 
     def _target(self):
@@ -239,9 +238,9 @@ class _HTMLToBlocks(HTMLParser):
         if self._in_diagram:
             return  # 图块内部（svg/rect/text…）一律忽略
         if self._in_src:
-            return  # 溯源行内部的嵌套标签一律忽略（只取其文本）
+            return  # 溯源行内部的样式标签忽略，只收文本
         if tag == "div" and "doc-src" in (dict(attrs).get("class") or ""):
-            # 溯源行：先把前面的段落落块，再把来源文字挂到上一个块（段落/表格）的 src 字段
+            # 溯源行起始：先 flush 当前段落，然后把行内文字收集为该块的 src
             self._flush_para()
             self._in_src = True
             self._src_buf = []
@@ -295,18 +294,6 @@ class _HTMLToBlocks(HTMLParser):
             self._flush_para()
 
     def handle_endtag(self, tag):
-        if self._in_src:
-            if tag == "div":  # 溯源行结束：文本挂到前一个块的 src
-                text = "".join(self._src_buf).strip()
-                for prefix in ("📎 依据：", "📎依据：", "依据："):
-                    if text.startswith(prefix):
-                        text = text[len(prefix):].strip()
-                        break
-                if text and self.blocks:
-                    self.blocks[-1]["src"] = text
-                self._in_src = False
-                self._src_buf = []
-            return
         if self._in_diagram:
             # 图块内 SVG 无 div，第一个 </div> 即图块结束
             if tag == "div":
@@ -358,13 +345,25 @@ class _HTMLToBlocks(HTMLParser):
         elif tag == "sup":
             self._in_fn = False
         elif tag in ("p", "div") and not self._in_table:
-            self._flush_para()
+            if tag == "div" and self._in_src:
+                # 溯源行结束：剥掉“📎 依据：”前缀，挂到它所属块的 src（用户可在编辑区改写此行）
+                src = "".join(self._src_buf).strip()
+                for prefix in ("📎 依据：", "📎依据：", "依据："):
+                    if src.startswith(prefix):
+                        src = src[len(prefix):].strip()
+                        break
+                if self.blocks:
+                    self.blocks[-1]["src"] = src
+                self._in_src = False
+                self._src_buf = []
+            else:
+                self._flush_para()
 
     def handle_data(self, data):
         if self._in_diagram:
             return  # 图块内部文字（SVG 里的框内文字等）不是正文
         if self._in_src:
-            self._src_buf.append(data)  # 溯源行的文本（用户可在编辑区修改）
+            self._src_buf.append(data)  # 溯源行文字（用户可编辑）
             return
         if self._in_caption:
             self._cap_buf.append(data)  # 多列表标题文字
@@ -483,10 +482,9 @@ def get_chapter_content(n: int, subtitles: list = None,
     template_tables = template_tables or {}
     loaded = _load_json(n, project_id)
     saved = loaded.get("sections", []) or []
+    refs = loaded.get("refs", []) or []  # 本章生成时参考的材料清单（业务化展示）
     # 兜底：把误升级成 section 的编号项（“1.奥飞数据”等）折回其所属的模板小标题，锁定小标题结构
     saved = _fold_enumerated_sections(saved, subtitles)
-    # 溯源证据链（生成本章时 AI 真实读过的文件/查过的工具），随内容一起给前端展示
-    evidence = loaded.get("evidence", []) or []
 
     if subtitles:
         if saved:
@@ -508,14 +506,14 @@ def get_chapter_content(n: int, subtitles: list = None,
             source = "template"
         return {"source": source,
                 "sections": _sections_to_html(_number_captions(struct, table_start)),
-                "evidence": evidence}
+                "refs": refs}
 
     # 没有模板子标题：回退到已保存内容
     if not saved:
-        return {"source": "none", "sections": [], "evidence": evidence}
+        return {"source": "none", "sections": [], "refs": refs}
     return {"source": "ready",
             "sections": _sections_to_html(_number_captions(saved, table_start)),
-            "evidence": evidence}
+            "refs": refs}
 
 
 def get_chapter_structured(n: int, project_id: str = None) -> list:
@@ -525,13 +523,13 @@ def get_chapter_structured(n: int, project_id: str = None) -> list:
 
 def save_chapter_content(n: int, html_sections: list, project_id: str = None,
                          pack_id: str = None) -> None:
-    """网页保存：把编辑区 HTML 转回结构化 JSON（有序块，含每块的 src 溯源标注）并落盘；
-    上次生成留下的证据链（evidence）原样保留，不因人手编辑而丢失。"""
+    """网页保存：把编辑区 HTML 转回结构化 JSON（有序块）并落盘。
+    上次生成记录的参考材料清单（refs）原样保留，不因人手编辑而丢失。"""
     title = chapters_for(pack_id).get(n, {}).get("title", "")
     structured = _html_sections_to_structured(html_sections, title)
-    prev_evidence = _load_json(n, project_id).get("evidence")
-    if prev_evidence:
-        structured["evidence"] = prev_evidence
+    prev_refs = _load_json(n, project_id).get("refs")
+    if prev_refs:
+        structured["refs"] = prev_refs
     _save_json(n, structured, project_id)
 
 
@@ -566,10 +564,10 @@ def _output_contract(chapter_title: str) -> str:
         '      "title": "（一）……",\n'
         '      "blocks": [\n'
         '        {"type": "p", "text": "正文段落；“1.基本信息”“（1）……”这类编号小标题也各作为一个 p 段落", "src": "本段内容的来源依据"},\n'
-        '        {"type": "kv", "caption": "表#  ……", "rows": [{"label": "字段名（与SKILL.md一字不差）", "value": "……"}], "src": "本表数据的来源依据"},\n'
-        '        {"type": "grid", "caption": "表#  ……",\n'
+        '        {"type": "kv", "caption": "表#  ……", "src": "……", "rows": [{"label": "字段名（与SKILL.md一字不差）", "value": "……"}]},\n'
+        '        {"type": "grid", "caption": "表#  ……", "src": "……",\n'
         '         "headers": ["列1表头", "列2表头", "……（与SKILL.md表头一字不差、顺序一致）"],\n'
-        '         "rows": [["单元格", "单元格", "……"], ["……"]], "src": "本表数据的来源依据"},\n'
+        '         "rows": [["单元格", "单元格", "……"], ["……"]]},\n'
         '        {"type": "p", "text": "表格之后接着的正文……", "src": "……"}\n'
         '      ]\n'
         '    }\n'
@@ -598,16 +596,14 @@ def _output_contract(chapter_title: str) -> str:
         "**输出时一律把这些引号改成中文引号“”**（例如原文 承诺：\"本公司…\" → 输出 承诺：“本公司…”），"
         "只改引号符号、不改里面的文字。字符串里也不要出现真实换行（用一段连续文本），"
         "如含反斜杠 \\ 需写成 \\\\。记住：值里面只允许中文引号“”‘’，不允许裸的英文 \"。\n"
-        "8. 【来源溯源——每个块必填 src】每个 block 都要带 \"src\" 字段，用一句话写明该段/该表内容"
-        "具体来自哪里，供人工逐句核对：\n"
-        "   · 读自申报材料文件 → “申报材料：<文件相对路径>（如写到某页/某项可加说明）”，路径必须用 "
-        "list_materials/read_document 返回的真实相对路径，一个字不能改；\n"
-        "   · 来自已保存的摘要表/释义/其他基本信息 → “摘要表：<字段名>”“释义”“其他基本信息：<字段名>”；\n"
-        "   · 来自天眼查查询 → “天眼查：<实际调用的工具名>（<企业名>）”；\n"
-        "   · 来自联网搜索 → “网络检索：<来源/时点>”；\n"
-        "   · 来自 planning.md → “planning.md”；\n"
-        "   · 无数据依据的固定套话/过渡句 → “无依据（固定表述）”；实在说不清来源 → “待核实”。\n"
-        "   多个来源用“；”分隔。**绝不允许编造来源**：src 里引用的文件必须是真实读过/列到过的。\n"
+        "8. 【来源溯源】每个块必须带 \"src\" 字段，写明该段正文/表格内容的来源依据，供人工核对：\n"
+        "   · 来自上传的申报材料/证明文件：写“申报材料：<文件相对路径>”（路径用 list_materials 返回的真实路径）；\n"
+        "   · 来自已保存的摘要表/释义/其他基本信息：写“摘要表：<字段名>”或“释义”“其他基本信息”；\n"
+        "   · 来自天眼查查询：写“天眼查查询：<企业名>”；\n"
+        "   · 来自联网搜索：写“网络公开信息：<来源/时点>”；\n"
+        "   · 来自 planning.md：写“planning.md”；\n"
+        "   · 模板固定表述/无具体依据：写“固定表述（无具体依据）”；拿不准的写“待核实”。\n"
+        "   多个来源用“；”分隔；**绝不允许编造不存在的来源**——src 必须真实对应你实际参考过的材料。\n"
     )
 
 
@@ -740,6 +736,16 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
     skill_md = _read_text(pack_service.reading_path(n, pack_id))
     saved_summary = _format_saved_summary(project_id)
 
+    # 本章参考材料清单（业务化表述，供编辑区展示，不暴露工具调用等技术细节）
+    refs = ["写作总纲（planning.md）",
+            f"本章写作要求（{cfg['title']}）"]
+    if saved_summary.strip():
+        refs.append("已核对保存的摘要表 / 释义 / 其他基本信息")
+
+    def _add_ref(label: str):
+        if label and label not in refs:
+            refs.append(label)
+
     # 排版配置(write_config.json)只在“生成内容”这一步按需刷新（写作要求改过才真调模型）——
     # 从而彻底移出 Word 预览路径：改 skill 不再拖慢预览。失败不阻断本次生成。
     try:
@@ -793,9 +799,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
             "配合 query 指明要找的科目（如 query=\"资产总计 负债合计 营业总收入 净利润 经营活动现金流量净额\"）。\n"
             "· 承诺函落款日期/审计意见等零散项 → 用 query 直接点名（如 query=\"落款日期和落款单位\"），只回相关内容。\n"
             "**绝不要把几十页审计报告整篇 OCR。** 扫描件表格数字 OCR 可能读错，拿不准的数字标"
-            "“【注：OCR识别，请人工核对】”；识别不出或缺关键项才标“【注：…，请人工核对】”，绝不编造。\n"
-            "写每个 block 的 src 来源字段时，申报材料类的来源必须写 list_materials/read_document "
-            "返回的确切文件相对路径（如“申报材料：4-承诺函/承诺函1.pdf”），方便人工逐句溯源。"
+            "“【注：OCR识别，请人工核对】”；识别不出或缺关键项才标“【注：…，请人工核对】”，绝不编造。"
         )
     # 联网搜索是 Moonshot 内置能力：仅非 DeepSeek 模型时在提示词里告知
     if not _is_deepseek(get_selected_model()):
@@ -839,25 +843,6 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
     if tianyancha_client.is_enabled():
         tools += _TYC_TOOLS
     mat_exec = None
-    # 溯源证据链：记录本次生成真实发生过的每一次工具调用（读了哪个文件、查了哪家企业），
-    # 连同提示词里直接注入的资料一起存进章节 JSON，前端可逐条核对“AI 到底看了什么”
-    evidence = []
-
-    def _record(tool: str, args, result: str = ""):
-        evidence.append({
-            "tool": tool,
-            "args": (json.dumps(args, ensure_ascii=False) if isinstance(args, (dict, list))
-                     else str(args or ""))[:300],
-            "excerpt": " ".join((result or "").split())[:200],
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        })
-
-    # 提示词里直接注入的资料也是依据，先记上
-    _record("提示词注入", "planning.md（全局总纲）")
-    if saved_summary.strip():
-        _record("提示词注入", "已保存的摘要表/释义/其他基本信息（用户已核对）")
-    _record("提示词注入", f"本章写作要求 SKILL.md（{cfg['title']}）")
-
     if mat_root is not None:
         tools += _MAT_TOOLS
         mat_exec = _make_materials_executor(mat_root)
@@ -866,12 +851,19 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
         def _combined_executor(name, args):
             if name in _TYC_TOOL_NAMES:
                 result = _tyc_executor(name, args)
-            elif name in _MAT_TOOL_NAMES and mat_exec is not None:
+                # 天眼查查询：只记录被查询的企业名称（业务化表述）
+                kw = (args or {}).get("keyword") or (args or {}).get("company_name") or ""
+                _add_ref(f"天眼查企业数据查询：{kw}" if kw else "天眼查企业数据查询")
+                return result
+            if name in _MAT_TOOL_NAMES and mat_exec is not None:
                 result = mat_exec(name, args)
-            else:
-                return f"（未知工具 {name}）"
-            _record(name, args, result)
-            return result
+                # 读取申报材料：记录实际读过的文件路径
+                if name == "read_document":
+                    path = str((args or {}).get("path") or "").strip()
+                    if path:
+                        _add_ref(f"申报材料：{path}")
+                return result
+            return f"（未知工具 {name}）"
         raw = chat_with_tools(messages, tools, _combined_executor,
                               model=get_selected_model(), temperature=1.0)
     else:
@@ -903,9 +895,9 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
     # 锁定小标题结构＝模板：把 Kimi 误当成 section 的编号项（“1.奥飞数据”等）折回其所属模板小标题
     if isinstance(data, dict) and data.get("sections"):
         data["sections"] = _fold_enumerated_sections(data["sections"], subtitles)
-        # 证据链随章节内容一起落盘（前端“生成依据”面板展示；人工保存编辑后仍保留）
-        if evidence:
-            data["evidence"] = evidence
+    # 参考材料清单随章节落盘，编辑区据此展示“本章生成参考了哪些材料”
+    if isinstance(data, dict):
+        data["refs"] = refs
     try:
         _save_json(n, data, project_id)
     except Exception as e:

@@ -191,12 +191,12 @@ const API = {
 
     /**
      * 上传申报材料（多文件，支持 zip 自动解压）到当前项目
-     * 文件夹上传（webkitdirectory）时带上相对路径，后端按目录结构落盘
      * @param {FileList|File[]} files - 选中的文件
      * @returns {Promise<object>} {uploaded, extracted_from_zip, skipped}
      */
     async uploadMaterials(files) {
         const form = new FormData();
+        // 文件夹上传时携带相对路径，后端按目录结构落盘
         for (const f of files) form.append('files', f, f.webkitRelativePath || f.name);
         const pid = encodeURIComponent(this._currentProjectId());
         return this.request(`/projects/${pid}/materials`, { method: 'POST', body: form });

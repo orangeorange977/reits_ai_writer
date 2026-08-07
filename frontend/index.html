@@ -164,21 +164,17 @@
                     </div>
                 </div>
 
-                <!-- 申报材料面板：当前项目已上传的材料在这里直接可见/上传/清空（步骤 3.4 的体验改进） -->
-                <div class="enhancements-panel" style="margin-bottom:16px">
-                    <div class="panel-header" onclick="togglePanel('materials')">
-                        <h3>📁 申报材料 <span class="text-muted text-sm" id="matPanelCount"></span></h3>
-                        <span class="toggle-icon">▼</span>
+                <!-- 申报材料面板：本项目已上传材料的查看/上传入口（树形列表，保留文件夹层级） -->
+                <div class="enhancements-panel" style="margin-top:16px">
+                    <div class="panel-header" onclick="toggleMaterialsPanel(this)">
+                        <h3>📁 申报材料 <span id="matPanelCount" class="text-muted text-sm" style="font-weight:400"></span></h3>
+                        <span class="toggle-icon">▲</span>
                     </div>
                     <div class="panel-body" id="materials-body">
-                        <div class="text-muted text-sm" style="margin-bottom:8px">
-                            上传申报/证明材料后，各章生成时 AI 会自动读取这些文件、并在每段内容下标注来源依据。
-                            支持多选文件、整个文件夹上传（保留目录结构），zip 自动解压。
-                        </div>
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                            <button class="btn btn-primary btn-sm" onclick="document.getElementById('matPanelFileInput').click()">⬆️ 上传文件</button>
-                            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('matPanelFolderInput').click()">📁 上传文件夹</button>
-                            <button class="btn btn-ghost btn-sm" onclick="clearMaterialsUI()">🗑️ 清空</button>
+                            <button class="btn btn-primary" onclick="document.getElementById('matPanelFileInput').click()">⬆️ 上传文件</button>
+                            <button class="btn btn-primary" onclick="document.getElementById('matPanelFolderInput').click()">📂 上传文件夹</button>
+                            <button class="btn btn-ghost" onclick="clearMaterialsUI()">清空</button>
                             <span class="text-muted text-sm" id="matPanelStat">加载中…</span>
                             <input type="file" id="matPanelFileInput" multiple style="display:none"
                                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.png,.jpg,.jpeg,.zip"
@@ -192,7 +188,6 @@
                         </div>
                     </div>
                 </div>
-
 
                 <!-- 七章节步骤条 -->
                 <div class="stepper-card">

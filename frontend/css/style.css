@@ -2904,75 +2904,49 @@ body {
     margin-bottom: 10px;
 }
 
-/* ===== 溯源：正文每段/每表下方的来源依据行（编辑区可见可改，不进 Word） ===== */
+/* ===== 溯源：块级“依据”标注行（仅编辑区可见，不进 Word） ===== */
 .doc-editor .doc-src {
-    margin: 2px 0 12px;
-    padding: 3px 8px;
+    border-left: 3px solid #2e9e6b;
+    background: #f0faf4;
+    color: #1d7a50;
     font-size: 12px;
-    line-height: 1.5;
-    color: var(--text-muted);
-    background: rgba(76, 175, 80, 0.06);
-    border-left: 3px solid rgba(76, 175, 80, 0.55);
-    border-radius: 0 4px 4px 0;
+    line-height: 1.6;
+    padding: 3px 10px;
+    margin: -2px 0 12px;
+    border-radius: 0 6px 6px 0;
+    word-break: break-all;
 }
 
-/* ===== 溯源：本章生成依据（证据链）面板 ===== */
-.evidence-panel {
-    border: 1px solid var(--border);
+/* ===== 溯源：本章参考材料清单（业务化，不展示技术细节） ===== */
+.refs-panel {
+    border: 1px solid #d9ead9;
+    background: #f7fcf8;
     border-radius: 8px;
-    background: var(--bg-card);
+    margin-bottom: 12px;
     padding: 8px 12px;
 }
-.evidence-panel summary {
+
+.refs-panel summary {
     cursor: pointer;
     font-size: 13px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: #1d7a50;
+    outline: none;
 }
-.evidence-hint {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin: 6px 0;
-}
-.evidence-list {
-    max-height: 240px;
-    overflow-y: auto;
-}
-.ev-row {
+
+.refs-list {
+    margin-top: 8px;
     display: flex;
-    align-items: baseline;
-    gap: 8px;
-    padding: 4px 2px;
-    font-size: 12px;
-    border-top: 1px dashed var(--border);
+    flex-direction: column;
+    gap: 4px;
 }
-.ev-row:first-child { border-top: none; }
-.ev-num {
-    flex-shrink: 0;
-    width: 18px;
-    text-align: right;
-    color: var(--text-muted);
-}
-.ev-tool {
-    flex-shrink: 0;
-    font-weight: 600;
+
+.ref-item {
+    font-size: 13px;
     color: var(--text-primary);
-}
-.ev-args {
-    flex-shrink: 0;
-    max-width: 320px;
+    padding: 3px 8px;
+    background: #fff;
+    border: 1px solid #e4efe6;
+    border-radius: 6px;
     word-break: break-all;
-    color: var(--text-primary);
-}
-.ev-excerpt {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-muted);
-}
-.ev-time {
-    flex-shrink: 0;
-    color: var(--text-muted);
 }
