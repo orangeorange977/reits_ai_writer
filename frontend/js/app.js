@@ -330,18 +330,22 @@ function toggleMaterialsPanel(headerEl) {
     if (!open) loadMaterialsUI();
 }
 
-/** 把材料路径列表按目录层级建树：{dirs: Map(名称->节点), files:[{name,size}]} */
-function _buildMaterialsTree(files) {
+/** 把材料路径列表按目录层级建树：{dirs: Map(名称->节点), files:[{name,size}]}；dirs 参数补全空目录 */
+function _buildMaterialsTree(files, dirs) {
     const root = { dirs: new Map(), files: [] };
-    for (const f of files) {
-        const segs = String(f.path || '').split('/').filter(Boolean);
-        const fname = segs.pop();
+    const ensure = (segs) => {
         let node = root;
         for (const seg of segs) {
             if (!node.dirs.has(seg)) node.dirs.set(seg, { dirs: new Map(), files: [] });
             node = node.dirs.get(seg);
         }
-        node.files.push({ name: fname, size: f.size });
+        return node;
+    };
+    for (const d of (dirs || [])) ensure(String(d || '').split('/').filter(Boolean));
+    for (const f of files) {
+        const segs = String(f.path || '').split('/').filter(Boolean);
+        const fname = segs.pop();
+        ensure(segs).files.push({ name: fname, size: f.size });
     }
     return root;
 }
@@ -354,8 +358,8 @@ function _countTreeFiles(node) {
 }
 
 /** 仿 Finder 分栏浏览：点文件夹右侧展开下一栏，点文件选中（可横向滚动） */
-function renderColumnBrowser(container, files) {
-    const root = _buildMaterialsTree(files);
+function renderColumnBrowser(container, files, dirs) {
+    const root = _buildMaterialsTree(files, dirs);
     container.innerHTML = '';
     container.classList.add('mc-browser');
     const cols = [];
@@ -415,7 +419,7 @@ async function loadMaterialsUI() {
                 list.classList.remove('mc-browser');
                 list.innerHTML = '<div class="text-muted text-sm">暂无材料</div>';
             } else {
-                renderColumnBrowser(list, data.files);
+                renderColumnBrowser(list, data.files, data.dirs);
             }
         }
         // 申报材料页面板（树形列表，保留文件夹层级）
@@ -429,7 +433,7 @@ async function loadMaterialsUI() {
                 pList.classList.remove('mc-browser');
                 pList.innerHTML = '<div class="text-muted text-sm">暂无材料，请上传项目相关的申报材料（支持整个文件夹）</div>';
             } else {
-                renderColumnBrowser(pList, data.files);
+                renderColumnBrowser(pList, data.files, data.dirs);
             }
         }
     } catch (e) {
@@ -2260,6 +2264,7 @@ async function submitNewProject() {
             const files = _pickedFolderFiles;
             const BATCH = 15;
             let uploaded = 0, skipped = 0;
+            let skippedNames = [];
             const t0 = Date.now();
             currentProjectId = created.id;  // uploadMaterials 按当前项目上传
             try {
@@ -2269,6 +2274,7 @@ async function submitNewProject() {
                     const result = await API.uploadMaterials(batch);
                     uploaded += (result.uploaded || []).length;
                     skipped += (result.skipped || []).length;
+                    skippedNames = skippedNames.concat(result.skipped || []);
                     // 已用时长 + 按已传均速估算剩余时间
                     const elapsed = (Date.now() - t0) / 1000;
                     const eta = (to > 0 && elapsed > 3) ? (files.length - to) * elapsed / to : null;
@@ -2278,7 +2284,7 @@ async function submitNewProject() {
                     setProgress(`正在上传申报材料（第 ${to}/${files.length} 个文件）…${tip}`, 5 + 90 * to / files.length);
                 }
                 setProgress('上传完成', 100);
-                showToast(`完成：已上传 ${uploaded} 份材料${skipped ? `，${skipped} 个不支持类型的文件已跳过` : ''}`);
+                showToast(`完成：已上传 ${uploaded} 份材料${skipped ? `，${skipped} 个不支持类型的文件已跳过：${skippedNames.slice(0, 3).join('、')}${skippedNames.length > 3 ? ' 等' : ''}` : ''}`);
             } catch (ue) {
                 showToast('项目已创建，但部分材料上传失败：' + (ue.message || '') + '；可到「系统设置 → 申报材料」重传', 'error');
             }

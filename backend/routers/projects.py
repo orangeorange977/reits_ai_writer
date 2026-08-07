@@ -44,7 +44,16 @@ async def _assert_project_owned(project_id: int, user_id: int):
 
 # 接受的材料文件类型（zip 会被解压，里面的文件不限后缀）
 _MATERIAL_UPLOAD_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-                        ".txt", ".md", ".csv", ".png", ".jpg", ".jpeg", ".zip"}
+                        ".txt", ".md", ".csv", ".png", ".jpg", ".jpeg", ".gif", ".bmp",
+                        ".tif", ".tiff", ".webp", ".msg", ".eml", ".wps", ".et", ".dps",
+                        ".rtf", ".html", ".htm", ".zip"}
+_JUNK_NAMES = {".ds_store", "thumbs.db", "desktop.ini"}
+
+
+def _is_junk_name(name: str) -> bool:
+    """系统垃圾文件：永不保存（macOS ._*/.DS_Store、Windows Thumbs.db、Office 临时文件 ~$*）"""
+    n = (name or "").rsplit("/", 1)[-1].lower()
+    return n in _JUNK_NAMES or n.startswith("._") or n.startswith("~$")
 _MAX_UNCOMPRESSED_SIZE = 2 * 1024 * 1024 * 1024   # zip 解压后总大小上限 2GB（防 zip 炸弹）
 _MAX_MATERIAL_FILES = 3000                          # 解压后文件数上限
 _CHUNK = 1024 * 1024                                # 大文件分块读写 1MB
@@ -92,6 +101,12 @@ def _zip_member_name(info: zipfile.ZipInfo) -> str:
     return info.filename
 
 
+def _zip_is_junk(name: str) -> bool:
+    """zip 内垃圾成员：__MACOSX 目录、.DS_Store、._* 等系统附属文件"""
+    segs = [s for s in name.replace("\\", "/").split("/") if s and s != "."]
+    return bool(segs) and (segs[0] == "__MACOSX" or _is_junk_name(segs[-1]))
+
+
 def _safe_extract_zip(file_obj, dest: Path) -> int:
     """安全解压 zip 到 dest：逐成员校验路径穿越/解压炸弹，分块写出。返回解压出的文件数。"""
     dest = dest.resolve()
@@ -103,6 +118,8 @@ def _safe_extract_zip(file_obj, dest: Path) -> int:
             if info.is_dir():
                 continue
             name = _zip_member_name(info)
+            if _zip_is_junk(name):
+                continue
             target = (dest / name).resolve()
             if not target.is_relative_to(dest):
                 raise HTTPException(status_code=400, detail=f"zip 含非法路径（拒绝解压）：{name}")
@@ -117,6 +134,8 @@ def _safe_extract_zip(file_obj, dest: Path) -> int:
             if info.is_dir():
                 continue
             name = _zip_member_name(info)
+            if _zip_is_junk(name):
+                continue
             target = (dest / name).resolve()
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info) as src, open(target, "wb") as out:
@@ -322,6 +341,8 @@ async def upload_materials(project_id: int, http_req: Request, files: List[Uploa
 
     added, extracted, skipped = [], 0, []
     for f in files:
+        if _is_junk_name(f.filename or ""):
+            continue
         ext = Path(f.filename or "").suffix.lower()
         if ext not in _MATERIAL_UPLOAD_EXT:
             skipped.append(f.filename or "(无名文件)")
@@ -361,10 +382,12 @@ async def list_materials(project_id: int, http_req: Request):
     """列出当前项目已上传的申报材料（递归，含多级子文件夹）。"""
     await _assert_project_owned(project_id, _current_user_id(http_req))
     root = _materials_dir(project_id)
-    files = []
+    files, dirs = [], []
     if root.is_dir():
         for p in sorted(root.rglob("*")):
-            if p.is_file():
+            if p.is_dir():
+                dirs.append(p.relative_to(root).as_posix())
+            elif p.is_file():
                 files.append({
                     "path": p.relative_to(root).as_posix(),
                     "size": p.stat().st_size,
@@ -374,6 +397,7 @@ async def list_materials(project_id: int, http_req: Request):
         "total_files": len(files),
         "total_size": sum(f["size"] for f in files),
         "files": files,
+        "dirs": dirs,
     }
 
 
