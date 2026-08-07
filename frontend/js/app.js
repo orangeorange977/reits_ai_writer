@@ -452,10 +452,25 @@ async function onUploadMaterials(input) {
     const pStat = document.getElementById('matPanelStat');
     const oldText = stat ? stat.textContent : '';
     try {
-        const tip = `正在上传 ${files.length} 个文件…（大文件/解压需要一点时间）`;
-        if (stat) stat.textContent = tip;
-        if (pStat) pStat.textContent = tip;
-        const result = await API.uploadMaterials(files);
+        // 按大小分批（单批 ≤120MB 且 ≤15 个），避免大批次超服务器请求上限整批失败
+        const arr = Array.from(files);
+        const result = { uploaded: [], extracted_from_zip: 0, skipped: [] };
+        let i = 0, batchNo = 0;
+        while (i < arr.length) {
+            let j = i, size = 0;
+            while (j < arr.length && (j === i || (size + (arr[j].size || 0) <= 120 * 1024 * 1024 && j - i < 15))) {
+                size += arr[j].size || 0; j++;
+            }
+            batchNo++;
+            const tip = `正在上传 ${files.length} 个文件（第 ${batchNo} 批）…（大文件/解压需要一点时间）`;
+            if (stat) stat.textContent = tip;
+            if (pStat) pStat.textContent = tip;
+            const r = await API.uploadMaterials(arr.slice(i, j));
+            result.uploaded = result.uploaded.concat(r.uploaded || []);
+            result.extracted_from_zip += (r.extracted_from_zip || 0);
+            result.skipped = result.skipped.concat(r.skipped || []);
+            i = j;
+        }
         _invalidateMatCache();
         const parts = [];
         if (result.uploaded && result.uploaded.length) parts.push(`直传 ${result.uploaded.length} 个`);
@@ -2285,9 +2300,16 @@ async function submitNewProject() {
             renderUploadProgress();
             const ticker = setInterval(renderUploadProgress, 1000);
             try {
-                for (let i = 0; i < files.length; i += BATCH) {
-                    const batch = files.slice(i, i + BATCH);
-                    const to = Math.min(i + BATCH, files.length);
+                // 按大小分批：单批 ≤120MB 且 ≤BATCH 个文件（防大批次超服务器请求上限整批失败）
+                const MAX_BATCH_BYTES = 120 * 1024 * 1024;
+                let idx = 0;
+                while (idx < files.length) {
+                    let j = idx, bsize = 0;
+                    while (j < files.length && (j === idx || (bsize + (files[j].size || 0) <= MAX_BATCH_BYTES && j - idx < BATCH))) {
+                        bsize += files[j].size || 0; j++;
+                    }
+                    const batch = files.slice(idx, j);
+                    const to = j;
                     curBatchBytes = 0;
                     const result = await API.uploadMaterials(batch, (p) => { curBatchBytes = p.loaded || 0; });
                     doneBytes += batch.reduce((s, f) => s + (f.size || 0), 0);
@@ -2297,6 +2319,7 @@ async function submitNewProject() {
                     skipped += (result.skipped || []).length;
                     skippedNames = skippedNames.concat(result.skipped || []);
                     renderUploadProgress();
+                    idx = j;
                 }
                 setProgress('上传完成', 100);
                 showToast(`完成：已上传 ${uploaded} 份材料${skipped ? `，${skipped} 个不支持类型的文件已跳过：${skippedNames.slice(0, 3).join('、')}${skippedNames.length > 3 ? ' 等' : ''}` : ''}`);

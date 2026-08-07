@@ -59,6 +59,22 @@ _MAX_MATERIAL_FILES = 3000                          # 解压后文件数上限
 _CHUNK = 1024 * 1024                                # 大文件分块读写 1MB
 
 
+def _clip_name(name: str) -> str:
+    """文件系统限制：单个路径段 UTF-8 不能超过 255 字节（中文目录名太长会 OSError 36）。
+    超限按字节安全截断，保留扩展名并附 6 位哈希后缀防同名碰撞。"""
+    if len(name.encode("utf-8")) <= 200:
+        return name
+    import hashlib
+    suffix = "~" + hashlib.md5(name.encode("utf-8")).hexdigest()[:6]
+    stem, dot, ext = name.rpartition(".")
+    if not dot or len(ext.encode("utf-8")) > 30:
+        stem, ext = name, ""
+    ext_part = ("." + ext) if ext else ""
+    room = 200 - len(suffix.encode("utf-8")) - len(ext_part.encode("utf-8"))
+    stem = stem.encode("utf-8")[:room].decode("utf-8", "ignore")
+    return stem + suffix + ext_part
+
+
 def _rel_parts(raw_name: str) -> list:
     """把上传文件名（可能带子目录，如浏览器文件夹上传的 webkitRelativePath）
     拆成安全的路径段：统一分隔符、丢弃空段与 '.'/'..'（防穿越，'..' 直接丢弃不回退），
@@ -73,7 +89,7 @@ def _rel_parts(raw_name: str) -> list:
             if not tail:
                 continue  # 纯盘符/前缀段（如 'C:'），丢弃
             seg = tail
-        parts.append(seg)
+        parts.append(_clip_name(seg))
     return parts
 
 
@@ -107,6 +123,12 @@ def _zip_is_junk(name: str) -> bool:
     return bool(segs) and (segs[0] == "__MACOSX" or _is_junk_name(segs[-1]))
 
 
+def _zip_clip_path(name: str) -> str:
+    """逐段截断超长路径段（防 OSError 36）后重新拼回"""
+    segs = [s for s in name.replace("\\", "/").split("/") if s and s != "."]
+    return "/".join(_clip_name(s) for s in segs)
+
+
 def _safe_extract_zip(file_obj, dest: Path) -> int:
     """安全解压 zip 到 dest：逐成员校验路径穿越/解压炸弹，分块写出。返回解压出的文件数。"""
     dest = dest.resolve()
@@ -120,6 +142,7 @@ def _safe_extract_zip(file_obj, dest: Path) -> int:
             name = _zip_member_name(info)
             if _zip_is_junk(name):
                 continue
+            name = _zip_clip_path(name)
             target = (dest / name).resolve()
             if not target.is_relative_to(dest):
                 raise HTTPException(status_code=400, detail=f"zip 含非法路径（拒绝解压）：{name}")
@@ -136,6 +159,7 @@ def _safe_extract_zip(file_obj, dest: Path) -> int:
             name = _zip_member_name(info)
             if _zip_is_junk(name):
                 continue
+            name = _zip_clip_path(name)
             target = (dest / name).resolve()
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info) as src, open(target, "wb") as out:
