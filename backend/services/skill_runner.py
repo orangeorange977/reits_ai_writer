@@ -426,9 +426,14 @@ def _save_json(n: int, data: dict, project_id: str = None) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+# 真条目边界：“；”后跟新来源前缀（申报材料/摘要表/天眼查/网络/planning/固定表述/同上/待核实）或引注号〈n〉。
+# 摘录内容里的分号（“经营异常0条；司法判决0条”）不是边界，不能在那里拆，否则条目被切碎
+_SRC_SPLIT_RE = re.compile(r"；(?=(?:申报材料|摘要表|释义|其他基本信息|天眼查|网络公开信息|planning|固定表述|同上|待核实|〈\d+〉))")
+
+
 def _split_src_items(src: str) -> list:
     """把块的 src 拆成一条条依据，返回 [(引注号或None, 条目文本), ...]：
-    先按〈数字〉引注号拆（段首的号记下来，写回时恢复），再按“；”拆（兼容旧格式）。"""
+    先按〈数字〉引注号拆（段首的号记下来，写回时恢复），再只在真条目边界处拆。"""
     items = []
     parts = re.split(r"〈(\d+)〉", src or "")
     # parts = [前缀, 号1, 段1, 号2, 段2, ...]
@@ -437,7 +442,7 @@ def _split_src_items(src: str) -> list:
         if i % 2 == 1:
             num = part
             continue
-        segs = [s.strip() for s in re.split(r"[；;]", part) if s.strip()]
+        segs = [s.strip() for s in _SRC_SPLIT_RE.split(part) if s.strip()]
         for j, seg in enumerate(segs):
             items.append((num if j == 0 else None, seg))
         if segs:
@@ -505,7 +510,9 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                     if ia >= 0 and ie > ia:
                         path, quote = body[:ia], body[ia + 1:ie]
                     else:
-                        path, quote = body, ""
+                        # 破碎条目（旧拆分把摘录切碎，路径后拖着“；日期：…〉”垃圾尾）：截取到文件扩展名为止
+                        m2 = re.match(r"^(.*?\.(?:pdf|docx?|xlsx?|pptx?|png|jpe?g|zip|txt))", body, re.I)
+                        path, quote = (m2.group(1), "") if m2 else (body, "")
                 path = path.strip().strip("《》")
                 quote = (quote or "").strip()
                 try:

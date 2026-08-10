@@ -333,10 +333,12 @@ function openSrcLink(rawText, ctx) {
     const text = String(rawText || '').replace(/^📎\s*依据[：:]/, '').trim();
     if (!text) return;
     const ctxText = String(ctx || '').replace(/\s+/g, ' ').trim();
-    // 先按〈数字〉拆出多条依据（〈1〉…〈2〉…），再按“；”拆（兼容旧格式）
+    // 先按〈数字〉拆出多条依据（〈1〉…〈2〉…）；再只在真条目边界拆（“；”后跟来源前缀/引注号）——
+    // 摘录内容里的分号（“经营异常0条；司法判决0条”）不是边界，在那里拆会把路径/摘录切碎
     const items = [];
     for (const part of text.split(/〈\d+〉/)) {
-        for (const seg of part.split(/[；;]/).map(s => s.trim()).filter(Boolean)) items.push(seg);
+        for (const seg of part.split(/；(?=(?:申报材料|摘要表|释义|其他基本信息|天眼查|网络公开信息|planning|固定表述|同上|待核实|〈\d+〉))/)
+            .map(s => s.trim()).filter(Boolean)) items.push(seg);
     }
     for (const seg of items) {
         let m;
