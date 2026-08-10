@@ -528,16 +528,8 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
             img.save(buf, "JPEG", quality=82)
             pages.append({"page": i + 1, "img": base64.b64encode(buf.getvalue()).decode()})
         # 摘录定位页：仅文字层搜索（便宜）；扫描件不搜（避免整篇 OCR）
-        hit = None
-        q = (quote or "").strip()
         has_text = any(doc[i].get_text().strip() for i in range(min(n, 6)))
-        if q and has_text:
-            qn = _re.sub(r"\s+", "", q)
-            for i in range(n):
-                t = doc[i].get_text()
-                if q in t or qn in _re.sub(r"\s+", "", t):
-                    hit = i + 1
-                    break
+        hit = _quote_page_hit(doc, n, quote) if (quote or "").strip() and has_text else None
         doc.close()
         return {"total": n, "pages": pages, "hit_page": hit, "has_text": has_text}
 
@@ -550,6 +542,50 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
 
 # ===== 扫描件摘录搜页：后台线程用免费本地 OCR 逐页识别搜索（带磁盘缓存），前端轮询结果 =====
 _quote_search_tasks = {}  # key -> {"status": "running"|"done", "hit": int|None, "scanned": int}
+
+
+def _norm_q(s: str) -> str:
+    """搜页归一：抹平空白/连字符/破折号（AI 摘录 “A18” vs 原文 “A-18”）。"""
+    import re as _re
+    return _re.sub(r"[\s\-—–]", "", s or "")
+
+
+def _quote_tokens(quote: str):
+    """摘录的特征词：数字（≥4位）+ 中文片段（≥6字，最多8个）。
+    片段再按虚词拆出核心专名（“以国际信息云聚核港”→“国际信息云聚核港”），供搜页与高亮框共用。"""
+    import re as _re
+    nums = [t for t in _re.findall(r"\d+(?:\.\d+)?", quote or "") if len(t) >= 4]
+    frags = []
+    for f in _re.split(r"[，。；：、！？…〈〉《》()（）\"\u201c\u201d\s]+", quote or ""):
+        f = f.strip()
+        if len(f) >= 6 and f not in frags:
+            frags.append(f)
+        for sub in _re.split(r"[以与其及作为系指在为或是等]+", f):
+            sub = sub.strip()
+            if 6 <= len(sub) <= 14 and sub not in frags:
+                frags.append(sub)
+    return nums, frags[:8]
+
+
+def _quote_page_hit(doc, n: int, quote: str):
+    """文字层搜页：逐字 / 去空白 / 片段投票（命中≥2 或单片段≥12字）。AI 摘录常是改写，逐字匹配太严。"""
+    import re as _re
+    q = (quote or "").strip()
+    if not q:
+        return None
+    qn = _re.sub(r"\s+", "", q)
+    for i in range(n):
+        t = doc[i].get_text()
+        if q in t or qn in _re.sub(r"\s+", "", t):
+            return i + 1
+    _, frags = _quote_tokens(q)
+    if not frags:
+        return None
+    for i in range(n):
+        tn = _norm_q(doc[i].get_text())
+        if any(len(f) >= 10 and _norm_q(f) in tn for f in frags) or sum(1 for f in frags if _norm_q(f) in tn) >= 2:
+            return i + 1
+    return None
 
 
 def _resolve_material_fp(project_id: int, path: str) -> Path:
@@ -569,19 +605,19 @@ def _run_quote_search(key: str, fp: Path, quote: str):
     """后台逐页搜索摘录：数字特征词（如 42076.98）命中即停；无数字时用摘录前 12 字。"""
     import re as _re
     try:
-        nums = [t for t in _re.findall(r"\d+(?:\.\d+)?", quote) if len(t) >= 4]
+        nums, frags = _quote_tokens(quote)
         qn = _re.sub(r"\s+", "", quote)
         head = qn[:12]
         n = materials_client.pdf_page_count(fp)
         hit = None
         box = None
         for i in range(n):
-            t = _re.sub(r"\s+", "", materials_client.ocr_page_text(fp, i))
+            t = _norm_q(materials_client.ocr_page_text(fp, i))
             if not t:
                 continue
-            if (nums and any(num in t for num in nums)) or (head and head in t):
+            if (nums and any(num in t for num in nums)) or (frags and any(_norm_q(f) in t for f in frags)) or (head and head in t):
                 hit = i + 1
-                box = materials_client.ocr_page_highlight_box(fp, i, nums)
+                box = materials_client.ocr_page_highlight_box(fp, i, nums or frags)
                 break
             _quote_search_tasks[key] = {"status": "running", "hit": None, "scanned": i + 1}
         _quote_search_tasks[key] = {"status": "done", "hit": hit, "scanned": n,

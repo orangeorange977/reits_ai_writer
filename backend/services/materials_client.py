@@ -242,12 +242,16 @@ def pdf_page_count(fp: Path) -> int:
 
 
 def ocr_page_highlight_box(fp: Path, page_idx: int, nums: list):
-    """在指定页的 OCR 词级坐标里找含特征数字的行，返回高亮框 [x0,y0,x1,y1]（dpi=100 坐标）。
+    """在指定页的 OCR 词级坐标里找含特征词（数字或中文片段）的行，返回高亮框 [x0,y0,x1,y1]（dpi=100 坐标）。
     上下各扩约一行，框住摘录所在段落。找不到返回 None。"""
     import io
+    import re as _re
     import fitz
     import pytesseract
     from PIL import Image
+
+    def _norm_tok(s):
+        return _re.sub(r"[\s\-—–]", "", s or "")
     if not nums:
         return None
     doc = fitz.open(str(fp))
@@ -268,7 +272,8 @@ def ocr_page_highlight_box(fp: Path, page_idx: int, nums: list):
         b = e["box"]
         e["box"] = [x, y, x + w, y + h] if b is None else [min(b[0], x), min(b[1], y), max(b[2], x + w), max(b[3], y + h)]
         e["text"] += txt
-    hit_boxes = [v["box"] for v in lines.values() if v["box"] and any(num in v["text"] for num in nums)]
+    hit_boxes = [v["box"] for v in lines.values()
+                 if v["box"] and any(_norm_tok(num) in _norm_tok(v["text"]) for num in nums)]
     if not hit_boxes:
         return None
     x0 = min(b[0] for b in hit_boxes)

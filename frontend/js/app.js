@@ -204,6 +204,64 @@ async function _findMaterialPath(nameRaw) {
             }
         }
     }
+    if (!hit) {
+        // ⑤ 任意位置编号：“承诺函（12-1）”“14-1号文件《不动产权证书》”→ 抽编号+核心词
+        const nm = name.replace(/^[号文件No\.\s]+/, '');
+        const numM = nm.match(/(\d+(?:[-—]\d+)?)/);
+        if (numM) {
+            const num = numM[1].replace(/—/g, '-');
+            const core = nm.replace(numM[0], '').replace(/[（(][^）)]*[）)]/g, '')
+                .replace(/[及与等表和号、,，\s]/g, '').replace(/\.[^.]+$/, '').trim();
+            const cands = files.filter(p => {
+                const s2 = base(p).replace(/\.[^.]+$/, '');
+                return s2.includes(num) && (!core || s2.includes(core));
+            });
+            if (cands.length) {
+                const ext = (name.match(/\.([^.]+)$/) || [])[1];
+                hit = (ext && cands.find(p => p.toLowerCase().endsWith('.' + ext.toLowerCase()))) || cands[0];
+            } else if (core.length >= 3) {
+                hit = files.find(p => base(p).replace(/\.[^.]+$/, '').includes(core));
+            }
+        }
+    }
+    if (!hit) {
+        // ⑥ 描述性依据：“各年度审计报告现金流量表”→ 拆词后取连续子串（长优先）去文件名里找
+        const parts = name.replace(/\.[^.]+$/, '').split(/[及与、，,的下属]/)
+            .map(s => s.trim()).filter(s => s.length >= 4);
+        outer:
+        for (const part of parts) {
+            for (let L = Math.min(part.length, 10); L >= 4; L--) {
+                for (let i = 0; i + L <= part.length; i++) {
+                    const sub = part.slice(i, i + L);
+                    const f = files.find(p => base(p).replace(/\.[^.]+$/, '').includes(sub));
+                    if (f) { hit = f; break outer; }
+                }
+            }
+        }
+    }
+    if (!hit) {
+        // ⑧ 文件夹级依据：“26 润泽发展所获荣誉及奖项”“20号专项税务意见”是目录名 → 打开目录下第一个文件
+        const nm2 = name.replace(/^[号文件No\.\s]+/, '').trim();
+        if (nm2.length >= 4) {
+            const dirs = [...new Set(files.map(p => p.split('/').slice(0, -1).join('/')))];
+            const d = dirs.find(x => {
+                const dn = x.split('/').pop();
+                return dn === nm2 || dn.includes(nm2) || nm2.includes(dn);
+            });
+            if (d) {
+                const under = files.filter(p => p.startsWith(d + '/')).sort();
+                if (under.length) hit = under[0];
+            }
+        }
+    }
+    if (!hit) {
+        // ⑦ 多文件混写：“法律意见书、不动产权证书…、估价报告…”→ 拆开逐项递归试
+        for (const part of name.split(/[、]|及|，|,/).map(s => s.trim()).filter(s => s.length >= 4)) {
+            if (part === name) continue;
+            hit = await _findMaterialPath(part);
+            if (hit) break;
+        }
+    }
     return hit || null;
 }
 
