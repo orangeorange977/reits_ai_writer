@@ -157,6 +157,47 @@ def read_document(root: Path, rel_path: str, pages: str = "", query: str = "",
 
 _ANCHOR_SPAN = 4   # 关键词命中页之后再多返回几页（三张连续报表一般够）
 
+# ===== 中文段落重排：PDF 文字层/OCR 输出常把一句话拆成碎片行（“）”“，”单独成行），
+# 按 Word 的观感把同一段落的碎片行合并成整段，保留标题/编号段。 =====
+_PUNCT_ONLY = re.compile(r'^[\s)）\]】,，;；:：。．.、…—~～《〈「『“”‘’"\'!?！？/\\|\-—]+$')
+_NEW_PARA = re.compile(
+    r'^(\d{1,3}[\.、．)）\]】]|[一二三四五六七八九十百零]+[、．.)）]|'
+    r'[（(]\s*[一二三四五六七八九十\d]+\s*[)）]|第[一二三四五六七八九十百\d]+[章节条款部分])')
+_END_STOP = re.compile(r'[。；：！？…）)》」』“”\'\'"\']$')
+_JOIN_HEAD = '，,、；;。）)》」』…—“”‘’"\'《〈'
+
+
+def _reflow_text(text: str) -> str:
+    """把碎片行合并成自然段落（仿 Word 观感）：
+    - 纯标点行、以标点/引号开头的行 → 并入上一行；
+    - 编号/中文序号/章节号开头 → 新段落；
+    - 上一行以句末标点结尾 → 新段落；
+    - 短而无标点的行（疑似标题）→ 独立成行；
+    - 其余并入当前段落。"""
+    out, buf = [], ''
+    buf_is_title = False
+    for raw in (text or '').split('\n'):
+        ln = raw.strip()
+        if not ln:
+            if buf:
+                out.append(buf); buf = ''; buf_is_title = False
+            continue
+        if buf and not buf_is_title and (_PUNCT_ONLY.match(ln) or ln[0] in _JOIN_HEAD):
+            buf += ln
+            continue
+        new_para = bool(_NEW_PARA.match(ln))
+        is_title = len(ln) <= 24 and not re.search(r'[，,。；;：:！!？?、]', ln)
+        if buf and not buf_is_title and not new_para and not _END_STOP.search(buf) and not is_title:
+            buf += ln
+        else:
+            if buf:
+                out.append(buf)
+            buf = ln
+            buf_is_title = is_title
+    if buf:
+        out.append(buf)
+    return '\n'.join(out)
+
 
 def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> str:
     import fitz  # PyMuPDF
@@ -171,7 +212,7 @@ def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> st
         hit = next((i for i in range(n_pages) if anchor in doc[i].get_text()), None)
         if hit is not None:
             hi = min(n_pages, hit + _ANCHOR_SPAN + 1)
-            parts = [f"［第{j + 1}页］\n{doc[j].get_text()}" for j in range(hit, hi)]
+            parts = [f"［第{j + 1}页］\n{_reflow_text(doc[j].get_text())}" for j in range(hit, hi)]
             doc.close()
             head = f"（已在第 {hit + 1} 页定位到“{anchor}”，返回第 {hit + 1}–{hi} 页文字。）\n"
             return (head + "\n".join(parts)).strip()[:_MAX_TEXT]
@@ -182,7 +223,7 @@ def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> st
     # ② 文字层（很便宜）：有文字层直接返回，不做任何 OCR
     parts, total = [], 0
     for i in scan_idxs:
-        t = doc[i].get_text()
+        t = _reflow_text(doc[i].get_text())
         parts.append(t)
         total += len(t)
         if total >= _MAX_TEXT:
@@ -219,7 +260,7 @@ def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> st
     elif not want and n_pages > _MAX_OCR_PAGES:
         notes.append(f"该文件共 {n_pages} 页，为控成本仅识别了第 {done} 页；如需其它页请用 pages 指定。")
     note = ("（注：" + " ".join(notes) + "）\n") if notes else ""
-    return ("【以下为扫描件的视觉识别结果，供参考，请核对】\n" + note + ocr).strip()[:_MAX_TEXT]
+    return ("【以下为扫描件的视觉识别结果，供参考，请核对】\n" + note + _reflow_text(ocr)).strip()[:_MAX_TEXT]
 
 
 def _read_docx(p: Path) -> str:
