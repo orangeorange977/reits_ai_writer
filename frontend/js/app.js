@@ -367,9 +367,15 @@ async function _renderPagesPreview() {
     document.getElementById('matPreviewTitle').textContent = `📄 《${String(path).split('/').pop()}》原版（共 ${d.total} 页）`;
     body.innerHTML = '';
     if (quote) {
-        body.insertAdjacentHTML('beforeend', st.hit
-            ? `<div class="src-tip ok">✅ 摘录位于原文第 ${st.hit} 页，已为您翻到该页附近，上下滚动可查看其他页。</div>`
-            : `<div class="src-tip warn">⚠️ 未能自动定位摘录所在页（扫描件不支持按页搜索），摘录内容：“${_escHtmlAttr(quote)}”，请翻页核对。</div>`);
+        if (st.hit) {
+            body.insertAdjacentHTML('beforeend', `<div class="src-tip ok">✅ 摘录位于原文第 ${st.hit} 页，已为您翻到该页附近，上下滚动可查看其他页。</div>`);
+        } else if (d.has_text) {
+            body.insertAdjacentHTML('beforeend', `<div class="src-tip warn">⚠️ 摘录未能在本文档中逐字定位（可能略有出入），摘录内容：“${_escHtmlAttr(quote)}”，请翻页核对。</div>`);
+        } else {
+            // 扫描件：后台免费本地 OCR 逐页搜索摘录所在页，轮询到结果自动跳页
+            body.insertAdjacentHTML('beforeend', `<div class="src-tip ok" id="quoteSearchTip">🔍 正在逐页识别搜索摘录所在页（免费本地识别，一般几秒到几十秒），找到后自动跳转…</div>`);
+            _startQuoteSearch();
+        }
     }
     body.insertAdjacentHTML('beforeend', '<div id="pdfPrevBtnWrap"></div><div id="pdfPagesWrap"></div><div id="pdfLoadMore" class="text-muted" style="text-align:center;padding:12px;font-size:12px"></div>');
     if (st.hit && st.hit > 2) { st.start = st.hit; st.end = st.hit - 1; }
@@ -422,6 +428,40 @@ async function _prependPages() {
         st.start = s;
         _renderPrevBtn();
     } finally { st.loading = false; }
+}
+
+/** 扫描件后台搜页：轮询任务结果，命中后自动跳到该页 */
+async function _startQuoteSearch() {
+    const { path, quote } = _matState;
+    try {
+        const r0 = await API.quoteSearch(path, quote);
+        if (r0.status === 'done' && r0.hit) return _onQuoteHit(r0.hit);
+        for (let i = 0; i < 90; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            if (!_matState || _matState.mode !== 'pages') return;  // 弹窗已关/已切文本版
+            const r = await API.quoteSearchResult(r0.task);
+            const tip = document.getElementById('quoteSearchTip');
+            if (r.status === 'done') {
+                if (r.hit) return _onQuoteHit(r.hit);
+                if (tip) tip.className = 'src-tip warn';
+                if (tip) tip.innerHTML = `⚠️ 已逐页识别全文但未找到摘录所在页（识别文字可能出入较大），摘录内容：“${_escHtmlAttr(quote)}”，请翻页核对。`;
+                return;
+            }
+            if (tip) tip.innerHTML = `🔍 正在逐页识别搜索摘录所在页（免费本地识别）：已扫到第 ${r.scanned || '…'} 页，找到后自动跳转…`;
+        }
+    } catch (e) { /* 搜页失败不影响翻页浏览 */ }
+}
+
+function _onQuoteHit(hit) {
+    const tip = document.getElementById('quoteSearchTip');
+    if (tip) tip.innerHTML = `✅ 摘录位于原文第 ${hit} 页，已为您跳转到该页。`;
+    const st = _matState && _matState.pagesState;
+    if (!st) return;
+    st.start = hit; st.end = hit - 1; st.hit = hit;
+    const wrap = document.getElementById('pdfPagesWrap');
+    if (wrap) wrap.innerHTML = '';
+    _renderPrevBtn();
+    _appendPages();
 }
 
 /** 文本版预览：加载解析文本，高亮“依据”里摘录的原句并滚动到该处 */

@@ -255,6 +255,18 @@ const API = {
         return this.get(`/projects/${pid}/materials/preview-pages`, { path, start, count, quote: quote || '' });
     },
 
+    /** 扫描件摘录搜页：启动后台任务（免费本地 OCR 逐页识别） */
+    async quoteSearch(path, quote) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.get(`/projects/${pid}/materials/quote-search`, { path, quote });
+    },
+
+    /** 轮询搜页任务结果 */
+    async quoteSearchResult(task) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.get(`/projects/${pid}/materials/quote-search-result`, { task });
+    },
+
     /**
      * 清空当前项目的全部申报材料
      */

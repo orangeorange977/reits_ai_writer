@@ -9,6 +9,7 @@ import logging
 import os
 import shutil
 import tempfile
+import threading
 import zipfile
 from pathlib import Path
 from typing import List, Optional
@@ -513,23 +514,85 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
         # 摘录定位页：仅文字层搜索（便宜）；扫描件不搜（避免整篇 OCR）
         hit = None
         q = (quote or "").strip()
-        if q:
+        has_text = any(doc[i].get_text().strip() for i in range(min(n, 6)))
+        if q and has_text:
             qn = _re.sub(r"\s+", "", q)
-            has_text = any(doc[i].get_text().strip() for i in range(min(n, 6)))
-            if has_text:
-                for i in range(n):
-                    t = doc[i].get_text()
-                    if q in t or qn in _re.sub(r"\s+", "", t):
-                        hit = i + 1
-                        break
+            for i in range(n):
+                t = doc[i].get_text()
+                if q in t or qn in _re.sub(r"\s+", "", t):
+                    hit = i + 1
+                    break
         doc.close()
-        return {"total": n, "pages": pages, "hit_page": hit}
+        return {"total": n, "pages": pages, "hit_page": hit, "has_text": has_text}
 
     try:
         return await asyncio.to_thread(_render)
     except Exception as ex:
         logger.error(f"PDF 按页渲染失败 {fp}: {ex}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"渲染失败：{ex}")
+
+
+# ===== 扫描件摘录搜页：后台线程用免费本地 OCR 逐页识别搜索（带磁盘缓存），前端轮询结果 =====
+_quote_search_tasks = {}  # key -> {"status": "running"|"done", "hit": int|None, "scanned": int}
+
+
+def _resolve_material_fp(project_id: int, path: str) -> Path:
+    root = _materials_dir(project_id)
+    parts = [seg for seg in (path or "").replace("\\", "/").split("/") if seg and seg != "."]
+    if not parts or any(seg == ".." for seg in parts):
+        raise HTTPException(status_code=400, detail="无效的文件路径")
+    fp = root
+    for seg in parts:
+        fp = fp / seg
+    if not fp.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在或已被删除")
+    return fp
+
+
+def _run_quote_search(key: str, fp: Path, quote: str):
+    """后台逐页搜索摘录：数字特征词（如 42076.98）命中即停；无数字时用摘录前 12 字。"""
+    import re as _re
+    try:
+        nums = [t for t in _re.findall(r"\d+(?:\.\d+)?", quote) if len(t) >= 4]
+        qn = _re.sub(r"\s+", "", quote)
+        head = qn[:12]
+        n = materials_client.pdf_page_count(fp)
+        hit = None
+        for i in range(n):
+            t = _re.sub(r"\s+", "", materials_client.ocr_page_text(fp, i))
+            if not t:
+                continue
+            if (nums and any(num in t for num in nums)) or (head and head in t):
+                hit = i + 1
+                break
+            _quote_search_tasks[key] = {"status": "running", "hit": None, "scanned": i + 1}
+        _quote_search_tasks[key] = {"status": "done", "hit": hit, "scanned": n}
+    except Exception as e:
+        logger.error(f"摘录搜页失败 {fp}: {e}", exc_info=True)
+        _quote_search_tasks[key] = {"status": "done", "hit": None, "scanned": -1}
+
+
+@router.get("/projects/{project_id}/materials/quote-search")
+async def quote_search(project_id: int, http_req: Request, path: str = "", quote: str = ""):
+    """启动（或复用）扫描件摘录搜页任务，返回 task key 供轮询。"""
+    await _assert_project_owned(project_id, _current_user_id(http_req))
+    fp = _resolve_material_fp(project_id, path)
+    if fp.suffix.lower() != ".pdf":
+        raise HTTPException(status_code=400, detail="仅 PDF 支持摘录搜页")
+    import hashlib
+    key = hashlib.md5(f"{fp}|{fp.stat().st_size}|{(quote or '').strip()}".encode()).hexdigest()
+    task = _quote_search_tasks.get(key)
+    if not task or task.get("status") == "done" and task.get("scanned") == -1:
+        _quote_search_tasks[key] = {"status": "running", "hit": None, "scanned": 0}
+        threading.Thread(target=_run_quote_search, args=(key, fp, (quote or "").strip()), daemon=True).start()
+    return {"task": key, **_quote_search_tasks[key]}
+
+
+@router.get("/projects/{project_id}/materials/quote-search-result")
+async def quote_search_result(project_id: int, http_req: Request, task: str = ""):
+    """轮询搜页任务结果。"""
+    await _assert_project_owned(project_id, _current_user_id(http_req))
+    return _quote_search_tasks.get(task) or {"status": "running", "hit": None, "scanned": 0}
 
 
 @router.delete("/projects/{project_id}/materials")

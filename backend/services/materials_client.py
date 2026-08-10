@@ -8,6 +8,8 @@ import logging
 import re
 from pathlib import Path
 
+from backend.config import DATA_SOURCE_BASE
+
 logger = logging.getLogger(__name__)
 
 _TEXT_EXT = {".txt", ".md", ".csv", ".json"}
@@ -204,6 +206,48 @@ def _reflow_text(text: str) -> str:
     if buf:
         out.append(buf)
     return '\n'.join(out)
+
+
+def ocr_page_text(fp: Path, page_idx: int) -> str:
+    """扫描件单页 OCR 文本（免费本地 tesseract，带磁盘缓存：同一页只识别一次）。
+    用于“摘录在第几页”的逐页搜索。"""
+    import hashlib
+    import fitz
+    st = fp.stat()
+    key = hashlib.md5(f"{fp}|{st.st_size}|{st.st_mtime}".encode()).hexdigest()
+    cache_dir = DATA_SOURCE_BASE / ".ocr_cache" / key
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cf = cache_dir / f"p{page_idx}.txt"
+    if cf.exists():
+        return cf.read_text(encoding="utf-8", errors="ignore")
+    doc = fitz.open(str(fp))
+    try:
+        pix = doc[page_idx].get_pixmap(dpi=100)
+    finally:
+        doc.close()
+    txt = _ocr_local([pix.tobytes("png")])
+    try:
+        cf.write_text(txt or "", encoding="utf-8")
+    except Exception:
+        pass
+    return txt or ""
+
+
+def pdf_page_count(fp: Path) -> int:
+    import fitz
+    doc = fitz.open(str(fp))
+    n = doc.page_count
+    doc.close()
+    return n
+
+
+def pdf_has_text_layer(fp: Path) -> bool:
+    import fitz
+    doc = fitz.open(str(fp))
+    try:
+        return any(doc[i].get_text().strip() for i in range(min(doc.page_count, 6)))
+    finally:
+        doc.close()
 
 
 def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> str:
