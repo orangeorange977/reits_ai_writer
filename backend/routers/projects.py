@@ -580,7 +580,25 @@ def _text_highlight_box(doc, page_idx: int, quote: str):
         except Exception:
             pass
     if not rects:
-        return None
+        # 兑底：片段跨行时 search_for 不中 → 用文字层行级 bbox 双向包含定位
+        d = page.get_text("dict")
+        hb = []
+        for blk in d.get("blocks", []):
+            for ln in blk.get("lines", []):
+                txt = "".join(sp.get("text", "") for sp in ln.get("spans", []))
+                nt = _norm_q(txt)
+                if len(nt) < 6:
+                    continue
+                if any(nf in nt or nt in nf for nf in {_norm_q(f) for f in cands if len(f) >= 6}):
+                    hb.append(ln["bbox"])
+        if not hb:
+            return None
+        k = 120 / 72
+        x0 = min(b[0] for b in hb) * k
+        y0 = min(b[1] for b in hb) * k
+        x1 = max(b[2] for b in hb) * k
+        y1 = max(b[3] for b in hb) * k
+        return [max(0, x0 - 14), max(0, y0 - 30), x1 + 14, y1 + 36]
     k = 120 / 72
     x0 = min(r.x0 for r in rects) * k
     y0 = min(r.y0 for r in rects) * k
@@ -590,7 +608,7 @@ def _text_highlight_box(doc, page_idx: int, quote: str):
 
 
 def _quote_page_hit(doc, n: int, quote: str):
-    """文字层搜页：逐字 / 去空白 / 片段投票（命中≥2 或单片段≥12字）。AI 摘录常是改写，逐字匹配太严。"""
+    """文字层搜页：逐字 / 去空白 / 片段投票（命中≥2 或单片段≥10字）。AI 摘录常是改写，逐字匹配太严。"""
     import re as _re
     q = (quote or "").strip()
     if not q:
