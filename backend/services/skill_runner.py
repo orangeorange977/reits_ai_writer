@@ -468,17 +468,34 @@ def _ctx_of_block(blk: dict) -> str:
     return ""
 
 
+# 不涉及表述本身就是结论，无需依据：正文仅为短不涉及表述的块，
+# 自检会清掉它的 src 并去掉引注号，避免“不涉及。”还挂一条冗余的“固定表述”依据
+_INAPPLICABLE_TEXT_RE = re.compile(r"^(?:不涉及|不涉及该情形|不涉及此项|无此类情形|不适用|无)[。.!！]?$")
+
+
 def verify_fix_refs(sections: list, mat_root: Path) -> dict:
     """依据自检纠偏（生成后/手工修复都可调）：逐条 src 里的“申报材料”依据——
     ① 路径归一到磁盘真实文件（AI 写的文件名常有出入）；
     ② 摘录定位：文字层 PDF 逐字→片段投票搜页；扫描件只用已缓存 OCR 页（避免拖慢生成）；
-    ③ AI 摘录是改写/缺失时，替换/补上命中处的**原文原句**——点击时前端逐字匹配必中。
+    ③ AI 摘录是改写/缺失时，替换/补上命中处的**原文原句**——点击时前端逐字匹配必中；
+    ④ 不涉及表述（“不涉及。”等）不挂依据：清空 src、去掉正文引注号。
     全程 try/except 容错：自检失败不阻断生成，保留原依据。返回统计。"""
-    stats = {"total": 0, "fixed_path": 0, "verbatim": 0, "replaced": 0, "added": 0, "failed": 0}
+    stats = {"total": 0, "fixed_path": 0, "verbatim": 0, "replaced": 0, "added": 0, "failed": 0, "removed_inapplicable": 0}
     if not mat_root or not Path(mat_root).is_dir():
         return stats
     for sec in sections or []:
         for blk in sec.get("blocks", []) or []:
+            # 不涉及块不挂依据：“不涉及。〈1〉”→“不涉及。”并清空 src
+            if blk.get("type") == "p":
+                t_raw = (blk.get("text") or "").strip()
+                t_clean = re.sub(r"\s*〈\d+〉\s*", "", t_raw).strip()
+                if _INAPPLICABLE_TEXT_RE.match(t_clean):
+                    if t_clean != t_raw:
+                        blk["text"] = t_clean
+                    if blk.get("src"):
+                        blk["src"] = ""
+                        stats["removed_inapplicable"] += 1
+                    continue
             src = (blk.get("src") or "").strip()
             if not src:
                 continue
@@ -761,6 +778,8 @@ def _output_contract(chapter_title: str) -> str:
         "   · 来自 planning.md：写“planning.md”；\n"
         "   · 模板固定表述/无具体依据：写“固定表述（无具体依据）”；拿不准的写“待核实”。\n"
         "   **绝不允许编造不存在的来源**——src 必须真实对应你实际参考过的材料；正文里的每个引注号都必须在 src 里有对应条目。\n"
+        "9. 【不涉及不挂依据】块的内容是“不涉及。”“不涉及”“无此类情形”“不适用”这类短不涉及表述时，\n"
+        "   不要标引注号〈n〉、src 字段留空——“不涉及”本身就是结论，无需任何依据（不要写“固定表述”凑依据）。\n"
     )
 
 
@@ -1061,7 +1080,8 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
         try:
             st = verify_fix_refs(data["sections"], mat_root)
             logger.info(f"ch{n} 依据自检：共{st['total']}条，路径修正{st['fixed_path']}，"
-                        f"原文直中{st['verbatim']}，摘录改原文{st['replaced']}，补摘录{st['added']}，未定位{st['failed']}")
+                        f"原文直中{st['verbatim']}，摘录改原文{st['replaced']}，补摘录{st['added']}，未定位{st['failed']}，"
+                        f"不涉及去依据{st['removed_inapplicable']}")
         except Exception as e:
             logger.warning(f"ch{n} 依据自检失败（不影响生成）：{e}")
     try:

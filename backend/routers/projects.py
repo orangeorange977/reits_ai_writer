@@ -676,7 +676,7 @@ async def verify_chapter_refs(project_id: int, n: int, http_req: Request):
 
     st = await asyncio.to_thread(_run)
     return {"message": f"依据自检完成：共{st['total']}条，路径修正{st['fixed_path']}，"
-                       f"摘录改原文{st['replaced']}，补摘录{st['added']}", **st}
+                       f"摘录改原文{st['replaced']}，补摘录{st['added']}，不涉及去依据{st['removed_inapplicable']}", **st}
 
 
 @router.delete("/projects/{project_id}/materials")
