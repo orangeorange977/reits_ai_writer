@@ -568,11 +568,29 @@ def _quote_tokens(quote: str):
 
 
 def _text_highlight_box(doc, page_idx: int, quote: str):
-    """文字层高亮框：search_for 拿片段/数字精确坐标（PDF 点 72dpi）合并，转成 120dpi 坐标返回。"""
+    """文字层高亮框：优先行级整行 bbox（框住整句更可读），不中再退 search_for 精确坐标。返回 120dpi 坐标。"""
     nums, frags = _quote_tokens(quote)
     page = doc[page_idx]
     cands = [f for f in frags if len(f) >= 6] + nums
     cands.append((quote or "").strip()[:16])
+    nset = {_norm_q(f) for f in cands if len(f) >= 4}
+    hb = []
+    for blk in page.get_text("dict").get("blocks", []):
+        for ln in blk.get("lines", []):
+            txt = "".join(sp.get("text", "") for sp in ln.get("spans", []))
+            nt = _norm_q(txt)
+            if len(nt) < 6:
+                continue
+            if any(nf in nt or nt in nf for nf in nset):
+                hb.append(ln["bbox"])
+    hb = hb[:8]
+    if hb:
+        k = 120 / 72
+        x0 = min(b[0] for b in hb) * k
+        y0 = min(b[1] for b in hb) * k
+        x1 = max(b[2] for b in hb) * k
+        y1 = max(b[3] for b in hb) * k
+        return [max(0, x0 - 14), max(0, y0 - 30), x1 + 14, y1 + 36]
     rects = []
     for tok in cands:
         try:
@@ -580,25 +598,7 @@ def _text_highlight_box(doc, page_idx: int, quote: str):
         except Exception:
             pass
     if not rects:
-        # 兑底：片段跨行时 search_for 不中 → 用文字层行级 bbox 双向包含定位
-        d = page.get_text("dict")
-        hb = []
-        for blk in d.get("blocks", []):
-            for ln in blk.get("lines", []):
-                txt = "".join(sp.get("text", "") for sp in ln.get("spans", []))
-                nt = _norm_q(txt)
-                if len(nt) < 6:
-                    continue
-                if any(nf in nt or nt in nf for nf in {_norm_q(f) for f in cands if len(f) >= 4}):
-                    hb.append(ln["bbox"])
-        if not hb:
-            return None
-        k = 120 / 72
-        x0 = min(b[0] for b in hb) * k
-        y0 = min(b[1] for b in hb) * k
-        x1 = max(b[2] for b in hb) * k
-        y1 = max(b[3] for b in hb) * k
-        return [max(0, x0 - 14), max(0, y0 - 30), x1 + 14, y1 + 36]
+        return None
     k = 120 / 72
     x0 = min(r.x0 for r in rects) * k
     y0 = min(r.y0 for r in rects) * k
