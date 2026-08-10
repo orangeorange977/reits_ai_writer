@@ -329,9 +329,10 @@ function _splitPathQuote(body) {
     quote = quote.replace(/[；;]\s*$/, '').trim();
     return { path, quote };
 }
-function openSrcLink(rawText) {
+function openSrcLink(rawText, ctx) {
     const text = String(rawText || '').replace(/^📎\s*依据[：:]/, '').trim();
     if (!text) return;
+    const ctxText = String(ctx || '').replace(/\s+/g, ' ').trim();
     // 先按〈数字〉拆出多条依据（〈1〉…〈2〉…），再按“；”拆（兼容旧格式）
     const items = [];
     for (const part of text.split(/〈\d+〉/)) {
@@ -341,11 +342,12 @@ function openSrcLink(rawText) {
         let m;
         if ((m = seg.match(/^申报材料[：:](.+)$/))) {
             const { path, quote } = _splitPathQuote(m[1].trim());
-            if (path) { _lastSrcMaterialPath = path; openMaterialPreviewResolved(path, quote); return; }
+            // 依据没带摘录时，用依据上方的正文（表格/段落）当搜索文本，也能翻到页+红框
+            if (path) { _lastSrcMaterialPath = path; openMaterialPreviewResolved(path, quote || ctxText); return; }
         }
         if (/^同上文件/.test(seg)) {
             const { quote } = _splitPathQuote(seg);
-            if (_lastSrcMaterialPath) { openMaterialPreviewResolved(_lastSrcMaterialPath, quote); return; }
+            if (_lastSrcMaterialPath) { openMaterialPreviewResolved(_lastSrcMaterialPath, quote || ctxText); return; }
             showToast('未能定位“同上文件”所指的上一条依据', 'warning'); return;
         }
         if ((m = seg.match(/^摘要表[：:](.+)$/))) { jumpToSummaryField(m[1].trim()); return; }
@@ -625,11 +627,18 @@ async function jumpToSummaryField(field) {
 }
 
 // 事件委托：点“📎 依据”行/引注项/参考材料清单 → 跳转出处
+function _srcContext(el) {
+    // 依据行上方的正文（表格/段落）：依据没带摘录时当搜索文本用
+    const cands = [];
+    if (el.previousElementSibling) cands.push(el.previousElementSibling);
+    if (el.parentElement && el.parentElement.previousElementSibling) cands.push(el.parentElement.previousElementSibling);
+    return cands.map(x => (x.textContent || '')).join(' ').replace(/\s+/g, ' ').trim().slice(0, 400);
+}
 document.addEventListener('click', (e) => {
     const item = e.target.closest && e.target.closest('.src-item');
-    if (item) { openSrcLink(item.textContent); return; }   // 逐句引注：点哪条跳哪条
+    if (item) { openSrcLink(item.textContent, _srcContext(item)); return; }   // 逐句引注：点哪条跳哪条
     const srcEl = e.target.closest && e.target.closest('.doc-src');
-    if (srcEl) { openSrcLink(srcEl.textContent); return; }
+    if (srcEl) { openSrcLink(srcEl.textContent, _srcContext(srcEl)); return; }
     const refEl = e.target.closest && e.target.closest('.ref-item');
     if (refEl) { openRefByName(refEl.textContent); return; }
 });
