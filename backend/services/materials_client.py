@@ -186,7 +186,7 @@ def _reflow_text(text: str) -> str:
             buf += ln
             continue
         new_para = bool(_NEW_PARA.match(ln))
-        is_title = len(ln) <= 24 and not re.search(r'[，,。；;：:！!？?、]', ln)
+        is_title = len(ln) <= 24 and not re.search(r'[，,。；;：:！!？?、（）()“”‘’"\'《》〈〉「」『』]', ln)
         if buf and not buf_is_title and not new_para and not _END_STOP.search(buf) and not is_title:
             buf += ln
         else:
