@@ -516,10 +516,9 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
             pix = doc[i].get_pixmap(dpi=120)
             img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
             if box and i + 1 == hl_page:
-                # 高亮框坐标基于 dpi=100，渲染图是 dpi=120，等比放大后画半透明红框
+                # hl_box 统一为 120dpi 坐标，直接画半透明红框
                 from PIL import ImageDraw
-                k = 120 / 100
-                x0, y0, x1, y1 = [v * k for v in box]
+                x0, y0, x1, y1 = box
                 overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
                 dr = ImageDraw.Draw(overlay)
                 dr.rectangle([x0, y0, x1, y1], fill=(255, 90, 90, 40), outline=(225, 55, 55, 255), width=5)
@@ -530,8 +529,9 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
         # 摘录定位页：仅文字层搜索（便宜）；扫描件不搜（避免整篇 OCR）
         has_text = any(doc[i].get_text().strip() for i in range(min(n, 6)))
         hit = _quote_page_hit(doc, n, quote) if (quote or "").strip() and has_text else None
+        hit_box = _text_highlight_box(doc, hit - 1, quote) if hit else None
         doc.close()
-        return {"total": n, "pages": pages, "hit_page": hit, "has_text": has_text}
+        return {"total": n, "pages": pages, "hit_page": hit, "has_text": has_text, "hit_box": hit_box}
 
     try:
         return await asyncio.to_thread(_render)
@@ -565,6 +565,28 @@ def _quote_tokens(quote: str):
             if 6 <= len(sub) <= 14 and sub not in frags:
                 frags.append(sub)
     return nums, frags[:8]
+
+
+def _text_highlight_box(doc, page_idx: int, quote: str):
+    """文字层高亮框：search_for 拿片段精确坐标（PDF 点 72dpi）合并，转成 120dpi 坐标返回。"""
+    _, frags = _quote_tokens(quote)
+    page = doc[page_idx]
+    cands = [f for f in frags if len(f) >= 6]
+    cands.append((quote or "").strip()[:16])
+    rects = []
+    for tok in cands:
+        try:
+            rects += list(page.search_for(tok))
+        except Exception:
+            pass
+    if not rects:
+        return None
+    k = 120 / 72
+    x0 = min(r.x0 for r in rects) * k
+    y0 = min(r.y0 for r in rects) * k
+    x1 = max(r.x1 for r in rects) * k
+    y1 = max(r.y1 for r in rects) * k
+    return [max(0, x0 - 14), max(0, y0 - 30), x1 + 14, y1 + 36]
 
 
 def _quote_page_hit(doc, n: int, quote: str):
@@ -617,7 +639,8 @@ def _run_quote_search(key: str, fp: Path, quote: str):
                 continue
             if (nums and any(num in t for num in nums)) or (frags and any(_norm_q(f) in t for f in frags)) or (head and head in t):
                 hit = i + 1
-                box = materials_client.ocr_page_highlight_box(fp, i, nums or frags)
+                b = materials_client.ocr_page_highlight_box(fp, i, nums or frags)
+                box = [v * 1.2 for v in b] if b else None  # 100dpi→120dpi，与文字层约定一致
                 break
             _quote_search_tasks[key] = {"status": "running", "hit": None, "scanned": i + 1}
         _quote_search_tasks[key] = {"status": "done", "hit": hit, "scanned": n,

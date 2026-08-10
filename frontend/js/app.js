@@ -425,7 +425,10 @@ async function _renderPagesPreview() {
     document.getElementById('matPreviewTitle').textContent = `📄 《${String(path).split('/').pop()}》原版（共 ${d.total} 页）`;
     body.innerHTML = '';
     if (quote) {
-        if (st.hit) {
+        if (st.hit && d.hit_box) {
+            st.hit_box = d.hit_box;
+            body.insertAdjacentHTML('beforeend', `<div class="src-tip ok">✅ 摘录位于原文第 ${st.hit} 页，已为您跳转到该页并红框标出摘录位置。</div>`);
+        } else if (st.hit) {
             body.insertAdjacentHTML('beforeend', `<div class="src-tip ok">✅ 摘录位于原文第 ${st.hit} 页，已为您翻到该页附近，上下滚动可查看其他页。</div>`);
         } else if (d.has_text) {
             body.insertAdjacentHTML('beforeend', `<div class="src-tip warn">⚠️ 摘录未能在本文档中逐字定位（可能略有出入），摘录内容：“${_escHtmlAttr(quote)}”，请翻页核对。</div>`);
@@ -436,7 +439,7 @@ async function _renderPagesPreview() {
         }
     }
     body.insertAdjacentHTML('beforeend', '<div id="pdfPrevBtnWrap"></div><div id="pdfPagesWrap"></div><div id="pdfLoadMore" class="text-muted" style="text-align:center;padding:12px;font-size:12px"></div>');
-    if (st.hit && st.hit > 2) { st.start = st.hit; st.end = st.hit - 1; }
+    if (st.hit && (st.hit > 2 || st.hit_box)) { st.start = st.hit; st.end = st.hit - 1; }
     _renderPrevBtn();
     await _appendPages();
     body.onscroll = () => {
