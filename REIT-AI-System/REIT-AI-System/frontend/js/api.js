@@ -403,6 +403,14 @@ const API = {
     async saveProjectName(name) {
         return this.post('/skills/project-name', { name });
     },
+    /** 服务器端统一设置（模板路径/申报材料路径，全员共用） */
+    async getServerSettings() {
+        const r = await this.get('/skills/settings');
+        return r.data;
+    },
+    async saveServerSettings(patch) {
+        return this.post('/skills/settings', patch);
+    },
 
     // ===== 封面 =====
     /** 取封面状态：标题(自动)、原始权益人(自动)、日期、各 logo 是否已上传 */

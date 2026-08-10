@@ -98,6 +98,7 @@ async function onPageEnter(pageId) {
             break;
         case 'settings':
             await loadModelSetting();
+            await loadServerSettings();   // 从服务器读取全员共用的模板/材料路径
             break;
     }
 }
@@ -131,6 +132,26 @@ async function saveModelSetting(model) {
     } catch (e) {
         showToast('切换模型失败：' + e.message, 'error');
     }
+}
+
+/** 从服务器读取"全员共用"的模板/材料路径，填进系统设置页（部署后大家看到同一套） */
+async function loadServerSettings() {
+    try {
+        const s = await API.getServerSettings();
+        const t = document.getElementById('settingTemplatePath');
+        const m = document.getElementById('settingNdrcMaterialPath');
+        if (t && s.template_path) { t.value = s.template_path; localStorage.setItem('reitai_settingTemplatePath', s.template_path); }
+        if (m && s.materials_path) { m.value = s.materials_path; localStorage.setItem('reitai_settingNdrcMaterialPath', s.materials_path); }
+    } catch (e) { /* 取不到就沿用本地 */ }
+}
+
+/** 系统设置里的路径被选中后，同时存到服务器（全员共用；映射到服务器端字段） */
+function _saveServerSettingPath(inputId, value) {
+    let field = null;
+    if (inputId === 'settingTemplatePath') field = 'template_path';
+    else if (inputId === 'settingNdrcMaterialPath') field = 'materials_path';
+    if (!field) return;
+    API.saveServerSettings({ [field]: value }).catch(() => {});
 }
 
 /**
@@ -351,6 +372,7 @@ function selectCurrentFolder() {
     if (pathDisplay && input) {
         input.value = pathDisplay.textContent;
         _persistSettingsPathIfNeeded(_picker.targetInputId, pathDisplay.textContent);
+        _saveServerSettingPath(_picker.targetInputId, pathDisplay.textContent);
     }
     closeModal('modal-folder-browser');
     showToast('已选择路径');
@@ -364,6 +386,7 @@ function selectLocalFile(path) {
     if (input) {
         input.value = path;
         _persistSettingsPathIfNeeded(_picker.targetInputId, path);
+        _saveServerSettingPath(_picker.targetInputId, path);
     }
     closeModal('modal-folder-browser');
     showToast('已选择文件');
@@ -2717,6 +2740,8 @@ async function submitNewProject() {
     localStorage.setItem('reitai_settingNdrcMaterialPath', materials);
     const st = document.getElementById('settingTemplatePath'); if (st) st.value = template;
     const sm = document.getElementById('settingNdrcMaterialPath'); if (sm) sm.value = materials;
+    // 同时存到服务器（全员共用）
+    try { await API.saveServerSettings({ template_path: template, materials_path: materials }); } catch (e) { /* 不阻塞 */ }
 
     // 应用所选模型（全局即时生效，各章生成都用它），并同步设置页下拉
     const model = (document.getElementById('npModel')?.value || '').trim();

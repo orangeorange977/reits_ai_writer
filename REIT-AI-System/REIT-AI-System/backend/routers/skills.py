@@ -407,6 +407,9 @@ async def chapter_run(n: int, template_path: str = "", materials_path: str = "")
     _valid_chapter(n)
     if _job(n)["status"] == "running":
         raise HTTPException(status_code=409, detail=f"第{n}章正在生成中，请稍候")
+    # 优先用服务器端统一设置的路径（全员共用），没有再用前端传来的
+    template_path = skill_runner.effective_template_path(template_path)
+    materials_path = skill_runner.effective_materials_path(materials_path)
     subs = []
     tpl = template_path.strip()
     if tpl and Path(tpl).exists():
@@ -441,6 +444,7 @@ async def chapter_content(n: int, template_path: str = ""):
     template_path（来自系统设置）有效时，即使还没生成，也能看到该章的小标题结构。
     """
     _valid_chapter(n)
+    template_path = skill_runner.effective_template_path(template_path)
 
     def _do():
         subs = []
@@ -503,6 +507,7 @@ async def chapter_preview(n: int, template_path: str = ""):
     只有本章已保存内容(JSON)变化时才真正重新渲染，否则直接复用上次结果。
     """
     _valid_chapter(n)
+    template_path = skill_runner.effective_template_path(template_path)
     cfg = skill_runner.CHAPTERS[n]
     docx_path = str(skill_runner.chapter_docx_path(n))
 
@@ -557,6 +562,29 @@ async def chapter_download(n: int):
 
 class CoverDate(BaseModel):
     date_text: str = ""
+
+
+class AppSettings(BaseModel):
+    template_path: str = None
+    materials_path: str = None
+
+
+@router.get("/settings")
+async def settings_get():
+    """服务器端统一设置（模板路径 / 申报材料路径），全员共用。"""
+    d = await asyncio.to_thread(skill_runner.get_app_settings)
+    return {"status": "ok", "data": {
+        "template_path": d.get("template_path", ""),
+        "materials_path": d.get("materials_path", ""),
+    }}
+
+
+@router.post("/settings")
+async def settings_save(data: AppSettings):
+    """保存服务器端统一设置（只更新传入的字段）。"""
+    patch = {k: v for k, v in data.model_dump().items() if v is not None}
+    await asyncio.to_thread(skill_runner.save_app_settings, patch)
+    return {"status": "ok", "message": "已保存"}
 
 
 @router.get("/project-overview")

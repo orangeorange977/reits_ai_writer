@@ -88,6 +88,41 @@ def save_project_display_name(name: str) -> None:
     )
 
 
+_APP_SETTINGS_PATH = SKILLS_DIR / "app_settings.json"
+
+
+def get_app_settings() -> dict:
+    """服务器端统一设置（模板路径/申报材料路径等），全员共用。"""
+    try:
+        if _APP_SETTINGS_PATH.exists():
+            d = json.loads(_APP_SETTINGS_PATH.read_text(encoding="utf-8"))
+            if isinstance(d, dict):
+                return d
+    except Exception:
+        pass
+    return {}
+
+
+def save_app_settings(patch: dict) -> dict:
+    d = get_app_settings()
+    for k, v in (patch or {}).items():
+        if v is not None:
+            d[k] = v
+    _APP_SETTINGS_PATH.write_text(
+        json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return d
+
+
+def effective_template_path(passed: str = "") -> str:
+    """优先用服务器统一设置里的模板路径；没有再用前端传来的（本地开发时）。"""
+    return (get_app_settings().get("template_path") or "").strip() or (passed or "").strip()
+
+
+def effective_materials_path(passed: str = "") -> str:
+    return (get_app_settings().get("materials_path") or "").strip() or (passed or "").strip()
+
+
 def project_overview() -> dict:
     """概览页"项目列表"那一行用：当前正在编辑的项目信息。
     - 名称/行业：取自摘要表；
