@@ -298,14 +298,15 @@ def pdf_has_text_layer(fp: Path) -> bool:
 # 供 projects.py（点击预览）与 skill_runner.py（生成后自检）共用 =====
 
 def norm_q(s: str) -> str:
-    """搜页归一：抹平空白/连字符/破折号（AI 摘录 “A18” vs 原文 “A-18”）。"""
-    return re.sub(r"[\s\-—–]", "", s or "")
+    """搜页归一：抹平空白/连字符/破折号/逗号（AI 摘录 “A18” vs 原文 “A-18”；
+    千分位逗号 “23,400,737,827.40” vs “23400737827.40”）。"""
+    return re.sub(r"[\s\-—–,，]", "", s or "")
 
 
 def quote_tokens(quote: str):
-    """摘录的特征词：数字（≥4位）+ 中文片段（≥6字，最多8个）。
+    """摘录的特征词：数字（≥4位，千分位逗号先抹平避免拆碎）+ 中文片段（≥6字，最多8个）。
     片段再按虚词拆出核心专名（“以国际信息云聚核港”→“国际信息云聚核港”），供搜页与高亮框共用。"""
-    nums = [t for t in re.findall(r"\d+(?:\.\d+)?", quote or "") if len(t) >= 4]
+    nums = [t for t in re.findall(r"\d+(?:\.\d+)?", norm_q(quote or "")) if len(t) >= 4]
     frags = []
     for f in re.split(r"[，。；：、！？…〈〉《》()（）\"\u201c\u201d\s]+", quote or ""):
         f = f.strip()
@@ -392,11 +393,10 @@ def locate_quote_in_pdf(fp: Path, quote: str, cached_only: bool = False):
             hit = quote_page_hit(doc, n, q)
             if not hit:
                 return None
-            qn = re.sub(r"\s+", "", q)
+            qn = norm_q(q)
             is_verbatim = False
             for i in range(n):
-                t = re.sub(r"\s+", "", doc[i].get_text())
-                if qn in t:
+                if qn in norm_q(doc[i].get_text()):
                     is_verbatim = True
                     break
             return hit, page_original_snippet(doc, hit - 1, q), is_verbatim, True
