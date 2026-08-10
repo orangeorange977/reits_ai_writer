@@ -247,6 +247,15 @@ const API = {
     },
 
     /**
+     * PDF 按页原版预览（仿 Word/WPS 观感）：返回指定页范围的页面图片
+     * @returns {Promise<object>} {total, pages:[{page, img}], hit_page}
+     */
+    async previewMaterialPages(path, start, count, quote) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.get(`/projects/${pid}/materials/preview-pages`, { path, start, count, quote: quote || '' });
+    },
+
+    /**
      * 清空当前项目的全部申报材料
      */
     async clearMaterials() {

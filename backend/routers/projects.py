@@ -475,6 +475,63 @@ async def preview_material(project_id: int, http_req: Request, path: str = ""):
     return {"filename": fp.name, "path": path, "text": (text or "")[:120000]}
 
 
+@router.get("/projects/{project_id}/materials/preview-pages")
+async def preview_material_pages(project_id: int, http_req: Request, path: str = "",
+                                 start: int = 1, count: int = 3, quote: str = ""):
+    """PDF 按页渲染成图片（仿 Word/WPS 原版观感），分页懒加载。
+    quote 非空且 PDF 有文字层时，顺带返回摘录所在页 hit_page（忽略空白匹配）。"""
+    await _assert_project_owned(project_id, _current_user_id(http_req))
+    root = _materials_dir(project_id)
+    parts = [seg for seg in (path or "").replace("\\", "/").split("/") if seg and seg != "."]
+    if not parts or any(seg == ".." for seg in parts):
+        raise HTTPException(status_code=400, detail="无效的文件路径")
+    fp = root
+    for seg in parts:
+        fp = fp / seg
+    if not fp.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在或已被删除")
+    if fp.suffix.lower() != ".pdf":
+        raise HTTPException(status_code=400, detail="仅 PDF 支持按页原版预览")
+
+    def _render():
+        import base64
+        import io
+        import re as _re
+        import fitz
+        from PIL import Image
+        doc = fitz.open(str(fp))
+        n = doc.page_count
+        s = max(1, min(start, n))
+        e = min(n, s + count - 1)
+        pages = []
+        for i in range(s - 1, e):
+            pix = doc[i].get_pixmap(dpi=120)
+            img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+            buf = io.BytesIO()
+            img.save(buf, "JPEG", quality=82)
+            pages.append({"page": i + 1, "img": base64.b64encode(buf.getvalue()).decode()})
+        # 摘录定位页：仅文字层搜索（便宜）；扫描件不搜（避免整篇 OCR）
+        hit = None
+        q = (quote or "").strip()
+        if q:
+            qn = _re.sub(r"\s+", "", q)
+            has_text = any(doc[i].get_text().strip() for i in range(min(n, 6)))
+            if has_text:
+                for i in range(n):
+                    t = doc[i].get_text()
+                    if q in t or qn in _re.sub(r"\s+", "", t):
+                        hit = i + 1
+                        break
+        doc.close()
+        return {"total": n, "pages": pages, "hit_page": hit}
+
+    try:
+        return await asyncio.to_thread(_render)
+    except Exception as ex:
+        logger.error(f"PDF 按页渲染失败 {fp}: {ex}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"渲染失败：{ex}")
+
+
 @router.delete("/projects/{project_id}/materials")
 async def clear_materials(project_id: int, http_req: Request):
     """清空当前项目的全部申报材料。"""

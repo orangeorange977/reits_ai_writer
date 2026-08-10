@@ -3014,14 +3014,28 @@ body {
     color: var(--text-primary);
     word-break: break-all;
 }
-.mat-preview-body { padding: 16px 20px; overflow-y: auto; }
+.mat-preview-body { padding: 16px 20px; overflow-y: auto; background: #e9ebee; }
 .mat-text {
     font-size: 13.5px;
     line-height: 2;
     color: var(--text-primary);
     white-space: pre-wrap;
     word-break: break-all;
+    background: #fff;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 24px 32px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.15);
 }
+/* PDF 按页原版预览：仿 Word/WPS 的纸张视图 */
+.pdf-page {
+    max-width: 860px;
+    margin: 14px auto;
+    background: #fff;
+    box-shadow: 0 2px 12px rgba(0,0,0,.2);
+}
+.pdf-page img { width: 100%; display: block; }
+.pdf-page-no { text-align: center; color: #98a0a8; font-size: 12px; padding: 6px 0 10px; }
 .src-mark {
     background: #ffe58a;
     padding: 1px 2px;

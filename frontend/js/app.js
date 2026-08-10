@@ -299,7 +299,9 @@ function openSrcLink(rawText) {
     showToast('这类依据无法定位原文（如天眼查实时查询、网络信息、固定表述等）', 'warning');
 }
 
-/** 材料原文预览弹窗：加载解析文本，高亮“依据”里摘录的原句并滚动到该处 */
+/** 材料原文预览弹窗：PDF 默认按页原版图（仿 Word/WPS 观感，无限滚动懒加载），
+ *  其他格式/切换后走文本版（高亮“依据”摘录并滚动到该处） */
+let _matState = null;  // {path, quote, mode:'pages'|'text', pagesState}
 async function openMaterialPreview(path, quote) {
     let modal = document.getElementById('matPreviewModal');
     if (!modal) {
@@ -310,7 +312,10 @@ async function openMaterialPreview(path, quote) {
             <div class="mat-preview-box">
                 <div class="mat-preview-head">
                     <span class="mat-preview-title" id="matPreviewTitle">正在加载材料…</span>
-                    <button class="btn btn-ghost btn-sm" onclick="closeMaterialPreview()">✕ 关闭</button>
+                    <span style="display:flex;gap:8px">
+                        <button class="btn btn-ghost btn-sm" id="matPreviewToggle" style="display:none"></button>
+                        <button class="btn btn-ghost btn-sm" onclick="closeMaterialPreview()">✕ 关闭</button>
+                    </span>
                 </div>
                 <div class="mat-preview-body" id="matPreviewBody"></div>
             </div>`;
@@ -321,9 +326,111 @@ async function openMaterialPreview(path, quote) {
         document.body.appendChild(modal);
     }
     modal.style.display = 'flex';
+    _matState = { path, quote, mode: /\.pdf$/i.test(path || '') ? 'pages' : 'text', pagesState: null };
+    const toggle = document.getElementById('matPreviewToggle');
+    if (toggle) {
+        toggle.onclick = () => {
+            _matState.mode = _matState.mode === 'pages' ? 'text' : 'pages';
+            _matState.pagesState = null;
+            _updateMatToggleBtn();
+            if (_matState.mode === 'pages') _renderPagesPreview(); else _renderTextPreview();
+        };
+    }
+    _updateMatToggleBtn();
+    if (_matState.mode === 'pages') await _renderPagesPreview();
+    else await _renderTextPreview();
+}
+
+function _updateMatToggleBtn() {
+    const btn = document.getElementById('matPreviewToggle');
+    if (!btn || !_matState) return;
+    const isPdf = /\.pdf$/i.test(_matState.path || '');
+    btn.style.display = isPdf ? '' : 'none';
+    btn.textContent = _matState.mode === 'pages' ? '📝 文本版' : '📄 原版页面';
+}
+
+/** PDF 按页原版图预览：首批 3 页；摘录命中页不在首批时从命中页开始，顶部提供“加载前几页” */
+async function _renderPagesPreview() {
+    const { path, quote } = _matState;
+    const body = document.getElementById('matPreviewBody');
+    document.getElementById('matPreviewTitle').textContent = '正在渲染原版页面…';
+    body.innerHTML = '<div class="text-muted" style="padding:20px">正在渲染 PDF 原版页面，请稍候…</div>';
+    let d;
+    try {
+        d = await API.previewMaterialPages(path, 1, 3, quote);
+    } catch (e) {
+        // 渲染失败（如加密 PDF）回退文本版
+        _matState.mode = 'text'; _updateMatToggleBtn();
+        return _renderTextPreview();
+    }
+    const st = _matState.pagesState = { total: d.total, start: 1, end: 0, loading: false, hit: d.hit_page };
+    document.getElementById('matPreviewTitle').textContent = `📄 《${String(path).split('/').pop()}》原版（共 ${d.total} 页）`;
+    body.innerHTML = '';
+    if (quote) {
+        body.insertAdjacentHTML('beforeend', st.hit
+            ? `<div class="src-tip ok">✅ 摘录位于原文第 ${st.hit} 页，已为您翻到该页附近，上下滚动可查看其他页。</div>`
+            : `<div class="src-tip warn">⚠️ 未能自动定位摘录所在页（扫描件不支持按页搜索），摘录内容：“${_escHtmlAttr(quote)}”，请翻页核对。</div>`);
+    }
+    body.insertAdjacentHTML('beforeend', '<div id="pdfPrevBtnWrap"></div><div id="pdfPagesWrap"></div><div id="pdfLoadMore" class="text-muted" style="text-align:center;padding:12px;font-size:12px"></div>');
+    if (st.hit && st.hit > 2) { st.start = st.hit; st.end = st.hit - 1; }
+    _renderPrevBtn();
+    await _appendPages();
+    body.onscroll = () => {
+        if (_matState && _matState.mode === 'pages' && body.scrollTop + body.clientHeight > body.scrollHeight - 600) _appendPages();
+    };
+}
+
+function _renderPrevBtn() {
+    const wrap = document.getElementById('pdfPrevBtnWrap');
+    const st = _matState && _matState.pagesState;
+    if (!wrap || !st) return;
+    wrap.innerHTML = st.start > 1
+        ? `<div style="text-align:center;padding:8px"><button class="btn btn-ghost btn-sm" onclick="_prependPages()">⬆️ 加载第 ${Math.max(1, st.start - 3)}–${st.start - 1} 页</button></div>`
+        : '';
+}
+
+function _pdfPageHtml(p, total) {
+    return `<div class="pdf-page"><img src="data:image/jpeg;base64,${p.img}" alt="第 ${p.page} 页"><div class="pdf-page-no">— 第 ${p.page} 页 / 共 ${total} 页 —</div></div>`;
+}
+
+async function _appendPages() {
+    const st = _matState && _matState.pagesState;
+    if (!st || st.loading || st.end >= st.total) return;
+    st.loading = true;
+    const more = document.getElementById('pdfLoadMore');
+    if (more) more.textContent = '正在加载…';
+    try {
+        const d = await API.previewMaterialPages(_matState.path, st.end + 1, 3, '');
+        const wrap = document.getElementById('pdfPagesWrap');
+        for (const p of d.pages) wrap.insertAdjacentHTML('beforeend', _pdfPageHtml(p, st.total));
+        st.end = Math.min(st.total, st.end + d.pages.length);
+        if (more) more.textContent = st.end >= st.total ? '— 已到最后 —' : '↓ 向下滚动加载更多页';
+    } catch (e) {
+        if (more) more.textContent = '加载失败，滚动重试';
+    } finally { st.loading = false; }
+}
+
+async function _prependPages() {
+    const st = _matState && _matState.pagesState;
+    if (!st || st.loading || st.start <= 1) return;
+    st.loading = true;
+    try {
+        const s = Math.max(1, st.start - 3);
+        const d = await API.previewMaterialPages(_matState.path, s, st.start - s, '');
+        const wrap = document.getElementById('pdfPagesWrap');
+        wrap.insertAdjacentHTML('afterbegin', d.pages.map(p => _pdfPageHtml(p, st.total)).join(''));
+        st.start = s;
+        _renderPrevBtn();
+    } finally { st.loading = false; }
+}
+
+/** 文本版预览：加载解析文本，高亮“依据”里摘录的原句并滚动到该处 */
+async function _renderTextPreview() {
+    const { path, quote } = _matState;
+    const body = document.getElementById('matPreviewBody');
+    body.onscroll = null;
     document.getElementById('matPreviewTitle').textContent = '正在加载材料原文…';
-    document.getElementById('matPreviewBody').innerHTML =
-        '<div class="text-muted" style="padding:20px">正在解析材料，请稍候…（扫描件需要识别文字，会稍慢）</div>';
+    body.innerHTML = '<div class="text-muted" style="padding:20px">正在解析材料，请稍候…（扫描件需要识别文字，会稍慢）</div>';
     try {
         const d = await API.previewMaterial(path);
         document.getElementById('matPreviewTitle').textContent = `📄 《${d.filename}》原文`;
