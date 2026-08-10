@@ -13,6 +13,7 @@ import threading
 import zipfile
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel
@@ -677,6 +678,50 @@ async def verify_chapter_refs(project_id: int, n: int, http_req: Request):
     st = await asyncio.to_thread(_run)
     return {"message": f"依据自检完成：共{st['total']}条，路径修正{st['fixed_path']}，"
                        f"摘录改原文{st['replaced']}，补摘录{st['added']}，不涉及去依据{st['removed_inapplicable']}", **st}
+
+
+# 天眼查企业名→官网 URL 缓存（避免重复消耗 MCP 查询）
+_TYC_URL_CACHE: dict = {}
+
+
+@router.get("/tianyancha/company-url")
+async def tianyancha_company_url(name: str = ""):
+    """天眼查依据→可点击的官网网址：调 MCP search_companies，
+    企业名与候选表精确匹配则给公司详情页 tianyancha.com/company/{id}；
+    匹配不到/未配置/查询失败则给搜索页（搜索页首条即目标企业）。"""
+    name = (name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="缺少企业名称")
+    if name in _TYC_URL_CACHE:
+        return _TYC_URL_CACHE[name]
+
+    def _resolve():
+        from backend.services import tianyancha_client
+        if not tianyancha_client.is_enabled():
+            return None
+        out = tianyancha_client.call("search_companies", {"query": name})
+        header = None
+        for ln in (out or "").splitlines():
+            s = ln.strip()
+            if s.startswith("|") and "企业名称" in s and "企业ID" in s:
+                header = [c.strip() for c in s.strip("|").split("|")]
+                continue
+            if header and s.startswith("|") and not set(s) <= set("|-: "):
+                cells = [c.strip() for c in s.strip("|").split("|")]
+                if len(cells) == len(header):
+                    row = dict(zip(header, cells))
+                    cid = (row.get("企业ID") or "").strip()
+                    # 只认精确同名候选，避免跳错公司
+                    if row.get("企业名称") == name and cid.isdigit():
+                        return f"https://www.tianyancha.com/company/{cid}"
+        return None
+
+    url = await asyncio.to_thread(_resolve)
+    if not url:
+        url = f"https://www.tianyancha.com/search?key={quote(name)}"
+    resp = {"url": url, "company": name}
+    _TYC_URL_CACHE[name] = resp
+    return resp
 
 
 @router.delete("/projects/{project_id}/materials")

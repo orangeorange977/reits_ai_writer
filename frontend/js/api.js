@@ -269,6 +269,11 @@ const API = {
         return this.get(`/projects/${pid}/materials/quote-search-result`, { task });
     },
 
+    /** 天眼查依据→官网网址（企业名精确匹配给详情页，否则搜索页） */
+    async tianyanchaUrl(name) {
+        return this.get(`/tianyancha/company-url`, { name });
+    },
+
     /**
      * 清空当前项目的全部申报材料
      */

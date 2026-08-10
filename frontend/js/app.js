@@ -356,13 +356,32 @@ function openSrcLink(rawText, ctx) {
             if (_lastSrcMaterialPath) { openMaterialPreviewResolved(_lastSrcMaterialPath, quote || (page ? '' : ctxText), page); return; }
             showToast('未能定位“同上文件”所指的上一条依据', 'warning'); return;
         }
+        if ((m = seg.match(/^天眼查(?:查询)?[：:](.+)$/))) {
+            // 括号里是查询结果摘要（如“对外投资企业分布城市包括…”），企业名只取括号前
+            const company = m[1].trim().replace(/[（(][^）)]*[）)]\s*$/, '').trim();
+            if (company) { openTianyancha(company); return; }
+        }
         if ((m = seg.match(/^摘要表[：:](.+)$/))) { jumpToSummaryField(m[1].trim()); return; }
     }
     // 无类型前缀的裸文件名（部分旧格式）：尝试按名定位
     if (text.length <= 60 && !/^(天眼查|网络公开|固定表述|planning)/.test(text)) {
         openRefByName(text); return;
     }
-    showToast('这类依据无法定位原文（如天眼查实时查询、网络信息、固定表述等）', 'warning');
+    showToast('这类依据无法定位原文（如网络信息、固定表述等）', 'warning');
+}
+
+/** 天眼查依据→官网：点击上下文里先开搜索页（不会被浏览器拦截），
+ *  后台再调 MCP 解析精确企业 ID，解析到就把该标签页转去公司详情页；
+ *  解析不到/失败则留在搜索页（首条即目标企业）。 */
+function openTianyancha(company) {
+    const searchUrl = 'https://www.tianyancha.com/search?key=' + encodeURIComponent(company);
+    const win = window.open(searchUrl, '_blank');
+    showToast(`已跳转天眼查查看“${company}”`);
+    API.tianyanchaUrl(company).then(d => {
+        if (win && d && d.url && d.url !== searchUrl) {
+            try { win.location.href = d.url; } catch (e) { /* 跳转失败则保持搜索页 */ }
+        }
+    }).catch(() => { });
 }
 
 /** 材料原文预览弹窗：PDF 默认按页原版图（仿 Word/WPS 观感，无限滚动懒加载），
