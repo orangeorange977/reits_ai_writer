@@ -478,7 +478,8 @@ async def preview_material(project_id: int, http_req: Request, path: str = ""):
 
 @router.get("/projects/{project_id}/materials/preview-pages")
 async def preview_material_pages(project_id: int, http_req: Request, path: str = "",
-                                 start: int = 1, count: int = 3, quote: str = ""):
+                                 start: int = 1, count: int = 3, quote: str = "",
+                                 hl_page: int = 0, hl_box: str = ""):
     """PDF 按页渲染成图片（仿 Word/WPS 原版观感），分页懒加载。
     quote 非空且 PDF 有文字层时，顺带返回摘录所在页 hit_page（忽略空白匹配）。"""
     await _assert_project_owned(project_id, _current_user_id(http_req))
@@ -504,10 +505,25 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
         n = doc.page_count
         s = max(1, min(start, n))
         e = min(n, s + count - 1)
+        box = None
+        if hl_page and hl_box:
+            try:
+                box = [float(v) for v in hl_box.split(",")][:4]
+            except Exception:
+                box = None
         pages = []
         for i in range(s - 1, e):
             pix = doc[i].get_pixmap(dpi=120)
             img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+            if box and i + 1 == hl_page:
+                # 高亮框坐标基于 dpi=100，渲染图是 dpi=120，等比放大后画半透明红框
+                from PIL import ImageDraw
+                k = 120 / 100
+                x0, y0, x1, y1 = [v * k for v in box]
+                overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+                dr = ImageDraw.Draw(overlay)
+                dr.rectangle([x0, y0, x1, y1], fill=(255, 90, 90, 40), outline=(225, 55, 55, 255), width=5)
+                img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
             buf = io.BytesIO()
             img.save(buf, "JPEG", quality=82)
             pages.append({"page": i + 1, "img": base64.b64encode(buf.getvalue()).decode()})
@@ -558,15 +574,18 @@ def _run_quote_search(key: str, fp: Path, quote: str):
         head = qn[:12]
         n = materials_client.pdf_page_count(fp)
         hit = None
+        box = None
         for i in range(n):
             t = _re.sub(r"\s+", "", materials_client.ocr_page_text(fp, i))
             if not t:
                 continue
             if (nums and any(num in t for num in nums)) or (head and head in t):
                 hit = i + 1
+                box = materials_client.ocr_page_highlight_box(fp, i, nums)
                 break
             _quote_search_tasks[key] = {"status": "running", "hit": None, "scanned": i + 1}
-        _quote_search_tasks[key] = {"status": "done", "hit": hit, "scanned": n}
+        _quote_search_tasks[key] = {"status": "done", "hit": hit, "scanned": n,
+                                    "box": box if hit else None}
     except Exception as e:
         logger.error(f"摘录搜页失败 {fp}: {e}", exc_info=True)
         _quote_search_tasks[key] = {"status": "done", "hit": None, "scanned": -1}

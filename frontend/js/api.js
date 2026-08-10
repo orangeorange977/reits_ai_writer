@@ -250,9 +250,11 @@ const API = {
      * PDF 按页原版预览（仿 Word/WPS 观感）：返回指定页范围的页面图片
      * @returns {Promise<object>} {total, pages:[{page, img}], hit_page}
      */
-    async previewMaterialPages(path, start, count, quote) {
+    async previewMaterialPages(path, start, count, quote, hlPage, hlBox) {
         const pid = encodeURIComponent(this._currentProjectId());
-        return this.get(`/projects/${pid}/materials/preview-pages`, { path, start, count, quote: quote || '' });
+        const params = { path, start, count, quote: quote || '' };
+        if (hlPage) { params.hl_page = hlPage; params.hl_box = hlBox || ''; }
+        return this.get(`/projects/${pid}/materials/preview-pages`, params);
     },
 
     /** 扫描件摘录搜页：启动后台任务（免费本地 OCR 逐页识别） */

@@ -241,6 +241,44 @@ def pdf_page_count(fp: Path) -> int:
     return n
 
 
+def ocr_page_highlight_box(fp: Path, page_idx: int, nums: list):
+    """在指定页的 OCR 词级坐标里找含特征数字的行，返回高亮框 [x0,y0,x1,y1]（dpi=100 坐标）。
+    上下各扩约一行，框住摘录所在段落。找不到返回 None。"""
+    import io
+    import fitz
+    import pytesseract
+    from PIL import Image
+    if not nums:
+        return None
+    doc = fitz.open(str(fp))
+    try:
+        pix = doc[page_idx].get_pixmap(dpi=100)
+    finally:
+        doc.close()
+    img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+    d = pytesseract.image_to_data(img, lang="chi_sim+eng", output_type=pytesseract.Output.DICT)
+    lines = {}  # (block,par,line) -> {text, box}
+    for i in range(len(d["text"])):
+        txt = (d["text"][i] or "").strip()
+        if not txt:
+            continue
+        key = (d["block_num"][i], d["par_num"][i], d["line_num"][i])
+        e = lines.setdefault(key, {"text": "", "box": None})
+        x, y, w, h = d["left"][i], d["top"][i], d["width"][i], d["height"][i]
+        b = e["box"]
+        e["box"] = [x, y, x + w, y + h] if b is None else [min(b[0], x), min(b[1], y), max(b[2], x + w), max(b[3], y + h)]
+        e["text"] += txt
+    hit_boxes = [v["box"] for v in lines.values() if v["box"] and any(num in v["text"] for num in nums)]
+    if not hit_boxes:
+        return None
+    x0 = min(b[0] for b in hit_boxes)
+    y0 = min(b[1] for b in hit_boxes)
+    x1 = max(b[2] for b in hit_boxes)
+    y1 = max(b[3] for b in hit_boxes)
+    W, H = img.size
+    return [max(0, x0 - 12), max(0, y0 - 55), min(W, x1 + 12), min(H, y1 + 65)]
+
+
 def pdf_has_text_layer(fp: Path) -> bool:
     import fitz
     doc = fitz.open(str(fp))

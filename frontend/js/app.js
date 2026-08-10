@@ -406,7 +406,9 @@ async function _appendPages() {
     const more = document.getElementById('pdfLoadMore');
     if (more) more.textContent = '正在加载…';
     try {
-        const d = await API.previewMaterialPages(_matState.path, st.end + 1, 3, '');
+        const withHl = st.hit && st.hit_box && st.hit >= st.end + 1 && st.hit <= st.end + 3;
+        const d = await API.previewMaterialPages(_matState.path, st.end + 1, 3, '',
+            withHl ? st.hit : 0, withHl ? st.hit_box.join(',') : '');
         const wrap = document.getElementById('pdfPagesWrap');
         for (const p of d.pages) wrap.insertAdjacentHTML('beforeend', _pdfPageHtml(p, st.total));
         st.end = Math.min(st.total, st.end + d.pages.length);
@@ -422,7 +424,9 @@ async function _prependPages() {
     st.loading = true;
     try {
         const s = Math.max(1, st.start - 3);
-        const d = await API.previewMaterialPages(_matState.path, s, st.start - s, '');
+        const withHl = st.hit && st.hit_box && st.hit >= s && st.hit < st.start;
+        const d = await API.previewMaterialPages(_matState.path, s, st.start - s, '',
+            withHl ? st.hit : 0, withHl ? st.hit_box.join(',') : '');
         const wrap = document.getElementById('pdfPagesWrap');
         wrap.insertAdjacentHTML('afterbegin', d.pages.map(p => _pdfPageHtml(p, st.total)).join(''));
         st.start = s;
@@ -435,14 +439,14 @@ async function _startQuoteSearch() {
     const { path, quote } = _matState;
     try {
         const r0 = await API.quoteSearch(path, quote);
-        if (r0.status === 'done' && r0.hit) return _onQuoteHit(r0.hit);
+        if (r0.status === 'done' && r0.hit) return _onQuoteHit(r0.hit, r0.box);
         for (let i = 0; i < 90; i++) {
             await new Promise(r => setTimeout(r, 2000));
             if (!_matState || _matState.mode !== 'pages') return;  // 弹窗已关/已切文本版
             const r = await API.quoteSearchResult(r0.task);
             const tip = document.getElementById('quoteSearchTip');
             if (r.status === 'done') {
-                if (r.hit) return _onQuoteHit(r.hit);
+                if (r.hit) return _onQuoteHit(r.hit, r.box);
                 if (tip) tip.className = 'src-tip warn';
                 if (tip) tip.innerHTML = `⚠️ 已逐页识别全文但未找到摘录所在页（识别文字可能出入较大），摘录内容：“${_escHtmlAttr(quote)}”，请翻页核对。`;
                 return;
@@ -452,12 +456,12 @@ async function _startQuoteSearch() {
     } catch (e) { /* 搜页失败不影响翻页浏览 */ }
 }
 
-function _onQuoteHit(hit) {
+function _onQuoteHit(hit, box) {
     const tip = document.getElementById('quoteSearchTip');
-    if (tip) tip.innerHTML = `✅ 摘录位于原文第 ${hit} 页，已为您跳转到该页。`;
+    if (tip) tip.innerHTML = `✅ 摘录位于原文第 ${hit} 页，已为您跳转到该页并红框标出摘录位置。`;
     const st = _matState && _matState.pagesState;
     if (!st) return;
-    st.start = hit; st.end = hit - 1; st.hit = hit;
+    st.start = hit; st.end = hit - 1; st.hit = hit; st.hit_box = box || null;
     const wrap = document.getElementById('pdfPagesWrap');
     if (wrap) wrap.innerHTML = '';
     _renderPrevBtn();
