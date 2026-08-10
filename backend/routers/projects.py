@@ -568,10 +568,10 @@ def _quote_tokens(quote: str):
 
 
 def _text_highlight_box(doc, page_idx: int, quote: str):
-    """文字层高亮框：search_for 拿片段精确坐标（PDF 点 72dpi）合并，转成 120dpi 坐标返回。"""
-    _, frags = _quote_tokens(quote)
+    """文字层高亮框：search_for 拿片段/数字精确坐标（PDF 点 72dpi）合并，转成 120dpi 坐标返回。"""
+    nums, frags = _quote_tokens(quote)
     page = doc[page_idx]
-    cands = [f for f in frags if len(f) >= 6]
+    cands = [f for f in frags if len(f) >= 6] + nums
     cands.append((quote or "").strip()[:16])
     rects = []
     for tok in cands:
@@ -589,7 +589,7 @@ def _text_highlight_box(doc, page_idx: int, quote: str):
                 nt = _norm_q(txt)
                 if len(nt) < 6:
                     continue
-                if any(nf in nt or nt in nf for nf in {_norm_q(f) for f in cands if len(f) >= 6}):
+                if any(nf in nt or nt in nf for nf in {_norm_q(f) for f in cands if len(f) >= 4}):
                     hb.append(ln["bbox"])
         if not hb:
             return None
