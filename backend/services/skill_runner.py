@@ -471,6 +471,13 @@ def _ctx_of_block(blk: dict) -> str:
 # 不涉及表述本身就是结论，无需依据：正文仅为短不涉及表述的块，
 # 自检会清掉它的 src 并去掉引注号，避免“不涉及。”还挂一条冗余的“固定表述”依据
 _INAPPLICABLE_TEXT_RE = re.compile(r"^(?:不涉及|不涉及该情形|不涉及此项|无此类情形|不适用|无)[。.!！]?$")
+# 短不涉及结论句（如“本项目不涉及PPP模式，无需说明。”）：同样不挂“固定表述”凑依据
+_INAPPLICABLE_SHORT_RE = re.compile(r"^(?:不涉及|本项目不涉及|不适用|本项目不适用).{0,24}(?:无需说明|无须说明|不适用)?[。.!！]?$")
+
+
+def _src_has_material(src: str) -> bool:
+    """src 里是否含真实材料依据（申报材料条目/文件路径）——不涉及块清理时保护真实依据不被误删。"""
+    return bool(re.search(r"申报材料[：:]|\.(?:pdf|docx?|xlsx?|pptx?|png|jpe?g)\b", src or "", re.I))
 
 
 def verify_fix_refs(sections: list, mat_root: Path) -> dict:
@@ -485,14 +492,17 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
         return stats
     for sec in sections or []:
         for blk in sec.get("blocks", []) or []:
-            # 不涉及块不挂依据：“不涉及。〈1〉”→“不涉及。”并清空 src
+            # 不涉及块不挂依据：“不涉及。〈1〉”→“不涉及。”并清空 src（仅当 src 无真实材料依据时）
             if blk.get("type") == "p":
                 t_raw = (blk.get("text") or "").strip()
                 t_clean = re.sub(r"\s*〈\d+〉\s*", "", t_raw).strip()
-                if _INAPPLICABLE_TEXT_RE.match(t_clean):
+                src_now = (blk.get("src") or "").strip()
+                if (_INAPPLICABLE_TEXT_RE.match(t_clean)
+                        or (len(t_clean) <= 30 and _INAPPLICABLE_SHORT_RE.match(t_clean)
+                            and src_now and not _src_has_material(src_now))):
                     if t_clean != t_raw:
                         blk["text"] = t_clean
-                    if blk.get("src"):
+                    if src_now and not _src_has_material(src_now):
                         blk["src"] = ""
                         stats["removed_inapplicable"] += 1
                     continue
