@@ -515,6 +515,11 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                         path, quote = (m2.group(1), "") if m2 else (body, "")
                 path = path.strip().strip("《》；; ")
                 quote = (quote or "").strip().strip("；; ")
+                # 摘录末尾的“（第X页）”页码引注（扫描件定位用）：先拆下来，定位用剩余部分，写回时保留
+                pgm = re.search(r"[（(]\s*第\s*(\d+)\s*页\s*[）)]\s*$", quote)
+                page_cite = pgm.group(0).strip() if pgm else ""
+                if pgm:
+                    quote = quote[:pgm.start()].strip()
                 try:
                     rel = materials_client.resolve_material_ref(path, mat_root)
                 except Exception:
@@ -525,20 +530,21 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                     continue
                 if rel != path or not m:
                     stats["fixed_path"] += 1
-                if quote.strip("；; "):
+                if quote:
                     try:
                         loc = materials_client.locate_quote_in_pdf(mat_root / rel, quote, cached_only=True)
                     except Exception as e:
                         logger.debug(f"依据自检定位异常 {rel}: {e}")
                         loc = None
                     if loc and loc[2]:
-                        stats["verbatim"] += 1      # 摘录本就是原文，无需改
+                        stats["verbatim"] += 1      # 摘录本就是原文，无需改；有页码引注也保留（双保险）
                     elif loc and loc[1]:
-                        quote = loc[1]
-                        stats["replaced"] += 1      # 改写成原文片段，点击必中
+                        quote, page_cite = loc[1], ""   # 换成可逐字命中的原文片段，不再需要页码
+                        stats["replaced"] += 1
                         changed = True
-                else:
-                    # 无摘录：用本块正文/表格值去原文里找，找到就补上原句
+                    # 定位不到：保留原摘录+页码引注（有页码前端仍能直达该页）
+                elif not page_cite:
+                    # 无摘录也无页码：用本块正文/表格值去原文里找，找到就补上原句
                     ctx = _ctx_of_block(blk)
                     if len(ctx.strip()) >= 8:
                         try:
@@ -549,8 +555,9 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                             quote = loc[1]
                             stats["added"] += 1
                             changed = True
-                # 材料条目统一规范成 “申报材料：真实路径 〈原文摘录〉原文原句”，点击时逐字匹配必中
-                norm = f"申报材料：{rel} 〈原文摘录〉{quote}" if quote else f"申报材料：{rel}"
+                # 材料条目统一规范成 “申报材料：真实路径 〈原文摘录〉原文原句（第X页）”，点击时逐字匹配/页码直达必中
+                q_full = quote + ((" " + page_cite) if page_cite else "")
+                norm = f"申报材料：{rel} 〈原文摘录〉{q_full}" if q_full else f"申报材料：{rel}"
                 new_items.append(prefix + norm)
                 changed = True
             if changed:
@@ -746,7 +753,8 @@ def _output_contract(chapter_title: str) -> str:
         "   · 来自上传的申报材料/证明文件：写“申报材料：<文件相对路径> 〈原文摘录〉”（路径用 list_materials 返回的真实路径，一字不差；"
         "〈〉里从该文件原文**逐字复制**10~30 字最能佐证对应句子的一句——**严禁改写、概括、用“……”省略或拼接不同句子**，"
         "系统会拿这段文字回原文逐字定位，一个字对不上就定位失败；数字照原文格式抄（含千分位逗号）；"
-        "如一个文件多处佐证可只录最核心一处；摘录必须确实出自该文件，**严禁把别的文件/自己写的话挂到该文件名下**）；\n"
+        "如一个文件多处佐证可只录最核心一处；摘录必须确实出自该文件，**严禁把别的文件/自己写的话挂到该文件名下**；"
+        "扫描件/图片文件里的文字无法逐字搜索，引用它们时**必须在摘录末尾加上“（第X页）”**，X 就是 read_document 返回内容时标注的页码，供系统直接翻到该页）；\n"
         "   · 来自已保存的摘要表/释义/其他基本信息：写“摘要表：<字段名>”或“释义”“其他基本信息”；\n"
         "   · 来自天眼查查询：写“天眼查查询：<企业名>”；\n"
         "   · 来自联网搜索：写“网络公开信息：<来源/时点>”；\n"

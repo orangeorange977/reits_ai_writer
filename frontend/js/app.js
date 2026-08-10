@@ -266,14 +266,14 @@ async function _findMaterialPath(nameRaw) {
 }
 
 /** 依据里的路径可能缺失或与磁盘不一致（长目录名被截断等）：先按原路径试，找不到再按文件名模糊匹配 */
-async function openMaterialPreviewResolved(path, quote) {
+async function openMaterialPreviewResolved(path, quote, page) {
     try {
         const files = await _getMaterialFiles();
-        if (files.includes(path)) { openMaterialPreview(path, quote); return; }
+        if (files.includes(path)) { openMaterialPreview(path, quote, page); return; }
         const real = await _findMaterialPath(path);
-        if (real) { openMaterialPreview(real, quote); return; }
+        if (real) { openMaterialPreview(real, quote, page); return; }
     } catch (e) { /* 清单拉取失败则按原路径尝试 */ }
-    openMaterialPreview(path, quote);
+    openMaterialPreview(path, quote, page);
 }
 
 /** 当前项目名（用于提示文案；拉不到则空） */
@@ -313,8 +313,9 @@ async function openRefByName(text) {
 
 /** 解析一条依据标注并跳转：申报材料→预览原文并高亮摘录；同上文件→复用上一条；摘要表→定位字段行 */
 let _lastSrcMaterialPath = '';
-/** 从依据正文里切出“文件路径 + 摘录”。兼容两种格式：
- * ① 路径〈原文摘录〉摘录内容；② 路径〈摘录内容〉（无标记词，第一个〈…〉即摘录）。 */
+/** 从依据正文里切出“文件路径 + 摘录 + 页码”。兼容两种格式：
+ * ① 路径〈原文摘录〉摘录内容；② 路径〈摘录内容〉（无标记词，第一个〈…〉即摘录）。
+ * 摘录末尾若标了“（第X页）”（生成时对扫描件的页码引注），解析出来直接跳页。 */
 function _splitPathQuote(body) {
     let path, quote;
     const pm = body.split('〈原文摘录〉');
@@ -327,7 +328,10 @@ function _splitPathQuote(body) {
     }
     path = path.trim().replace(/^《(.+)》$/, '$1').replace(/〈[^〉]*〉.*$/, '').trim();
     quote = quote.replace(/[；;]\s*$/, '').trim();
-    return { path, quote };
+    let page = 0;
+    const pg = quote.match(/[（(]\s*第\s*(\d+)\s*页\s*[）)]\s*$/);
+    if (pg) { page = parseInt(pg[1], 10) || 0; quote = quote.slice(0, pg.index).trim(); }
+    return { path, quote, page };
 }
 function openSrcLink(rawText, ctx) {
     const text = String(rawText || '').replace(/^📎\s*依据[：:]/, '').trim();
@@ -343,13 +347,13 @@ function openSrcLink(rawText, ctx) {
     for (const seg of items) {
         let m;
         if ((m = seg.match(/^申报材料[：:](.+)$/))) {
-            const { path, quote } = _splitPathQuote(m[1].trim());
+            const { path, quote, page } = _splitPathQuote(m[1].trim());
             // 依据没带摘录时，用依据上方的正文（表格/段落）当搜索文本，也能翻到页+红框
-            if (path) { _lastSrcMaterialPath = path; openMaterialPreviewResolved(path, quote || ctxText); return; }
+            if (path) { _lastSrcMaterialPath = path; openMaterialPreviewResolved(path, quote || (page ? '' : ctxText), page); return; }
         }
         if (/^同上文件/.test(seg)) {
-            const { quote } = _splitPathQuote(seg);
-            if (_lastSrcMaterialPath) { openMaterialPreviewResolved(_lastSrcMaterialPath, quote || ctxText); return; }
+            const { quote, page } = _splitPathQuote(seg);
+            if (_lastSrcMaterialPath) { openMaterialPreviewResolved(_lastSrcMaterialPath, quote || (page ? '' : ctxText), page); return; }
             showToast('未能定位“同上文件”所指的上一条依据', 'warning'); return;
         }
         if ((m = seg.match(/^摘要表[：:](.+)$/))) { jumpToSummaryField(m[1].trim()); return; }
@@ -363,8 +367,8 @@ function openSrcLink(rawText, ctx) {
 
 /** 材料原文预览弹窗：PDF 默认按页原版图（仿 Word/WPS 观感，无限滚动懒加载），
  *  其他格式/切换后走文本版（高亮“依据”摘录并滚动到该处） */
-let _matState = null;  // {path, quote, mode:'pages'|'text', pagesState}
-async function openMaterialPreview(path, quote) {
+let _matState = null;  // {path, quote, page, mode:'pages'|'text', pagesState}
+async function openMaterialPreview(path, quote, page) {
     let modal = document.getElementById('matPreviewModal');
     if (!modal) {
         modal = document.createElement('div');
@@ -388,7 +392,7 @@ async function openMaterialPreview(path, quote) {
         document.body.appendChild(modal);
     }
     modal.style.display = 'flex';
-    _matState = { path, quote, mode: /\.pdf$/i.test(path || '') ? 'pages' : 'text', pagesState: null };
+    _matState = { path, quote, page: page || 0, mode: /\.pdf$/i.test(path || '') ? 'pages' : 'text', pagesState: null };
     const toggle = document.getElementById('matPreviewToggle');
     if (toggle) {
         toggle.onclick = () => {
@@ -428,7 +432,13 @@ async function _renderPagesPreview() {
     const st = _matState.pagesState = { total: d.total, start: 1, end: 0, loading: false, hit: d.hit_page };
     document.getElementById('matPreviewTitle').textContent = `📄 《${String(path).split('/').pop()}》原版（共 ${d.total} 页）`;
     body.innerHTML = '';
-    if (quote) {
+    const citedPage = Math.min(_matState.page || 0, d.total);
+    if (citedPage > 1) {
+        // 依据自带页码引注（生成时标注，扫描件搜不到字也能直达）
+        st.hit = st.hit || citedPage;
+        body.insertAdjacentHTML('beforeend', `<div class="src-tip ok">✅ 依据标注摘录位于原文第 ${citedPage} 页，已为您跳转到该页。</div>`);
+    }
+    if (quote && citedPage <= 1) {
         if (st.hit && d.hit_box) {
             st.hit_box = d.hit_box;
             body.insertAdjacentHTML('beforeend', `<div class="src-tip ok">✅ 摘录位于原文第 ${st.hit} 页，已为您跳转到该页并红框标出摘录位置。</div>`);
