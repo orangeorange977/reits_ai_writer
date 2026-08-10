@@ -1,0 +1,592 @@
+{
+  "version": "2024",
+  "document_type": "发改委申报材料表格",
+  "description": "基础设施领域不动产投资信托基金（REITs）项目申报材料格式文本（2024年版）中所有命名表格的结构化定义",
+  "tables": [
+    {
+      "table_id": "summary_table",
+      "title": "摘要表",
+      "header_pattern": "项目名称",
+      "type": "key_value",
+      "columns": [
+        {"name": "项目", "width_ratio": 0.4},
+        {"name": "内容", "width_ratio": 0.6}
+      ],
+      "header_rows": 0,
+      "dynamic_rows": false,
+      "data_start_row": 0,
+      "fields": [
+        "project_name", "industry_field", "asset_location", "originator",
+        "project_company", "operation_manager", "fund_manager", "abs_manager",
+        "fund_scale", "asset_valuation", "total_area", "operation_years",
+        "distribution_rate", "base_date", "transaction_structure_summary",
+        "fund_duration", "listing_exchange", "expansion_arrangement",
+        "originator_holding_ratio", "special_notes"
+      ]
+    },
+    {
+      "table_id": "table1",
+      "title": "表1  项目概况",
+      "header_pattern": "项目总体情况",
+      "type": "mixed",
+      "columns": [
+        {"name": "项目", "width_ratio": 0.25},
+        {"name": "内容", "width_ratio": 0.75}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": true,
+      "data_start_row": 1,
+      "sections": [
+        {
+          "name": "项目总体情况",
+          "fields": [
+            "project_name", "asset_type", "project_location", "total_investment",
+            "land_area", "building_area", "operation_start_date", "remaining_land_years",
+            "current_occupancy_rate", "recent_year_revenue", "recent_year_net_income",
+            "valuation_value", "valuation_method"
+          ]
+        },
+        {
+          "name": "子项目",
+          "repeatable": true,
+          "fields": [
+            "sub_project_name", "sub_project_location", "sub_project_area",
+            "sub_project_operation_date", "sub_project_occupancy_rate",
+            "sub_project_revenue", "sub_project_valuation"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "table2",
+      "title": "表2  发起人（原始权益人）可扩募资产情况",
+      "header_pattern": "可扩募资产",
+      "type": "grid",
+      "columns": [
+        {"name": "序号", "width_ratio": 0.04},
+        {"name": "资产名称", "width_ratio": 0.12},
+        {"name": "资产位置", "width_ratio": 0.12},
+        {"name": "资产类型", "width_ratio": 0.08},
+        {"name": "面积/规模", "width_ratio": 0.1},
+        {"name": "投入运营时间", "width_ratio": 0.1},
+        {"name": "当前运营状态", "width_ratio": 0.1},
+        {"name": "近一年收入（万元）", "width_ratio": 0.1},
+        {"name": "出租率/利用率", "width_ratio": 0.1},
+        {"name": "预计纳入时间", "width_ratio": 0.14}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": true,
+      "data_start_row": 1,
+      "fields": [
+        "seq_no", "asset_name", "asset_location", "asset_type", "asset_area",
+        "operation_start_date", "operation_status", "recent_year_revenue",
+        "occupancy_rate", "expected_inclusion_date"
+      ]
+    },
+    {
+      "table_id": "table3",
+      "title": "表3  项目公司基本信息",
+      "header_pattern": "项目公司基本信息",
+      "type": "grid",
+      "columns": [
+        {"name": "名称", "width_ratio": 0.2},
+        {"name": "法定代表人", "width_ratio": 0.12},
+        {"name": "成立日期", "width_ratio": 0.12},
+        {"name": "注册资本", "width_ratio": 0.14},
+        {"name": "注册地址", "width_ratio": 0.22},
+        {"name": "经营范围", "width_ratio": 0.2}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": true,
+      "data_start_row": 1,
+      "fields": [
+        "company_name", "legal_representative", "establish_date",
+        "registered_capital", "registered_address", "business_scope"
+      ]
+    },
+    {
+      "table_id": "table4",
+      "title": "表4  发起人（原始权益人）基本信息",
+      "header_pattern": "发起人（原始权益人）基本信息",
+      "type": "key_value",
+      "columns": [
+        {"name": "项目", "width_ratio": 0.3},
+        {"name": "内容", "width_ratio": 0.7}
+      ],
+      "header_rows": 0,
+      "dynamic_rows": false,
+      "data_start_row": 0,
+      "fields": [
+        "originator_name", "unified_credit_code", "legal_representative",
+        "registered_capital", "paid_in_capital", "establish_date",
+        "registered_address", "office_address", "business_scope",
+        "main_business", "shareholder_structure", "actual_controller",
+        "employee_count", "contact_person", "contact_phone"
+      ]
+    },
+    {
+      "table_id": "table5",
+      "title": "表5  发起人最近3个会计年度及一期主要财务指标",
+      "header_pattern": "发起人最近3个会计年度",
+      "type": "grid",
+      "columns": [
+        {"name": "财务指标", "width_ratio": 0.28},
+        {"name": "第n-2年度", "width_ratio": 0.18},
+        {"name": "第n-1年度", "width_ratio": 0.18},
+        {"name": "第n年度", "width_ratio": 0.18},
+        {"name": "最近一期", "width_ratio": 0.18}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": false,
+      "data_start_row": 1,
+      "fields": [
+        "total_assets", "net_assets", "total_revenue", "operating_income",
+        "net_profit", "asset_liability_ratio", "current_ratio",
+        "quick_ratio", "roe", "operating_cash_flow"
+      ]
+    },
+    {
+      "table_id": "table6",
+      "title": "表6  运营管理机构基本信息",
+      "header_pattern": "运营管理机构基本信息",
+      "type": "key_value",
+      "columns": [
+        {"name": "项目", "width_ratio": 0.3},
+        {"name": "内容", "width_ratio": 0.7}
+      ],
+      "header_rows": 0,
+      "dynamic_rows": false,
+      "data_start_row": 0,
+      "fields": [
+        "om_name", "unified_credit_code", "legal_representative",
+        "registered_capital", "establish_date", "registered_address",
+        "business_scope", "main_business", "shareholder_structure",
+        "management_experience", "key_personnel", "employee_count",
+        "qualification_certificates"
+      ]
+    },
+    {
+      "table_id": "table7",
+      "title": "表7  运营管理机构最近3个会计年度及一期主要财务指标",
+      "header_pattern": "运营管理机构最近3个会计年度",
+      "type": "grid",
+      "columns": [
+        {"name": "财务指标", "width_ratio": 0.28},
+        {"name": "第n-2年度", "width_ratio": 0.18},
+        {"name": "第n-1年度", "width_ratio": 0.18},
+        {"name": "第n年度", "width_ratio": 0.18},
+        {"name": "最近一期", "width_ratio": 0.18}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": false,
+      "data_start_row": 1,
+      "fields": [
+        "total_assets", "net_assets", "total_revenue", "operating_income",
+        "net_profit", "asset_liability_ratio", "current_ratio",
+        "quick_ratio", "roe", "operating_cash_flow"
+      ]
+    },
+    {
+      "table_id": "table8",
+      "title": "表8  运营管理机构设立计划",
+      "header_pattern": "运营管理机构设立计划",
+      "type": "key_value",
+      "columns": [
+        {"name": "项目", "width_ratio": 0.3},
+        {"name": "内容", "width_ratio": 0.7}
+      ],
+      "header_rows": 0,
+      "dynamic_rows": false,
+      "data_start_row": 0,
+      "fields": [
+        "planned_om_name", "planned_establish_date", "planned_registered_address",
+        "planned_registered_capital", "planned_shareholder_structure",
+        "planned_business_scope", "planned_key_personnel",
+        "management_capability_plan", "transition_arrangement"
+      ]
+    },
+    {
+      "table_id": "table9",
+      "title": "表9  基金管理人和资产支持证券管理人基本情况",
+      "header_pattern": "基金管理人和资产支持证券管理人",
+      "type": "grid",
+      "columns": [
+        {"name": "指标", "width_ratio": 0.3},
+        {"name": "基金管理人", "width_ratio": 0.35},
+        {"name": "资产支持证券管理人", "width_ratio": 0.35}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": false,
+      "data_start_row": 1,
+      "fields": [
+        "institution_name", "unified_credit_code", "legal_representative",
+        "registered_capital", "establish_date", "registered_address",
+        "business_scope", "license_number", "reits_management_experience",
+        "aum_scale", "key_personnel"
+      ]
+    },
+    {
+      "table_id": "table10",
+      "title": "表10  中介机构基本情况",
+      "header_pattern": "中介机构基本情况",
+      "type": "key_value",
+      "columns": [
+        {"name": "项目", "width_ratio": 0.3},
+        {"name": "内容", "width_ratio": 0.7}
+      ],
+      "header_rows": 0,
+      "dynamic_rows": true,
+      "data_start_row": 0,
+      "repeatable_group": true,
+      "group_fields": [
+        "intermediary_type", "intermediary_name", "unified_credit_code",
+        "legal_representative", "registered_address", "qualification_info",
+        "contact_person", "contact_phone"
+      ]
+    },
+    {
+      "table_id": "table11",
+      "title": "表11  产品要素",
+      "header_pattern": "产品要素",
+      "type": "key_value",
+      "columns": [
+        {"name": "项目", "width_ratio": 0.3},
+        {"name": "内容", "width_ratio": 0.7}
+      ],
+      "header_rows": 0,
+      "dynamic_rows": false,
+      "data_start_row": 0,
+      "fields": [
+        "product_name", "fund_type", "fund_manager", "fund_custodian",
+        "abs_manager", "abs_plan_name", "fund_duration", "fund_scale",
+        "unit_face_value", "listing_exchange", "expected_listing_date",
+        "distribution_frequency", "distribution_ratio", "originator_holding_ratio",
+        "originator_holding_lock_period", "expansion_arrangement",
+        "investment_strategy", "leverage_arrangement"
+      ]
+    },
+    {
+      "table_id": "table12",
+      "title": "表12  项目最近3个会计年度及一期经营收益情况",
+      "header_pattern": "经营收益情况",
+      "type": "grid",
+      "columns": [
+        {"name": "指标", "width_ratio": 0.28},
+        {"name": "第n-2年度", "width_ratio": 0.18},
+        {"name": "第n-1年度", "width_ratio": 0.18},
+        {"name": "第n年度", "width_ratio": 0.18},
+        {"name": "最近一期", "width_ratio": 0.18}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": false,
+      "data_start_row": 1,
+      "sections": [
+        {
+          "name": "经营指标",
+          "fields": [
+            "total_leasable_area", "leased_area", "occupancy_rate",
+            "average_rent", "weighted_remaining_lease_term"
+          ]
+        },
+        {
+          "name": "财务指标",
+          "fields": [
+            "operating_revenue", "operating_cost", "operating_profit",
+            "net_profit", "ebitda", "noi", "capex"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "table13",
+      "title": "表13  项目最近3个会计年度及一期收益情况",
+      "header_pattern": "项目最近3个会计年度及一期收益情况",
+      "type": "grid",
+      "columns": [
+        {"name": "指标", "width_ratio": 0.16},
+        {"name": "第n-3年", "width_ratio": 0.12},
+        {"name": "第n-2年", "width_ratio": 0.12},
+        {"name": "第n-1年", "width_ratio": 0.12},
+        {"name": "第n年", "width_ratio": 0.12},
+        {"name": "第n+1年（预测）", "width_ratio": 0.12},
+        {"name": "第n+2年（预测）", "width_ratio": 0.12},
+        {"name": "第n+3年（预测）", "width_ratio": 0.12}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": false,
+      "data_start_row": 1,
+      "fields": [
+        "operating_revenue", "operating_cost", "gross_profit",
+        "management_fee", "operating_profit", "net_profit",
+        "ebitda", "noi", "distributable_amount", "distribution_rate"
+      ]
+    },
+    {
+      "table_id": "table14",
+      "title": "表14  项目最近3个会计年度及一期收入结构",
+      "header_pattern": "收入结构",
+      "type": "grid",
+      "columns": [
+        {"name": "收入类型", "width_ratio": 0.2},
+        {"name": "第n-2年度金额（万元）", "width_ratio": 0.15},
+        {"name": "第n-2年度占比", "width_ratio": 0.1},
+        {"name": "第n-1年度金额（万元）", "width_ratio": 0.15},
+        {"name": "第n-1年度占比", "width_ratio": 0.1},
+        {"name": "第n年度金额（万元）", "width_ratio": 0.15},
+        {"name": "第n年度占比", "width_ratio": 0.1},
+        {"name": "最近一期金额（万元）", "width_ratio": 0.15},
+        {"name": "最近一期占比", "width_ratio": 0.1}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": true,
+      "data_start_row": 1,
+      "fields": [
+        "revenue_type", "year_n2_amount", "year_n2_ratio",
+        "year_n1_amount", "year_n1_ratio", "year_n_amount",
+        "year_n_ratio", "latest_period_amount", "latest_period_ratio"
+      ]
+    },
+    {
+      "table_id": "table15",
+      "title": "表15  项目投资管理手续情况",
+      "header_pattern": "投资管理手续",
+      "type": "grid",
+      "columns": [
+        {"name": "序号", "width_ratio": 0.05},
+        {"name": "手续名称", "width_ratio": 0.2},
+        {"name": "签发时间", "width_ratio": 0.1},
+        {"name": "签发机构", "width_ratio": 0.15},
+        {"name": "文件编号", "width_ratio": 0.2},
+        {"name": "处理方式", "width_ratio": 0.15},
+        {"name": "备注", "width_ratio": 0.15}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": true,
+      "data_start_row": 1,
+      "fields": [
+        "seq_no", "procedure_name", "issue_date", "issue_authority",
+        "document_number", "handling_method", "remarks"
+      ]
+    },
+    {
+      "table_id": "table16",
+      "title": "表16  特定行业投资管理合规性手续",
+      "header_pattern": "特定行业投资管理合规性",
+      "type": "reference",
+      "columns": [
+        {"name": "序号", "width_ratio": 0.1},
+        {"name": "具体手续", "width_ratio": 0.6},
+        {"name": "相关行业", "width_ratio": 0.3}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": false,
+      "data_start_row": 1,
+      "readonly": true,
+      "note": "此表为固定参考信息，列出各行业对应需要办理的投资管理合规性手续，无需数据填充"
+    },
+    {
+      "table_id": "table17",
+      "title": "表17  土地使用情况",
+      "header_pattern": "土地使用情况",
+      "type": "grid",
+      "columns": [
+        {"name": "序号", "width_ratio": 0.04},
+        {"name": "土地坐落", "width_ratio": 0.15},
+        {"name": "不动产权证号", "width_ratio": 0.12},
+        {"name": "土地用途", "width_ratio": 0.1},
+        {"name": "取得方式", "width_ratio": 0.08},
+        {"name": "使用权面积（㎡）", "width_ratio": 0.12},
+        {"name": "使用权起始日", "width_ratio": 0.1},
+        {"name": "使用权终止日", "width_ratio": 0.1},
+        {"name": "剩余年限", "width_ratio": 0.08}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": true,
+      "data_start_row": 1,
+      "fields": [
+        "seq_no", "land_location", "property_cert_no", "land_use_type",
+        "acquisition_method", "land_area", "use_right_start_date",
+        "use_right_end_date", "remaining_years"
+      ]
+    },
+    {
+      "table_id": "table18",
+      "title": "表18  房屋所有权情况",
+      "header_pattern": "房屋所有权情况",
+      "type": "grid",
+      "columns": [
+        {"name": "序号", "width_ratio": 0.05},
+        {"name": "房屋坐落", "width_ratio": 0.2},
+        {"name": "不动产权证号", "width_ratio": 0.15},
+        {"name": "建筑面积（㎡）", "width_ratio": 0.15},
+        {"name": "房屋用途", "width_ratio": 0.15},
+        {"name": "权利人", "width_ratio": 0.15}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": true,
+      "data_start_row": 1,
+      "fields": [
+        "seq_no", "building_location", "property_cert_no",
+        "building_area", "building_use", "owner"
+      ]
+    },
+    {
+      "table_id": "table19",
+      "title": "表19  土地使用权有关手续办理情况汇总表",
+      "header_pattern": "土地使用权有关手续办理情况",
+      "type": "grid",
+      "columns": [
+        {"name": "序号", "width_ratio": 0.05},
+        {"name": "地块名称/位置", "width_ratio": 0.15},
+        {"name": "手续名称", "width_ratio": 0.15},
+        {"name": "办理状态", "width_ratio": 0.1},
+        {"name": "文件编号", "width_ratio": 0.2},
+        {"name": "签发机构", "width_ratio": 0.15},
+        {"name": "备注", "width_ratio": 0.2}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": true,
+      "data_start_row": 1,
+      "fields": [
+        "seq_no", "land_name", "procedure_name", "handling_status",
+        "document_number", "issue_authority", "remarks"
+      ]
+    },
+    {
+      "table_id": "table20",
+      "title": "表20  项目可转让性有关情况汇总表",
+      "header_pattern": "可转让性有关情况",
+      "type": "grid",
+      "columns": [
+        {"name": "序号", "width_ratio": 0.05},
+        {"name": "资产/权利名称", "width_ratio": 0.2},
+        {"name": "转让限制情况", "width_ratio": 0.2},
+        {"name": "解除措施", "width_ratio": 0.2},
+        {"name": "预计完成时间", "width_ratio": 0.15},
+        {"name": "备注", "width_ratio": 0.2}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": true,
+      "data_start_row": 1,
+      "fields": [
+        "seq_no", "asset_name", "transfer_restriction",
+        "resolution_measure", "expected_completion_date", "remarks"
+      ]
+    },
+    {
+      "table_id": "table21",
+      "title": "表21  PPP项目合规情况",
+      "header_pattern": "PPP项目合规",
+      "type": "key_value",
+      "columns": [
+        {"name": "项目", "width_ratio": 0.35},
+        {"name": "内容", "width_ratio": 0.65}
+      ],
+      "header_rows": 0,
+      "dynamic_rows": false,
+      "data_start_row": 0,
+      "fields": [
+        "ppp_project_name", "ppp_implementation_agency", "ppp_cooperation_period",
+        "ppp_return_mechanism", "ppp_approval_documents", "ppp_contract_key_terms",
+        "ppp_performance_evaluation", "ppp_government_payment_status",
+        "ppp_subsidy_policy", "ppp_transfer_arrangement", "ppp_compliance_opinion",
+        "ppp_special_notes"
+      ]
+    },
+    {
+      "table_id": "table22",
+      "title": "表22  拟纳税情况表",
+      "header_pattern": "拟纳税情况",
+      "type": "grid",
+      "columns": [
+        {"name": "交易阶段", "width_ratio": 0.12},
+        {"name": "税种", "width_ratio": 0.12},
+        {"name": "是否涉及", "width_ratio": 0.08},
+        {"name": "计税依据", "width_ratio": 0.18},
+        {"name": "应纳税额（万元）", "width_ratio": 0.12},
+        {"name": "已纳税额（万元）", "width_ratio": 0.12},
+        {"name": "纳税地点", "width_ratio": 0.12},
+        {"name": "纳税人", "width_ratio": 0.14}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": true,
+      "data_start_row": 1,
+      "group_by": "交易阶段",
+      "stage_groups": [
+        "设立环节", "存续环节", "退出环节"
+      ],
+      "fields": [
+        "transaction_stage", "tax_type", "is_involved", "tax_basis",
+        "tax_payable", "tax_paid", "tax_location", "taxpayer"
+      ]
+    },
+    {
+      "table_id": "table23",
+      "title": "表23  项目募集资金规模及使用结构",
+      "header_pattern": "募集资金规模及使用结构",
+      "type": "key_value",
+      "columns": [
+        {"name": "项目", "width_ratio": 0.5},
+        {"name": "金额/内容", "width_ratio": 0.5}
+      ],
+      "header_rows": 0,
+      "dynamic_rows": false,
+      "data_start_row": 0,
+      "hierarchical": true,
+      "fields": [
+        "total_fund_scale", "net_raised_amount",
+        "fund_use_acquire_assets", "fund_use_acquire_assets_detail",
+        "fund_use_repay_debt", "fund_use_repay_debt_detail",
+        "fund_use_supplement_working_capital",
+        "fund_use_new_infrastructure", "fund_use_new_infrastructure_detail",
+        "fund_use_other", "fund_use_other_detail",
+        "issuance_fee", "issuance_fee_breakdown",
+        "originator_subscription_amount", "originator_subscription_ratio"
+      ]
+    },
+    {
+      "table_id": "table24",
+      "title": "表24  募集资金拟投资项目",
+      "header_pattern": "募集资金拟投资项目",
+      "type": "grid",
+      "columns": [
+        {"name": "项目", "width_ratio": 0.25},
+        {"name": "拟投资项目1", "width_ratio": 0.25},
+        {"name": "拟投资项目2", "width_ratio": 0.25},
+        {"name": "拟投资项目3", "width_ratio": 0.25}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": false,
+      "dynamic_columns": true,
+      "data_start_row": 1,
+      "fields": [
+        "invest_project_name", "invest_project_location", "invest_project_type",
+        "invest_project_scale", "invest_total_amount", "invest_funding_source",
+        "invest_construction_period", "invest_expected_return", "invest_progress"
+      ]
+    },
+    {
+      "table_id": "table25",
+      "title": "表25  募集资金拟收购存量资产",
+      "header_pattern": "募集资金拟收购存量资产",
+      "type": "grid",
+      "columns": [
+        {"name": "项目", "width_ratio": 0.25},
+        {"name": "拟收购资产1", "width_ratio": 0.25},
+        {"name": "拟收购资产2", "width_ratio": 0.25},
+        {"name": "拟收购资产3", "width_ratio": 0.25}
+      ],
+      "header_rows": 1,
+      "dynamic_rows": false,
+      "dynamic_columns": true,
+      "data_start_row": 1,
+      "fields": [
+        "acquire_asset_name", "acquire_asset_location", "acquire_asset_type",
+        "acquire_asset_area", "acquire_asset_operation_date",
+        "acquire_asset_occupancy_rate", "acquire_asset_revenue",
+        "acquire_asset_valuation", "acquire_transaction_price",
+        "acquire_transaction_structure"
+      ]
+    }
+  ]
+}

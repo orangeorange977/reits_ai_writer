@@ -1,0 +1,122 @@
+{% from "ndrc/base.j2" import render_table, field, paragraph, optional_section, conditional_table %}
+{# 第六章：运营管理安排 #}
+
+六、运营管理安排
+
+（一）运营管理机构与基金管理人之间的运营管理权责利关系
+
+{{ paragraph(management_relationship) }}
+
+运营管理协议主要条款：
+{{ paragraph(management_agreement) }}
+
+运营管理机构主要职责：
+{{ paragraph(operator_responsibilities) }}
+
+基金管理人监督职责：
+{{ paragraph(fund_mgr_supervision) }}
+
+{% if decision_mechanism %}
+重大事项决策机制：
+{{ paragraph(decision_mechanism) }}
+{% endif %}
+
+{% if reporting_mechanism %}
+报告机制：
+{{ paragraph(reporting_mechanism) }}
+{% endif %}
+
+{% if fee_arrangement and fee_arrangement.rows %}
+费用安排：
+{{ render_table(fee_arrangement.headers, fee_arrangement.rows) }}
+{% endif %}
+
+（二）运营管理机构与基金管理人之间的激励约束机制
+
+1. 激励机制：
+{{ paragraph(incentive_mechanism) }}
+
+2. 约束机制：
+{{ paragraph(constraint_mechanism) }}
+
+{% if performance_assessment and performance_assessment.rows %}
+3. 绩效考核指标：
+{{ render_table(performance_assessment.headers, performance_assessment.rows) }}
+{% endif %}
+
+{% if reward_punishment %}
+4. 奖惩措施：
+{{ paragraph(reward_punishment) }}
+{% endif %}
+
+{% if operator_replacement %}
+5. 运营管理机构更换机制：
+{{ paragraph(operator_replacement) }}
+{% endif %}
+
+（三）促进项目持续健康平稳运营的保障措施
+
+{{ paragraph(operation_guarantee) }}
+
+{% if maintenance_plan %}
+1. 资产维护计划：
+{{ paragraph(maintenance_plan) }}
+{% endif %}
+
+{% if capex_arrangement %}
+2. 资本性支出安排：
+{{ paragraph(capex_arrangement) }}
+{% endif %}
+
+{% if insurance_arrangement %}
+3. 保险安排：
+{{ paragraph(insurance_arrangement) }}
+{% endif %}
+
+{% if emergency_plan %}
+4. 应急预案：
+{{ paragraph(emergency_plan) }}
+{% endif %}
+
+{% if tenant_management %}
+5. 租户/客户管理措施：
+{{ paragraph(tenant_management) }}
+{% endif %}
+
+{% if market_promotion %}
+6. 市场推广策略：
+{{ paragraph(market_promotion) }}
+{% endif %}
+
+（四）防范关联交易和利益冲突的主要安排
+
+1. 关联交易管理制度：
+{{ paragraph(related_party_policy) }}
+
+2. 利益冲突防范制度：
+{{ paragraph(conflict_of_interest_policy) }}
+
+{% if related_party_identification %}
+3. 关联方识别机制：
+{{ paragraph(related_party_identification) }}
+{% endif %}
+
+{% if related_party_pricing %}
+4. 关联交易定价机制：
+{{ paragraph(related_party_pricing) }}
+{% endif %}
+
+{% if information_disclosure %}
+5. 信息披露安排：
+{{ paragraph(information_disclosure) }}
+{% endif %}
+
+{% if independent_director %}
+6. 独立监督机制：
+{{ paragraph(independent_director) }}
+{% endif %}
+
+{% if related_party_list and related_party_list.rows %}
+7. 现有关联交易清单：
+{{ render_table(related_party_list.headers, related_party_list.rows) }}
+{% endif %}

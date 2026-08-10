@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REIT-AI 法律文件生成系统</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="logo-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <rect width="28" height="28" rx="6" fill="#4CAF50"/>
+                    <path d="M7 8h14v2H7V8zm0 5h10v2H7v-2zm0 5h12v2H7v-2z" fill="white"/>
+                </svg>
+            </div>
+            <div class="logo-text">
+                <span class="logo-title">REIT-AI</span>
+                <span class="logo-subtitle">法律文件生成系统</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-item active" data-page="overview" onclick="navigate('overview')">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+                    </svg>
+                </span>
+                <span class="nav-text">系统概览</span>
+            </div>
+            <div class="nav-item" data-page="ndrc" onclick="navigate('ndrc')">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                </span>
+                <span class="nav-text">发改委材料生成</span>
+            </div>
+            <div class="nav-item" data-page="documents" onclick="navigate('documents')">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    </svg>
+                </span>
+                <span class="nav-text">文档管理</span>
+            </div>
+            <div class="nav-item" data-page="settings" onclick="navigate('settings')">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                </span>
+                <span class="nav-text">系统设置</span>
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="version-info">© 2026 REIT-AI v1.0.0</div>
+        </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="main">
+        <!-- 顶部栏 -->
+        <header class="topbar">
+            <div class="topbar-left">
+                <h1 class="page-title" id="pageTitle">REITS AI</h1>
+                <span class="badge badge-info">Beta</span>
+            </div>
+            <div class="topbar-right">
+                <span class="system-status">
+                    <span class="status-dot"></span>
+                    系统运行中
+                </span>
+                <span id="authBox" style="margin-left:14px"></span>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <div class="content">
+
+            <!-- ==================== 页面1：系统概览 ==================== -->
+            <div class="page active" id="page-overview">
+                <!-- 统计卡片行 -->
+                <div class="stat-row" id="overviewStats">
+                    <div class="stat-card">
+                        <div class="stat-icon blue">📁</div>
+                        <div class="stat-info"><div class="stat-value">1</div><div class="stat-label">项目总数</div></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon orange">🔄</div>
+                        <div class="stat-info"><div class="stat-value">1</div><div class="stat-label">生成中</div></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon green">✅</div>
+                        <div class="stat-info"><div class="stat-value">0</div><div class="stat-label">已完成</div></div>
+                    </div>
+                </div>
+
+                <!-- 项目列表（整宽） -->
+                <div>
+                    <!-- 项目列表 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📋 项目列表</h3>
+                            <button class="btn btn-primary btn-sm" onclick="openNewProject()">➕ 新建项目</button>
+                        </div>
+                        <div class="card-body" style="padding:0">
+                            <table class="data-table" id="projectTable">
+                                <thead>
+                                    <tr>
+                                        <th>项目名称</th>
+                                        <th>资产类型</th>
+                                        <th>当前阶段</th>
+                                        <th>状态</th>
+                                        <th>更新时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>万国数据数据中心REIT</strong></td>
+                                        <td><span class="badge badge-info">数据中心</span></td>
+                                        <td><span class="badge badge-primary">发改委申报</span></td>
+                                        <td><span class="badge badge-warning">生成中</span></td>
+                                        <td class="text-sm text-muted">2026-07-16</td>
+                                        <td>
+                                            <button class="btn btn-ghost btn-sm" onclick="navigate('ndrc')">编辑</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ==================== 页面2：发改委材料生成（核心页面）==================== -->
+            <div class="page" id="page-ndrc">
+                <!-- 项目信息栏 -->
+                <div class="project-header-bar">
+                    <div class="ph-left">
+                        <div class="ph-cover-label" title="本材料封面">封面</div>
+                        <div class="ph-icon">📄</div>
+                        <div class="ph-info">
+                            <h2>万国数据数据中心基础设施REITs项目</h2>
+                            <p>基准日期：2026-03-31 | 发改委申报阶段</p>
+                            <div class="ph-tags">
+                                <span class="badge badge-info">数据中心</span>
+                                <span class="badge badge-warning" id="phStatusBadge">生成中</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <button class="btn btn-ghost btn-sm" onclick="navigate('overview')">← 返回项目列表</button>
+                        <button class="btn btn-primary btn-sm" onclick="openCoverEditor()">🖼 编辑封面</button>
+                    </div>
+                </div>
+
+
+                <!-- 七章节步骤条 -->
+                <div class="stepper-card">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+                        <h3 style="font-size:14px;font-weight:600;margin:0;color:var(--text-primary)">📋 申报材料章节进度</h3>
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <span id="batchStatus" class="text-sm text-muted"></span>
+                            <button class="btn btn-primary btn-sm" id="btnGenerateAll" onclick="generateAll()">🤖 全部生成</button>
+                        </div>
+                    </div>
+                    <div class="stepper" id="chapterStepper">
+                        <!-- 由JS动态渲染 -->
+                        <div class="step done" data-chapter="1" onclick="selectChapter(1)">
+                            <div class="step-connector"></div>
+                            <div class="step-circle">✓</div>
+                            <div class="step-title">一、项目基本情况</div>
+                            <div class="step-desc">已提取</div>
+                        </div>
+                        <div class="step done" data-chapter="2" onclick="selectChapter(2)">
+                            <div class="step-connector"></div>
+                            <div class="step-circle">✓</div>
+                            <div class="step-title">二、参与主体</div>
+                            <div class="step-desc">已提取</div>
+                        </div>
+                        <div class="step current" data-chapter="3" onclick="selectChapter(3)">
+                            <div class="step-connector"></div>
+                            <div class="step-circle">3</div>
+                            <div class="step-title">三、设立方案</div>
+                            <div class="step-desc">提取中</div>
+                        </div>
+                        <div class="step" data-chapter="4" onclick="selectChapter(4)">
+                            <div class="step-connector"></div>
+                            <div class="step-circle">4</div>
+                            <div class="step-title">四、基本条件</div>
+                            <div class="step-desc">待提取</div>
+                        </div>
+                        <div class="step" data-chapter="5" onclick="selectChapter(5)">
+                            <div class="step-connector"></div>
+                            <div class="step-circle">5</div>
+                            <div class="step-title">五、合规情况</div>
+                            <div class="step-desc">待提取</div>
+                        </div>
+                        <div class="step" data-chapter="6" onclick="selectChapter(6)">
+                            <div class="step-connector"></div>
+                            <div class="step-circle">6</div>
+                            <div class="step-title">六、运营管理</div>
+                            <div class="step-desc">待提取</div>
+                        </div>
+                        <div class="step" data-chapter="7" onclick="selectChapter(7)">
+                            <div class="step-circle">7</div>
+                            <div class="step-title">七、募集资金</div>
+                            <div class="step-desc">待提取</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 章节详情区域 -->
+                <div class="chapter-detail" id="chapterDetail">
+                    <div class="chapter-detail-header">
+                        <div class="flex items-center gap-12">
+                            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary)" id="chapterDetailTitle">一、项目基本情况</h3>
+                            <span class="badge badge-success">已提取</span>
+                        </div>
+                        <div class="flex gap-8">
+                            <button class="btn btn-ghost btn-sm" onclick="navigate('chapter-edit')">编辑</button>
+                            <button class="btn btn-ghost btn-sm" onclick="previewChapter()">预览</button>
+                        </div>
+                    </div>
+                    <div class="chapter-detail-body">
+                        <div class="field-list" id="chapterFields">
+                            <div class="field-item">
+                                <span class="field-label">项目名称</span>
+                                <span class="field-value">万国数据数据中心基础设施领域不动产投资信托基金（REITs）</span>
+                                <span class="field-source">来源：申报材料.docx</span>
+                                <button class="btn btn-ghost btn-sm" onclick="editField(this)">编辑</button>
+                            </div>
+                            <div class="field-item">
+                                <span class="field-label">项目类型</span>
+                                <span class="field-value">数据中心</span>
+                                <span class="field-source">来源：项目概况</span>
+                                <button class="btn btn-ghost btn-sm" onclick="editField(this)">编辑</button>
+                            </div>
+                            <div class="field-item">
+                                <span class="field-label">基础设施位置</span>
+                                <span class="field-value">北京市房山区</span>
+                                <span class="field-source">来源：底稿文件</span>
+                                <button class="btn btn-ghost btn-sm" onclick="editField(this)">编辑</button>
+                            </div>
+                            <div class="field-item">
+                                <span class="field-label">原始权益人</span>
+                                <span class="field-value">万国数据有限公司</span>
+                                <span class="field-source">来源：工商信息</span>
+                                <button class="btn btn-ghost btn-sm" onclick="editField(this)">编辑</button>
+                            </div>
+                            <div class="field-item">
+                                <span class="field-label">评估基准日</span>
+                                <span class="field-value">2026年3月31日</span>
+                                <span class="field-source">来源：评估报告</span>
+                                <button class="btn btn-ghost btn-sm" onclick="editField(this)">编辑</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ==================== 页面3：章节编辑 ==================== -->
+            <div class="page" id="page-chapter-edit">
+                <div class="editor-layout">
+                    <!-- 左侧：内容预览 -->
+                    <div class="editor-preview">
+                        <div class="editor-preview-header">📄 章节内容预览 — 一、项目基本情况</div>
+                        <div class="editor-preview-body" id="editorPreview">
+                            <h4 style="margin-bottom:12px;color:var(--text-primary)">（一）项目概况</h4>
+                            <p style="margin-bottom:16px">本项目拟发行的基础设施不动产投资信托基金为"万国数据数据中心基础设施领域不动产投资信托基金（REITs）"，
+                            基础设施项目为位于北京市房山区的数据中心，项目类型为数据中心。</p>
+                            <h4 style="margin-bottom:12px;color:var(--text-primary)">（二）特殊限定情况说明</h4>
+                            <p style="margin-bottom:16px">本项目基础设施资产不涉及特殊限定情况，项目土地使用权及房屋建筑物产权权属清晰，
+                            不存在重大权属纠纷、被抵押查封或其他影响转让的情形。</p>
+                            <h4 style="margin-bottom:12px;color:var(--text-primary)">（三）可扩募资产情况</h4>
+                            <p>原始权益人持有的可扩募资产主要包括位于北京市及周边区域的其他数据中心资产，
+                            具备作为后续扩募标的的潜力。</p>
+                        </div>
+                    </div>
+
+                    <!-- 右侧：数据编辑 -->
+                    <div class="editor-form">
+                        <div class="editor-form-header">✏️ 数据字段编辑</div>
+                        <div class="editor-form-body" id="editorForm">
+                            <div class="form-group">
+                                <label>项目名称</label>
+                                <input type="text" class="form-input" style="width:100%;padding:8px 12px" 
+                                    value="万国数据数据中心基础设施领域不动产投资信托基金（REITs）">
+                            </div>
+                            <div class="form-group">
+                                <label>项目类型</label>
+                                <input type="text" class="form-input" style="width:100%;padding:8px 12px" value="数据中心">
+                            </div>
+                            <div class="form-group">
+                                <label>基础设施位置</label>
+                                <input type="text" class="form-input" style="width:100%;padding:8px 12px" value="北京市房山区">
+                            </div>
+                            <div class="form-group">
+                                <label>原始权益人</label>
+                                <input type="text" class="form-input" style="width:100%;padding:8px 12px" value="万国数据有限公司">
+                            </div>
+                            <div class="form-group">
+                                <label>项目概况描述</label>
+                                <textarea>本项目拟发行的基础设施不动产投资信托基金为"万国数据数据中心基础设施领域不动产投资信托基金（REITs）"，基础设施项目为位于北京市房山区的数据中心，项目类型为数据中心。</textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>特殊限定说明</label>
+                                <textarea>本项目基础设施资产不涉及特殊限定情况，项目土地使用权及房屋建筑物产权权属清晰，不存在重大权属纠纷、被抵押查封或其他影响转让的情形。</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 底部操作 -->
+                <div class="action-bar" style="margin-top:24px">
+                    <div class="action-bar-left">
+                        <button class="btn btn-ghost" onclick="navigate('ndrc')">← 返回</button>
+                    </div>
+                    <div class="action-bar-right">
+                        <button class="btn btn-ghost" onclick="resetChapterEdit()">重置</button>
+                        <button class="btn btn-primary" onclick="saveChapterEdit()">保存修改</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 页面4：文档管理 ==================== -->
+            <div class="page" id="page-documents">
+                <!-- 标签栏 -->
+                <div class="tab-bar" id="docTabBar">
+                    <div class="tab-item active" onclick="switchDocTab('all')">全部文档</div>
+                    <div class="tab-item" onclick="switchDocTab('generated')">已生成</div>
+                    <div class="tab-item" onclick="switchDocTab('history')">历史版本</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>📂 已生成文档</h3>
+                        <div class="flex gap-8">
+                            <input type="text" class="search-box" style="width:200px" placeholder="搜索文档...">
+                            <button class="btn btn-primary btn-sm" onclick="navigate('ndrc')">生成新文档</button>
+                        </div>
+                    </div>
+                    <div class="card-body" style="padding:0">
+                        <table class="data-table" id="docTable">
+                            <thead>
+                                <tr>
+                                    <th>文件名称</th>
+                                    <th>生成时间</th>
+                                    <th>文件大小</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        <div class="flex items-center gap-8">
+                                            <span style="color:var(--info);font-weight:700;font-size:12px">DOCX</span>
+                                            <strong>万国数据数据中心REITs项目申报材料.docx</strong>
+                                        </div>
+                                    </td>
+                                    <td class="text-sm text-muted">2026-07-15 16:30</td>
+                                    <td class="text-sm">2.4 MB</td>
+                                    <td><span class="badge badge-success">已完成</span></td>
+                                    <td>
+                                        <div class="flex gap-8">
+                                            <button class="btn btn-ghost btn-sm" onclick="downloadDoc('doc1')">下载</button>
+                                            <button class="btn btn-ghost btn-sm" onclick="regenerateDoc('doc1')">重新生成</button>
+                                            <button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="deleteDoc('doc1')">删除</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="flex items-center gap-8">
+                                            <span style="color:var(--error);font-weight:700;font-size:12px">PDF</span>
+                                            <strong>万国数据数据中心REITs项目申报材料（盖章版）.pdf</strong>
+                                        </div>
+                                    </td>
+                                    <td class="text-sm text-muted">2026-07-15 17:00</td>
+                                    <td class="text-sm">5.1 MB</td>
+                                    <td><span class="badge badge-success">已完成</span></td>
+                                    <td>
+                                        <div class="flex gap-8">
+                                            <button class="btn btn-ghost btn-sm" onclick="downloadDoc('doc2')">下载</button>
+                                            <button class="btn btn-ghost btn-sm" onclick="regenerateDoc('doc2')">重新生成</button>
+                                            <button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="deleteDoc('doc2')">删除</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div class="flex items-center gap-8">
+                                            <span style="color:var(--info);font-weight:700;font-size:12px">DOCX</span>
+                                            <strong>REITs项目相关证明材料目录.docx</strong>
+                                        </div>
+                                    </td>
+                                    <td class="text-sm text-muted">2026-07-14 11:20</td>
+                                    <td class="text-sm">856 KB</td>
+                                    <td><span class="badge badge-warning">待审核</span></td>
+                                    <td>
+                                        <div class="flex gap-8">
+                                            <button class="btn btn-ghost btn-sm" onclick="downloadDoc('doc3')">下载</button>
+                                            <button class="btn btn-ghost btn-sm" onclick="regenerateDoc('doc3')">重新生成</button>
+                                            <button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="deleteDoc('doc3')">删除</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 历史版本对比 -->
+                <div class="card" style="margin-top:24px">
+                    <div class="card-header">
+                        <h3>📝 版本历史</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="timeline" id="docVersionTimeline">
+                            <div class="timeline-item">
+                                <div class="timeline-dot green"></div>
+                                <div class="timeline-content">
+                                    <div class="timeline-title">v2.0 - 更新基准日至2026.03.31版本</div>
+                                    <div class="timeline-time">2026-07-15 16:30</div>
+                                    <div class="timeline-desc">全文更新，基准日从2025.12.31变更为2026.03.31</div>
+                                </div>
+                            </div>
+                            <div class="timeline-item">
+                                <div class="timeline-dot blue"></div>
+                                <div class="timeline-content">
+                                    <div class="timeline-title">v1.0 - 首次申报版本</div>
+                                    <div class="timeline-time">2026-05-20 14:00</div>
+                                    <div class="timeline-desc">基准日2025.12.31，首次提交国家发改委</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 页面5：系统设置 ==================== -->
+            <div class="page" id="page-settings">
+                <div class="card">
+                    <div class="card-header"><h3>⚙️ 系统设置</h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label>Kimi 模型</label>
+                            <select class="form-input" id="settingModel"
+                                style="width:100%;padding:8px 12px"
+                                onchange="saveModelSetting(this.value)">
+                                <option value="">加载中…</option>
+                            </select>
+                            <div class="text-muted text-sm" id="settingModelHint" style="margin-top:4px">
+                                各章生成调用的 Kimi 模型；选择后即时生效，无需重启。写申报材料建议用最新旗舰通用模型（kimi-k3）。
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>默认输出路径</label>
+                            <div class="path-input-group">
+                                <input type="text" class="form-input" id="settingOutputPath" readonly
+                                    style="cursor:pointer;background:var(--bg-hover)"
+                                    onclick="openLocalPicker('settingOutputPath')"
+                                    value="C:\AI应用成果\REITs基金法律文件生成\app\output">
+                                <button class="btn btn-ghost" onclick="openLocalPicker('settingOutputPath')">选择文件</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>模板文件路径</label>
+                            <div class="path-input-group">
+                                <input type="text" class="form-input" id="settingTemplatePath" readonly
+                                    style="cursor:pointer;background:var(--bg-hover)"
+                                    onclick="openLocalPicker('settingTemplatePath')"
+                                    value="C:\AI应用成果\REITs基金法律文件生成\app\backend\templates">
+                                <button class="btn btn-ghost" onclick="openLocalPicker('settingTemplatePath')">选择文件</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>申报材料路径</label>
+                            <div class="path-input-group">
+                                <input type="text" class="form-input" id="settingNdrcMaterialPath" readonly
+                                    style="cursor:pointer;background:var(--bg-hover)"
+                                    onclick="openLocalPicker('settingNdrcMaterialPath')"
+                                    value="" placeholder="请选择申报材料文件">
+                                <button class="btn btn-ghost" onclick="openLocalPicker('settingNdrcMaterialPath')">选择文件</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>后端API地址</label>
+                            <input type="text" class="form-input" style="width:100%;padding:8px 12px"
+                                value="http://127.0.0.1:8000/api">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ===== 弹窗：新建项目 ===== -->
+    <div class="modal-overlay" id="modal-new-project">
+        <div class="modal" style="width:640px;max-width:94vw">
+            <div class="modal-header">
+                <span class="modal-title" id="npDialogTitle">➕ 新建项目</span>
+                <button class="modal-close" onclick="closeModal('modal-new-project')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>项目名称</label>
+                    <input type="text" class="form-input" id="npName" style="width:100%;padding:8px 12px"
+                        placeholder="如：XX数据中心基础设施REITs">
+                </div>
+                <div class="form-group">
+                    <label>申报材料文件夹</label>
+                    <div class="path-input-group">
+                        <input type="text" class="form-input" id="npMaterialsPath" readonly
+                            style="cursor:pointer;background:var(--bg-hover)"
+                            onclick="openLocalPicker('npMaterialsPath')"
+                            placeholder="选择存放申报材料的文件夹">
+                        <button class="btn btn-ghost" onclick="openLocalPicker('npMaterialsPath')">选择文件夹</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>申报材料格式文本</label>
+                    <div class="path-input-group">
+                        <input type="text" class="form-input" id="npTemplatePath" readonly
+                            style="cursor:pointer;background:var(--bg-hover)"
+                            onclick="openLocalPicker('npTemplatePath')"
+                            placeholder="选择官方模板 Word 文件（.docx）">
+                        <button class="btn btn-ghost" onclick="openLocalPicker('npTemplatePath')">选择文件</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>选择模型</label>
+                    <select class="form-input" id="npModel" style="width:100%;padding:8px 12px">
+                        <option value="">加载中…</option>
+                    </select>
+                    <div class="text-muted text-sm" style="margin-top:4px">各章生成调用的 Kimi 模型；创建后即时生效，可随时在「系统设置」再改。写申报材料建议用最新旗舰通用模型（kimi-k3）。</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal('modal-new-project')">取消</button>
+                <button class="btn btn-primary" id="npSubmitBtn" onclick="submitNewProject()">创 建 项 目</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 弹窗：文件夹浏览 ===== -->
+    <div class="modal-overlay" id="modal-folder-browser">
+        <div class="modal" style="width:600px;max-height:70vh">
+            <div class="modal-header">
+                <span class="modal-title">📁 浏览文件夹</span>
+                <button class="modal-close" onclick="closeModal('modal-folder-browser')">✕</button>
+            </div>
+            <div class="modal-body" style="padding:0">
+                <div style="padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg-card)">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">当前路径：</div>
+                    <div style="font-size:13px;color:var(--text-primary);word-break:break-all" id="folderBrowserPath">-</div>
+                </div>
+                <div id="folderBrowserList" style="max-height:400px;overflow-y:auto;padding:8px">
+                    <!-- 文件夹列表由JS渲染 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal('modal-folder-browser')">取消</button>
+                <button class="btn btn-primary" onclick="selectCurrentFolder()">选择此文件夹</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 弹窗：项目详情 ===== -->
+    <div class="modal-overlay" id="modal-project-info">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">项目详情</span>
+                <button class="modal-close" onclick="closeModal('modal-project-info')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>项目全称</label>
+                    <p style="color:var(--text-primary);font-size:14px">万国数据数据中心基础设施领域不动产投资信托基金（REITs）</p>
+                </div>
+                <div class="form-group">
+                    <label>原始权益人</label>
+                    <p style="color:var(--text-primary);font-size:14px">万国数据有限公司</p>
+                </div>
+                <div class="form-group">
+                    <label>基金管理人</label>
+                    <p style="color:var(--text-primary);font-size:14px">待确定</p>
+                </div>
+                <div class="form-group">
+                    <label>基础设施类型</label>
+                    <p style="color:var(--text-primary);font-size:14px">数据中心（新型基础设施）</p>
+                </div>
+                <div class="form-group">
+                    <label>评估基准日</label>
+                    <p style="color:var(--text-primary);font-size:14px">2026年3月31日</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal('modal-project-info')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Toast提示 ===== -->
+    <div class="toast" id="globalToast"></div>
+
+    <!-- JavaScript -->
+    <script src="/js/api.js"></script>
+    <script src="/js/components.js"></script>
+    <script src="/js/diagram.js"></script>
+    <script src="/js/app.js"></script>
+    <script src="/js/enhancements.js"></script>
+
+    <style>
+    /* 文件夹浏览器样式 */
+    .folder-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--text-primary);
+        transition: background 0.15s;
+    }
+    .folder-item:hover {
+        background: var(--bg-hover);
+    }
+    .folder-item.file {
+        cursor: default;
+        color: var(--text-muted);
+    }
+    .folder-icon {
+        font-size: 16px;
+        flex-shrink: 0;
+    }
+    .folder-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .folder-size {
+        font-size: 11px;
+        color: var(--text-muted);
+        flex-shrink: 0;
+    }
+    </style>
+</body>
+</html>

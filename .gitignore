@@ -1,0 +1,33 @@
+# 编辑器 / 缓存 / 虚拟环境
+.vscode/
+__pycache__/
+*.pyc
+.venv/
+.deps_installed
+
+# 大文件：drawio 组件（服务器已有、基本不变）、本地图片库（不部署）
+vendor/
+图片库/
+
+# ===== 运行数据（服务器上生成，不纳入版本；git pull 不会覆盖它们）=====
+accounts.json
+.app_secret
+summary_saved.json
+project_meta.json
+model_setting.json
+cover_saved.json
+write_config.json
+ch1.json
+ch2.json
+ch3.json
+ch4.json
+ch5.json
+ch6.json
+ch7.json
+cover_assets/
+_cover_preview.docx
+# 数据库与输出
+*.db
+*.sqlite
+*.sqlite3
+output/

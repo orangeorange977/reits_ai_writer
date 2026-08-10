@@ -1,0 +1,163 @@
+{% from "ndrc/base.j2" import render_table, field, paragraph, optional_section, conditional_table %}
+{# 第四章：项目基本条件 #}
+
+四、项目基本条件
+
+（一）权属情况
+
+{{ paragraph(ownership_desc) }}
+
+{% if land_certificates and land_certificates.rows %}
+1. 土地使用权证书：
+{{ render_table(land_certificates.headers, land_certificates.rows) }}
+{% endif %}
+
+{% if building_certificates and building_certificates.rows %}
+2. 房产证/不动产权证：
+{{ render_table(building_certificates.headers, building_certificates.rows) }}
+{% endif %}
+
+{% if ownership_commitment %}
+3. 权属承诺说明：
+{{ paragraph(ownership_commitment) }}
+{% endif %}
+
+4. 权利负担情况（抵押、查封等）：
+{{ paragraph(encumbrances) }}
+
+{% if ownership_dispute %}
+5. 权属争议情况：
+{{ paragraph(ownership_dispute) }}
+{% else %}
+5. 权属争议情况：
+    截至本报告出具之日，本项目基础设施资产不存在权属争议。
+{% endif %}
+
+（二）资产完整情况
+
+{{ paragraph(asset_integrity_desc) }}
+
+1. 资产范围界定：
+{{ paragraph(asset_boundary) }}
+
+{% if shared_facilities %}
+2. 共用设施设备情况：
+{{ paragraph(shared_facilities) }}
+{% endif %}
+
+3. 独立运营能力说明：
+{{ paragraph(independent_operation) }}
+
+{% if asset_condition %}
+4. 资产状况（设备状态、维护情况）：
+{{ paragraph(asset_condition) }}
+{% endif %}
+
+{% if supporting_facilities %}
+5. 配套设施情况：
+{{ paragraph(supporting_facilities) }}
+{% endif %}
+
+（三）运营收益情况
+
+{{ paragraph(revenue_overview) }}
+
+{% if revenue_sources and revenue_sources.rows %}
+1. 收入来源构成：
+{{ render_table(revenue_sources.headers, revenue_sources.rows) }}
+{% endif %}
+
+{% if historical_financials and historical_financials.rows %}
+2. 近三年经营数据：
+{{ render_table(historical_financials.headers, historical_financials.rows) }}
+{% endif %}
+
+{% if occupancy_rate %}
+3. 出租率/使用率：{{ field(occupancy_rate) }}
+{% endif %}
+
+{% if major_tenants and major_tenants.rows %}
+4. 主要客户/租户：
+{{ render_table(major_tenants.headers, major_tenants.rows) }}
+{% endif %}
+
+{% if cash_flow_forecast %}
+5. 未来现金流预测：
+{{ paragraph(cash_flow_forecast) }}
+{% endif %}
+
+{% if net_operating_income %}
+6. 净运营收入（NOI）：{{ field(net_operating_income) }}
+{% endif %}
+
+{% if ebitda %}
+7. EBITDA：{{ field(ebitda) }}
+{% endif %}
+
+{% if government_subsidies %}
+8. 政府补贴情况：
+{{ paragraph(government_subsidies) }}
+{% endif %}
+
+（四）资产估值情况
+
+1. 评估方法：{{ field(valuation_method) }}
+
+2. 评估结论：{{ field(valuation_result) }}万元
+
+3. 评估基准日：{{ field(valuation_date) }}
+
+4. 评估机构：{{ field(valuation_institution) }}
+
+{% if valuation_assumptions %}
+5. 评估假设：
+{{ paragraph(valuation_assumptions) }}
+{% endif %}
+
+{% if cap_rate %}
+6. 资本化率：{{ field(cap_rate) }}
+{% endif %}
+
+{% if discount_rate %}
+7. 折现率：{{ field(discount_rate) }}
+{% endif %}
+
+{% if valuation_details and valuation_details.rows %}
+8. 评估明细：
+{{ render_table(valuation_details.headers, valuation_details.rows) }}
+{% endif %}
+
+（五）可能对项目稳定运营产生重大影响的重要因素
+
+{% if market_risk %}
+1. 市场风险：
+{{ paragraph(market_risk) }}
+{% endif %}
+
+{% if policy_risk %}
+2. 政策风险：
+{{ paragraph(policy_risk) }}
+{% endif %}
+
+{% if operation_risk %}
+3. 运营风险：
+{{ paragraph(operation_risk) }}
+{% endif %}
+
+{% if concentration_risk %}
+4. 集中度风险：
+{{ paragraph(concentration_risk) }}
+{% endif %}
+
+{% if lease_expiry_risk %}
+5. 租约到期风险：
+{{ paragraph(lease_expiry_risk) }}
+{% endif %}
+
+{% if force_majeure_risk %}
+6. 不可抗力风险：
+{{ paragraph(force_majeure_risk) }}
+{% endif %}
+
+风险应对措施：
+{{ paragraph(risk_response_measures) }}

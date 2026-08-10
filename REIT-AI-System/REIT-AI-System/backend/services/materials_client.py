@@ -1,0 +1,309 @@
+"""证明材料（申报材料文件夹）读取
+
+给 Kimi 两个能力：列目录、抽取某个文件的文本。全部限定在"申报材料根目录"内，
+带路径穿越防护（不会读到根目录以外）。文本类文件（PDF文字层/Word/Excel/纯文本）能读；
+扫描件（无文字层的 PDF/图片）读不出正文，会如实说明——那部分需要后续 OCR/视觉能力。
+"""
+import logging
+import re
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+_TEXT_EXT = {".txt", ".md", ".csv", ".json"}
+_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+_MAX_TEXT = 20000     # 章节生成读文件时单个文档最多返回的字符数（默认，控生成成本）
+_MAX_FILES = 300      # list 最多返回的文件数
+# 扫描件 OCR 控成本/时延：默认（未指定页码）只识别很少几页——大文件（审计报告等）绝不整篇 OCR。
+# 章节生成走这些默认值；AI 助手/对话读用户上传的素材时会传更大的 max_chars / ocr_pages 放宽。
+_MAX_OCR_PAGES = 3            # 未指定 pages 时最多识别几页（默认）
+_MAX_OCR_PAGES_EXPLICIT = 16  # 指定 pages 时单次最多识别几页（已分批，安全放大）
+_OCR_DPI = 120               # 光栅化分辨率（越高越清但越重）
+
+
+def _parse_pages(spec: str, total: int) -> list:
+    """把 '1-3,5' 这类页码串解析成 0-based 页索引（去重、按序、限定有效范围）。空串返回 []。"""
+    if not spec:
+        return []
+    nums = []
+    for part in re.split(r"[,，;；\s]+", str(spec).strip()):
+        if not part:
+            continue
+        m = re.match(r"^(\d+)\s*[-–~至到]\s*(\d+)$", part)
+        if m:
+            a, b = int(m.group(1)), int(m.group(2))
+            nums.extend(range(min(a, b), max(a, b) + 1))
+        elif part.isdigit():
+            nums.append(int(part))
+    seen, out = set(), []
+    for x in nums:
+        if 1 <= x <= total and x not in seen:
+            seen.add(x)
+            out.append(x - 1)  # 转 0-based
+    return out
+
+
+def _ocr(images, query: str = "") -> str:
+    """把图片交给视觉模型识别文字；query 非空则只找与该问题相关的内容。失败返回可读说明（不抛异常）。"""
+    if not images:
+        return ""
+    try:
+        from backend.services import kimi_client
+        return (kimi_client.ocr_images(images, instruction=query) or "").strip()
+    except Exception as e:
+        logger.warning(f"视觉识别失败: {e}")
+        return f"（扫描件视觉识别失败：{e}）"
+
+
+def _safe_join(root: Path, rel: str):
+    """把相对路径安全地拼到 root 下；越权（跳出 root）则返回 None。"""
+    try:
+        base = root.resolve()
+        p = (base / (rel or "")).resolve()
+        if p == base or base in p.parents:
+            return p
+    except Exception:
+        pass
+    return None
+
+
+def list_materials(root: Path, keyword: str = "") -> str:
+    """列出申报材料根目录下的文件（相对路径），可用关键词过滤（匹配路径/文件名，忽略大小写）。"""
+    if not root or not root.is_dir():
+        return "（未配置或找不到申报材料目录）"
+    kw = (keyword or "").strip().lower()
+    files = []
+    try:
+        for p in root.rglob("*"):
+            if p.is_file():
+                rel = p.relative_to(root).as_posix()
+                if not kw or kw in rel.lower():
+                    files.append(rel)
+                    if len(files) >= _MAX_FILES:
+                        break
+    except Exception as e:
+        return f"（列目录失败：{e}）"
+    if not files:
+        return f"（未找到匹配“{keyword}”的文件）" if kw else "（目录为空）"
+    head = f"共 {len(files)} 个文件（相对路径，可直接传给 read_document）："
+    return head + "\n" + "\n".join(f"- {f}" for f in files)
+
+
+def read_document(root: Path, rel_path: str, pages: str = "", query: str = "",
+                  anchor: str = "") -> str:
+    """读取申报材料目录下某个文件的文本内容（PDF文字层/Word/Excel/文本）。
+    anchor：关键词定位（仅对有文字层的 PDF 有效、最省）。给一个词（如“资产负债表”），
+    代码直接在文字层搜到它所在页，返回该页及随后几页——三张连续报表一次锁定，无需 OCR。
+    扫描件/用词不同会退回 pages/OCR 并说明原因。
+    pages：仅对 PDF 有效，形如 '1-3' '5' '2,4'，只读/只识别这些页——大扫描件定点取页，避免整篇 OCR。
+    query：读扫描件/图片时要找什么（如“落款日期和落款单位”“审计意见”“某科目金额”），
+    视觉识别只回相关内容、不通读全页，输出更短更准。"""
+    if not root or not root.is_dir():
+        return "（未配置申报材料目录）"
+    p = _safe_join(root, rel_path)
+    if p is None or not p.is_file():
+        return f"（找不到文件或路径越权：{rel_path}）"
+    ext = p.suffix.lower()
+    try:
+        if ext == ".pdf":
+            return _read_pdf(p, pages, query, anchor)
+        if ext == ".docx":
+            return _read_docx(p)
+        if ext in (".xlsx", ".xlsm"):
+            return _read_xlsx(p)
+        if ext in _TEXT_EXT:
+            return p.read_text(encoding="utf-8", errors="ignore")[:_MAX_TEXT]
+        if ext in _IMAGE_EXT:
+            # 图片材料（营业执照、盖章页等）直接走视觉识别
+            return _ocr([p.read_bytes()], query) or "（图片未识别出文字）"
+        return f"（暂不支持读取该类型文件：{ext}；文件名本身可作为“文件全称”使用）"
+    except Exception as e:
+        logger.warning(f"读取材料失败 {rel_path}: {e}")
+        return f"（读取失败：{e}）"
+
+
+_ANCHOR_SPAN = 4   # 关键词命中页之后再多返回几页（三张连续报表一般够）
+
+
+def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "",
+              max_chars: int = None, default_ocr_pages: int = None) -> str:
+    import fitz  # PyMuPDF
+    mc = int(max_chars) if max_chars else _MAX_TEXT              # 文字上限（AI 助手会传更大）
+    dop = int(default_ocr_pages) if default_ocr_pages else _MAX_OCR_PAGES  # 未指定页时 OCR 几页
+    doc = fitz.open(str(p))
+    n_pages = doc.page_count
+    has_text = any(doc[i].get_text().strip() for i in range(min(n_pages, 6)))
+    anchor = (anchor or "").strip()
+
+    # ① 关键词定位（仅文字层有效、最省）：跳到含 anchor 的页，返回它及随后几页——
+    #    如“资产负债表”命中即锁定这一段（利润表/现金流量表通常紧随其后）。
+    if anchor and has_text:
+        hit = next((i for i in range(n_pages) if anchor in doc[i].get_text()), None)
+        if hit is not None:
+            hi = min(n_pages, hit + _ANCHOR_SPAN + 1)
+            parts = [f"［第{j + 1}页］\n{doc[j].get_text()}" for j in range(hit, hi)]
+            doc.close()
+            head = f"（已在第 {hit + 1} 页定位到“{anchor}”，返回第 {hit + 1}–{hi} 页文字。）\n"
+            return (head + "\n".join(parts)).strip()[:mc]
+
+    want = _parse_pages(pages, n_pages)          # 指定的 0-based 页索引（空=未指定）
+    scan_idxs = want if want else list(range(n_pages))
+
+    # ② 文字层（很便宜）：有文字层直接返回，不做任何 OCR
+    parts, total = [], 0
+    for i in scan_idxs:
+        t = doc[i].get_text()
+        parts.append(t)
+        total += len(t)
+        if total >= mc:
+            break
+    text = "\n".join(parts).strip()
+    if text:
+        doc.close()
+        note = ""
+        if anchor:  # 有文字层但没搜到锚点：多半是用词不同（如无“合并”二字）
+            note = (f"（注：文字层里没找到“{anchor}”，可能用词不同/无“合并”二字；"
+                    f"以下为{'指定页' if want else '全文'}文字，请自行辨认三张报表。）\n")
+        return (note + text)[:mc]
+
+    # ③ 没有文字层 → 扫描件：把需要的几页转图片做 OCR（视觉侧已分批，绝不整篇一次性 OCR）
+    if want:
+        ocr_idxs = want[:_MAX_OCR_PAGES_EXPLICIT]
+    else:
+        ocr_idxs = list(range(min(n_pages, dop)))
+    images = [doc[i].get_pixmap(dpi=_OCR_DPI).tobytes("png") for i in ocr_idxs]
+    doc.close()
+    ocr = _ocr(images, query)
+    if not ocr:
+        return (f"（该 PDF 疑似扫描件（共 {n_pages} 页），视觉识别未返回文字。"
+                "文件名可作为“文件全称”使用；如需某页内容，请用 pages 指定页码重试。）")
+    done = sorted(i + 1 for i in ocr_idxs)        # 1-based，供提示
+    notes = []
+    if anchor:  # 扫描件无法按关键词定位
+        notes.append(f"该文件为扫描件，无法按关键词“{anchor}”自动定位；已识别第 {done} 页，"
+                     "请据此判断报表在第几页后，用 pages 精确重读。")
+    if want and len(want) > _MAX_OCR_PAGES_EXPLICIT:
+        rest = sorted(i + 1 for i in want[_MAX_OCR_PAGES_EXPLICIT:])
+        notes.append(f"你请求的页较多，扫描件单次最多识别 {_MAX_OCR_PAGES_EXPLICIT} 页，已识别第 {done} 页；"
+                     f"其余第 {rest} 页请再调一次 pages 读取（分批小步读，别一次要太多页）。")
+    elif not want and n_pages > dop:
+        notes.append(f"该文件共 {n_pages} 页，仅识别了第 {done} 页；如需其它页请用 pages 指定。")
+    note = ("（注：" + " ".join(notes) + "）\n") if notes else ""
+    return ("【以下为扫描件的视觉识别结果，供参考，请核对】\n" + note + ocr).strip()[:mc]
+
+
+def _read_docx(p: Path, max_chars: int = None) -> str:
+    import docx
+    mc = int(max_chars) if max_chars else _MAX_TEXT
+    d = docx.Document(str(p))
+    text = "\n".join(par.text for par in d.paragraphs)
+    return text[:mc] if text.strip() else "（Word 文档无文字内容）"
+
+
+def _read_xlsx(p: Path, max_chars: int = None) -> str:
+    import openpyxl
+    mc = int(max_chars) if max_chars else _MAX_TEXT
+    wb = openpyxl.load_workbook(str(p), read_only=True, data_only=True)
+    out, total = [], 0
+    for ws in wb.worksheets:
+        out.append(f"# 工作表：{ws.title}")
+        for row in ws.iter_rows(values_only=True):
+            cells = [str(c) for c in row if c is not None]
+            if cells:
+                line = "\t".join(cells)
+                out.append(line)
+                total += len(line)
+        if total >= mc:
+            break
+    wb.close()
+    return "\n".join(out)[:mc]
+
+
+def _read_pptx(p: Path, max_chars: int = None) -> str:
+    """从 .pptx 里按幻灯片顺序抽取文字（不依赖 python-pptx，直接解压读 slideN.xml）。"""
+    import zipfile
+    from html import unescape
+    mc = int(max_chars) if max_chars else _MAX_TEXT
+    out, total = [], 0
+    with zipfile.ZipFile(str(p)) as z:
+        slides = sorted(
+            [n for n in z.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", n)],
+            key=lambda s: int(re.search(r"(\d+)", s).group(1)))
+        for i, n in enumerate(slides, 1):
+            xml = z.read(n).decode("utf-8", "ignore")
+            lines = []
+            for para in re.findall(r"<a:p[ >].*?</a:p>", xml, re.DOTALL):
+                runs = re.findall(r"<a:t>(.*?)</a:t>", para, re.DOTALL)
+                line = unescape("".join(runs)).strip()
+                if line:
+                    lines.append(line)
+            if lines:
+                block = f"【第{i}页】\n" + "\n".join(lines)
+                out.append(block)
+                total += len(block)
+                if total >= mc:
+                    break
+    text = "\n\n".join(out).strip()
+    return text[:mc] if text else "（PPT 未提取到文字）"
+
+
+def extract_file_text(p: Path, query: str = "", max_chars: int = None,
+                      ocr_pages: int = None) -> str:
+    """通用文件取文本：按扩展名分派（PDF/Word/Excel/PPT/文本/图片OCR）。用于 AI 助手读取用户上传的素材。
+    max_chars：单文件最多返回多少字（AI 助手会传更大值放宽限制）。
+    ocr_pages：扫描件默认识别多少页（AI 助手放大；视觉侧已分批，安全）。"""
+    ext = p.suffix.lower()
+    mc = int(max_chars) if max_chars else _MAX_TEXT
+    try:
+        if ext == ".pdf":
+            return _read_pdf(p, query=query, max_chars=mc, default_ocr_pages=ocr_pages)
+        if ext == ".docx":
+            return _read_docx(p, max_chars=mc)
+        if ext in (".xlsx", ".xlsm"):
+            return _read_xlsx(p, max_chars=mc)
+        if ext == ".pptx":
+            return _read_pptx(p, max_chars=mc)
+        if ext in _TEXT_EXT:
+            return p.read_text(encoding="utf-8", errors="ignore")[:mc]
+        if ext in _IMAGE_EXT:
+            return _ocr([p.read_bytes()], query) or "（图片未识别出文字）"
+        if ext in (".doc", ".ppt", ".xls"):
+            return f"（旧版 {ext} 格式暂不支持解析，请在 Office 里另存为 {ext}x 后再上传）"
+        return f"（暂不支持的文件类型：{ext}）"
+    except Exception as e:
+        logger.warning(f"解析上传文件失败 {p.name}: {e}")
+        return f"（解析失败：{e}）"
+
+
+def fetch_url_text(url: str, limit: int = _MAX_TEXT) -> str:
+    """抓取一个网页链接的正文文字（去掉脚本/样式/导航等）。仅支持 http/https。"""
+    url = (url or "").strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return f"（跳过无效链接：{url}）"
+    try:
+        import urllib.request
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) REIT-AI/1.0"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            charset = resp.headers.get_content_charset()
+            raw = resp.read(4_000_000)  # 最多 4MB，防超大页
+    except Exception as e:
+        return f"（抓取链接失败：{e}）"
+    text = ""
+    try:
+        from lxml import html as _lh
+        doc = _lh.fromstring(raw)
+        for bad in doc.xpath("//script|//style|//noscript|//nav|//header|//footer|//aside|//form"):
+            parent = bad.getparent()
+            if parent is not None:
+                parent.remove(bad)
+        text = doc.text_content()
+    except Exception:
+        try:
+            text = re.sub(r"<[^>]+>", " ", raw.decode(charset or "utf-8", "ignore"))
+        except Exception as e:
+            return f"（网页解析失败：{e}）"
+    text = re.sub(r"[ \t ]+", " ", text)
+    text = re.sub(r"\n[ \t]*\n[ \t]*\n+", "\n\n", text)
+    text = text.strip()
+    return text[:limit] if text else "（该网页未提取到正文文字）"

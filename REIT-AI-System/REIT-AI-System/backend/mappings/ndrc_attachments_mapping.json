@@ -1,0 +1,313 @@
+{
+  "version": "2024",
+  "document_type": "发改委申报材料附件",
+  "description": "基础设施领域不动产投资信托基金（REITs）项目申报相关证明材料",
+  "attachment_categories": [
+    {
+      "category_id": "cat-1",
+      "category": "一、参与主体情况",
+      "items": [
+        {
+          "id": "att-1",
+          "number": 1,
+          "title": "发起人（原始权益人）、项目公司、运营管理机构的营业执照复印件，项目公司章程复印件",
+          "required": true,
+          "file_types": ["pdf", "jpg", "png"],
+          "description": "包含各主体的有效营业执照复印件及项目公司章程",
+          "multiple_files": true
+        },
+        {
+          "id": "att-2",
+          "number": 2,
+          "title": "底层资产持有主体最近3个会计年度及一期的经审计的财务报告，以及原始权益人近3年经审计的财务报告",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "包含项目公司和原始权益人的审计报告",
+          "multiple_files": true
+        },
+        {
+          "id": "att-3",
+          "number": 3,
+          "title": "发起人（原始权益人）、项目公司、运营管理机构及中介机构信用状况查询结果",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "中国人民银行征信中心企业信用报告、全国企业信用信息公示系统查询结果等",
+          "multiple_files": true
+        },
+        {
+          "id": "att-4",
+          "number": 4,
+          "title": "发起人（原始权益人）、项目公司、运营管理机构关于自身运营情况的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "各主体出具的运营情况承诺函（盖章扫描件）",
+          "multiple_files": true
+        },
+        {
+          "id": "att-5",
+          "number": 5,
+          "title": "基金管理人、资产支持证券管理人关于自身执业资格的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "基金管理人和ABS管理人的执业资格承诺函",
+          "multiple_files": true
+        },
+        {
+          "id": "att-6",
+          "number": 6,
+          "title": "为项目提供服务的律师事务所、会计师事务所、资产评估机构、税务咨询机构以及担任财务顾问的证券公司等中介机构关于自身执业资格的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "各中介机构的执业资格承诺函",
+          "multiple_files": true
+        }
+      ]
+    },
+    {
+      "category_id": "cat-2",
+      "category": "二、项目基本条件",
+      "items": [
+        {
+          "id": "att-7",
+          "number": 7,
+          "title": "与项目所有权、经营收益权相关的政府批准文件（或法律文件）复印件",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "包含不动产权证书、土地使用证、经营许可证等权属证明文件复印件",
+          "multiple_files": true,
+          "note": "如不适用需说明原因"
+        },
+        {
+          "id": "att-8",
+          "number": 8,
+          "title": "发起人（原始权益人）关于项目权属和项目运营的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "就项目权属清晰、无争议及正常运营出具的承诺函",
+          "multiple_files": false
+        },
+        {
+          "id": "att-9",
+          "number": 9,
+          "title": "律师事务所就项目权属、资产范围和项目合法合规性出具的法律意见书",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "律师事务所出具的项目合规法律意见书",
+          "multiple_files": false
+        },
+        {
+          "id": "att-10",
+          "number": 10,
+          "title": "发起人（原始权益人）关于资产完整性的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "就资产范围界定、资产完整性出具的承诺函",
+          "multiple_files": false
+        },
+        {
+          "id": "att-11",
+          "number": 11,
+          "title": "发起人（原始权益人）关于政府补贴的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "就政府补贴情况出具的承诺函（如无补贴需说明）",
+          "multiple_files": false
+        },
+        {
+          "id": "att-12",
+          "number": 12,
+          "title": "发起人（原始权益人）关于影响项目稳定运营重要因素的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "就可能影响项目稳定运营的重要因素出具的承诺函",
+          "multiple_files": false
+        }
+      ]
+    },
+    {
+      "category_id": "cat-3",
+      "category": "三、项目合规情况",
+      "items": [
+        {
+          "id": "att-13",
+          "number": 13,
+          "title": "按照格式文本第五章第二节要求提供的投资管理合规手续复印件、相关函件等证明材料",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "包含项目立项批复、核准/备案文件、施工许可、竣工验收、消防验收、环评批复等证明材料",
+          "multiple_files": true
+        },
+        {
+          "id": "att-14",
+          "number": 14,
+          "title": "发起人（原始权益人）关于连廊、夹层等建筑情况的承诺函",
+          "required": false,
+          "file_types": ["pdf"],
+          "description": "如项目涉及连廊、夹层等建筑情况需出具承诺函",
+          "multiple_files": false,
+          "note": "如不涉及可不提供"
+        },
+        {
+          "id": "att-15",
+          "number": 15,
+          "title": "按照格式文本第五章第三节要求提供的土地使用合规方面的证明材料",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "包含国有土地使用证、建设用地规划许可证、建设工程规划许可证等土地合规证明",
+          "multiple_files": true
+        },
+        {
+          "id": "att-16",
+          "number": 16,
+          "title": "可转让性相关规定、文件或协议的复印件，以及相关有权部门或协议签署机构出具的无异议函等证明材料",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "与资产转让相关的法律文件、政府审批文件、无异议函等",
+          "multiple_files": true,
+          "note": "如不涉及需说明原因"
+        },
+        {
+          "id": "att-17",
+          "number": 17,
+          "title": "发起人（原始权益人）关于可转让性的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "就资产可转让性出具的承诺函",
+          "multiple_files": false
+        },
+        {
+          "id": "att-18",
+          "number": 18,
+          "title": "基金管理人关于可转让性的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "基金管理人就资产可转让性出具的承诺函",
+          "multiple_files": false
+        },
+        {
+          "id": "att-19",
+          "number": 19,
+          "title": "律师事务所就转让行为合法性出具的法律意见书",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "律师事务所就基础设施资产转让行为的合法合规性出具的法律意见书",
+          "multiple_files": false
+        },
+        {
+          "id": "att-20",
+          "number": 20,
+          "title": "政府和社会资本合作（PPP）项目的相关证明材料",
+          "required": false,
+          "file_types": ["pdf"],
+          "description": "如为PPP项目需提供特许经营协议、政府方同意函等材料",
+          "multiple_files": true,
+          "note": "非PPP项目不适用"
+        },
+        {
+          "id": "att-21",
+          "number": 21,
+          "title": "发起人（原始权益人）关于税收处理的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "就项目涉及的税收处理方案出具的承诺函",
+          "multiple_files": false
+        }
+      ]
+    },
+    {
+      "category_id": "cat-4",
+      "category": "四、募集资金用途",
+      "items": [
+        {
+          "id": "att-22",
+          "number": 22,
+          "title": "发起人（原始权益人）关于回收资金使用的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "就回收资金使用计划和用途出具的承诺函",
+          "multiple_files": false
+        }
+      ]
+    },
+    {
+      "category_id": "cat-5",
+      "category": "五、其他材料",
+      "items": [
+        {
+          "id": "att-23",
+          "number": 23,
+          "title": "发起人（原始权益人）关于申报材料真实、有效、合规、完备的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "就申报材料的真实性、有效性、合规性、完备性出具的承诺函",
+          "multiple_files": false
+        },
+        {
+          "id": "att-24",
+          "number": 24,
+          "title": "相关中介机构关于出具材料真实、有效、合规、完备的承诺函",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "各中介机构就其出具材料的真实性、有效性、合规性、完备性出具的承诺函",
+          "multiple_files": true
+        },
+        {
+          "id": "att-25",
+          "number": 25,
+          "title": "拟投资项目合规材料",
+          "required": false,
+          "file_types": ["pdf"],
+          "description": "募集资金拟投资项目的合规性证明材料",
+          "multiple_files": true,
+          "note": "如有明确的拟投资项目需提供"
+        },
+        {
+          "id": "att-26",
+          "number": 26,
+          "title": "发起人（原始权益人）所获荣誉及奖项",
+          "required": false,
+          "file_types": ["pdf", "jpg", "png"],
+          "description": "发起人获得的行业荣誉、奖项等证明材料",
+          "multiple_files": true
+        },
+        {
+          "id": "att-27",
+          "number": 27,
+          "title": "保险单",
+          "required": false,
+          "file_types": ["pdf"],
+          "description": "基础设施资产的相关保险保单",
+          "multiple_files": true
+        },
+        {
+          "id": "att-28",
+          "number": 28,
+          "title": "其他应当出具的证明材料",
+          "required": false,
+          "file_types": ["pdf", "docx"],
+          "description": "根据项目实际情况需要补充提供的其他证明材料",
+          "multiple_files": true
+        },
+        {
+          "id": "att-29",
+          "number": 29,
+          "title": "发起人（原始权益人）、项目公司、运营管理机构决议文件",
+          "required": true,
+          "file_types": ["pdf"],
+          "description": "各主体关于开展REITs项目的内部决议文件（董事会决议、股东会决议等）",
+          "multiple_files": true
+        },
+        {
+          "id": "att-30",
+          "number": 30,
+          "title": "反馈答复新增文件",
+          "required": false,
+          "file_types": ["pdf", "docx"],
+          "description": "根据发改委反馈意见要求补充提供的材料",
+          "multiple_files": true,
+          "note": "首次申报可不提供，反馈回复阶段补充"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,548 @@
+{
+  "version": "2024",
+  "description": "发改委REITs申报材料财务数据标准化输入规范",
+  "templates": {
+    "originator_financials": {
+      "title": "发起人（原始权益人）最近3个会计年度及一期主要财务指标",
+      "reference_table": "表5（表2-3）",
+      "periods": ["year1", "year2", "year3", "current_period"],
+      "period_labels": {
+        "year1": "第n-2年度",
+        "year2": "第n-1年度",
+        "year3": "第n年度",
+        "current_period": "最近一期（截至基准日）"
+      },
+      "fields": [
+        {
+          "id": "total_assets",
+          "label": "总资产（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "net_assets",
+          "label": "净资产（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "total_revenue",
+          "label": "营业收入（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "operating_income",
+          "label": "营业利润（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "net_profit",
+          "label": "净利润（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "total_liabilities",
+          "label": "总负债（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "asset_liability_ratio",
+          "label": "资产负债率（%）",
+          "type": "percentage",
+          "unit": "%",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "current_ratio",
+          "label": "流动比率",
+          "type": "number",
+          "unit": "倍",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "quick_ratio",
+          "label": "速动比率",
+          "type": "number",
+          "unit": "倍",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "roe",
+          "label": "净资产收益率（%）",
+          "type": "percentage",
+          "unit": "%",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "operating_cash_flow",
+          "label": "经营活动产生的现金流量净额（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "ebitda",
+          "label": "EBITDA（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": false,
+          "decimal_places": 2
+        }
+      ],
+      "notes": [
+        "财务数据应来自经审计的财务报告",
+        "最近一期数据如未经审计需标注“未经审计”",
+        "金额单位统一为万元，保留两位小数",
+        "百分比类指标以%为单位，保留两位小数"
+      ]
+    },
+    "project_financials": {
+      "title": "项目最近3个会计年度及一期经营收益情况",
+      "reference_table": "表12（表4-1）",
+      "periods": ["year1", "year2", "year3", "current_period"],
+      "period_labels": {
+        "year1": "第n-2年度",
+        "year2": "第n-1年度",
+        "year3": "第n年度",
+        "current_period": "最近一期（截至基准日）"
+      },
+      "sections": [
+        {
+          "section_name": "经营指标",
+          "fields": [
+            {
+              "id": "total_leasable_area",
+              "label": "可租赁面积/可售IT功率",
+              "type": "number",
+              "unit": "㎡/MW",
+              "required": true,
+              "decimal_places": 2
+            },
+            {
+              "id": "leased_area",
+              "label": "已出租面积/已售IT功率",
+              "type": "number",
+              "unit": "㎡/MW",
+              "required": true,
+              "decimal_places": 2
+            },
+            {
+              "id": "occupancy_rate",
+              "label": "出租率/计费率（%）",
+              "type": "percentage",
+              "unit": "%",
+              "required": true,
+              "decimal_places": 2
+            },
+            {
+              "id": "average_rent",
+              "label": "平均租金/平均单价",
+              "type": "number",
+              "unit": "元/㎡·月或元/kW·月",
+              "required": true,
+              "decimal_places": 2
+            },
+            {
+              "id": "weighted_remaining_lease_term",
+              "label": "加权平均剩余租赁期限（年）",
+              "type": "number",
+              "unit": "年",
+              "required": true,
+              "decimal_places": 1
+            },
+            {
+              "id": "customer_count",
+              "label": "客户数量（个）",
+              "type": "integer",
+              "unit": "个",
+              "required": false
+            },
+            {
+              "id": "top5_customer_revenue_ratio",
+              "label": "前五大客户收入占比（%）",
+              "type": "percentage",
+              "unit": "%",
+              "required": false,
+              "decimal_places": 2
+            }
+          ]
+        },
+        {
+          "section_name": "财务指标",
+          "fields": [
+            {
+              "id": "operating_revenue",
+              "label": "营业收入（万元）",
+              "type": "number",
+              "unit": "万元",
+              "required": true,
+              "decimal_places": 2
+            },
+            {
+              "id": "operating_cost",
+              "label": "营业成本（万元）",
+              "type": "number",
+              "unit": "万元",
+              "required": true,
+              "decimal_places": 2
+            },
+            {
+              "id": "gross_profit",
+              "label": "毛利润（万元）",
+              "type": "number",
+              "unit": "万元",
+              "required": true,
+              "decimal_places": 2,
+              "formula": "operating_revenue - operating_cost"
+            },
+            {
+              "id": "gross_profit_margin",
+              "label": "毛利率（%）",
+              "type": "percentage",
+              "unit": "%",
+              "required": true,
+              "decimal_places": 2,
+              "formula": "gross_profit / operating_revenue * 100"
+            },
+            {
+              "id": "management_fee",
+              "label": "管理费用（万元）",
+              "type": "number",
+              "unit": "万元",
+              "required": true,
+              "decimal_places": 2
+            },
+            {
+              "id": "operating_profit",
+              "label": "营业利润（万元）",
+              "type": "number",
+              "unit": "万元",
+              "required": true,
+              "decimal_places": 2
+            },
+            {
+              "id": "net_profit",
+              "label": "净利润（万元）",
+              "type": "number",
+              "unit": "万元",
+              "required": true,
+              "decimal_places": 2
+            },
+            {
+              "id": "ebitda",
+              "label": "EBITDA（万元）",
+              "type": "number",
+              "unit": "万元",
+              "required": true,
+              "decimal_places": 2
+            },
+            {
+              "id": "noi",
+              "label": "NOI（万元）",
+              "type": "number",
+              "unit": "万元",
+              "required": true,
+              "decimal_places": 2
+            },
+            {
+              "id": "capex",
+              "label": "资本性支出（万元）",
+              "type": "number",
+              "unit": "万元",
+              "required": false,
+              "decimal_places": 2
+            },
+            {
+              "id": "depreciation_amortization",
+              "label": "折旧及摊销（万元）",
+              "type": "number",
+              "unit": "万元",
+              "required": true,
+              "decimal_places": 2
+            }
+          ]
+        }
+      ],
+      "notes": [
+        "经营指标根据资产类型填写，数据中心类项目使用IT功率相关指标",
+        "财务数据应与审计报告一致",
+        "EBITDA = 净利润 + 所得税费用 + 利息费用 + 折旧 + 摊销",
+        "NOI = 营业收入 - 营业成本 - 管理费用（不含折旧摊销）"
+      ]
+    },
+    "project_forecast_financials": {
+      "title": "项目未来收益预测情况",
+      "reference_table": "表13（表4-2）",
+      "periods": ["forecast_year1", "forecast_year2", "forecast_year3"],
+      "period_labels": {
+        "forecast_year1": "第n+1年（预测）",
+        "forecast_year2": "第n+2年（预测）",
+        "forecast_year3": "第n+3年（预测）"
+      },
+      "fields": [
+        {
+          "id": "forecast_revenue",
+          "label": "预测营业收入（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "forecast_cost",
+          "label": "预测营业成本（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "forecast_gross_profit",
+          "label": "预测毛利润（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "forecast_management_fee",
+          "label": "预测管理费用（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "forecast_net_profit",
+          "label": "预测净利润（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "forecast_ebitda",
+          "label": "预测EBITDA（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "forecast_noi",
+          "label": "预测NOI（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "forecast_distributable_amount",
+          "label": "预测可供分配金额（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "forecast_distribution_rate",
+          "label": "预测现金分派率（%）",
+          "type": "percentage",
+          "unit": "%",
+          "required": true,
+          "decimal_places": 2
+        }
+      ],
+      "notes": [
+        "预测数据应基于合理假设和审慎原则",
+        "预测假设需在申报材料中详细披露",
+        "现金分派率 = 可供分配金额 / 基金发行规模 × 100%"
+      ]
+    },
+    "operations_manager_financials": {
+      "title": "运营管理机构最近3个会计年度及一期主要财务指标",
+      "reference_table": "表7（表2-6）",
+      "periods": ["year1", "year2", "year3", "current_period"],
+      "period_labels": {
+        "year1": "第n-2年度",
+        "year2": "第n-1年度",
+        "year3": "第n年度",
+        "current_period": "最近一期（截至基准日）"
+      },
+      "fields": [
+        {
+          "id": "total_assets",
+          "label": "总资产（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "net_assets",
+          "label": "净资产（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "total_revenue",
+          "label": "营业收入（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "operating_income",
+          "label": "营业利润（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "net_profit",
+          "label": "净利润（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "total_liabilities",
+          "label": "总负债（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "asset_liability_ratio",
+          "label": "资产负债率（%）",
+          "type": "percentage",
+          "unit": "%",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "current_ratio",
+          "label": "流动比率",
+          "type": "number",
+          "unit": "倍",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "quick_ratio",
+          "label": "速动比率",
+          "type": "number",
+          "unit": "倍",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "roe",
+          "label": "净资产收益率（%）",
+          "type": "percentage",
+          "unit": "%",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "operating_cash_flow",
+          "label": "经营活动产生的现金流量净额（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        }
+      ],
+      "notes": [
+        "如运营管理机构为新设立机构，需提供设立计划和相关说明",
+        "财务数据应来自经审计的财务报告",
+        "如为关联方担任运营管理机构，需额外披露关联关系"
+      ]
+    },
+    "revenue_structure": {
+      "title": "项目最近3个会计年度及一期收入结构",
+      "reference_table": "表14",
+      "periods": ["year1", "year2", "year3", "current_period"],
+      "period_labels": {
+        "year1": "第n-2年度",
+        "year2": "第n-1年度",
+        "year3": "第n年度",
+        "current_period": "最近一期"
+      },
+      "fields": [
+        {
+          "id": "revenue_type",
+          "label": "收入类型",
+          "type": "text",
+          "required": true,
+          "examples": ["机柜托管服务收入", "增值服务收入", "电力转售收入", "其他收入"]
+        },
+        {
+          "id": "amount",
+          "label": "金额（万元）",
+          "type": "number",
+          "unit": "万元",
+          "required": true,
+          "decimal_places": 2
+        },
+        {
+          "id": "ratio",
+          "label": "占比（%）",
+          "type": "percentage",
+          "unit": "%",
+          "required": true,
+          "decimal_places": 2
+        }
+      ],
+      "dynamic_rows": true,
+      "notes": [
+        "收入类型按实际业务类型填写",
+        "各类型收入占比合计应为100%",
+        "数据中心项目典型收入类型包括：机柜托管、带宽接入、增值服务、电力转售等"
+      ]
+    }
+  },
+  "formatting_rules": {
+    "number_format": {
+      "thousand_separator": ",",
+      "decimal_separator": ".",
+      "negative_format": "-{value}",
+      "currency_prefix": ""
+    },
+    "percentage_format": {
+      "decimal_places": 2,
+      "suffix": "%"
+    },
+    "date_format": "YYYY年MM月DD日",
+    "period_format": "YYYY年度/YYYY年1-MM月",
+    "inapplicable_text": "不涉及",
+    "not_available_text": "/"
+  }
+}

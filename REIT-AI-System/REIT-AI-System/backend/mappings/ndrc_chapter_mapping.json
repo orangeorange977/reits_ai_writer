@@ -1,0 +1,823 @@
+{
+  "version": "2024",
+  "document_type": "发改委申报材料",
+  "description": "基础设施领域不动产投资信托基金（REITs）项目申报材料格式文本（2024年版）",
+  "summary_table": {
+    "title": "摘要表",
+    "description": "项目申报材料首页摘要信息",
+    "fields": [
+      {"id": "summary_project_name", "label": "项目名称", "type": "text", "required": true},
+      {"id": "summary_industry_field", "label": "行业领域", "type": "text", "required": true, "placeholder": "如交通基础设施（收费公路）"},
+      {"id": "summary_asset_location", "label": "资产所在地（明确到县区级）", "type": "text", "required": true, "placeholder": "XX省XX市XX区"},
+      {"id": "summary_asset_scope", "label": "资产范围", "type": "textarea", "required": true, "placeholder": "线性工程填写起止地点，非线性工程填写项目四至"},
+      {"id": "summary_construction_scale", "label": "建设规模合计（万元）", "type": "number", "required": true},
+      {"id": "summary_first_or_new", "label": "首次发行项目/新购入项目", "type": "select", "required": true, "options": ["首次发行项目", "新购入项目"]},
+      {"id": "summary_base_date", "label": "申报基准日", "type": "date", "required": true, "placeholder": "财务及估值数据基准日"},
+      {"id": "summary_appraisal_net_value", "label": "不动产评估净值（万元）", "type": "number", "required": true},
+      {"id": "summary_fund_total", "label": "拟发售基金总额（万元）", "type": "number", "required": true},
+      {"id": "summary_originator_subscribe_ratio", "label": "原始权益人及相关方认购基金比例", "type": "text", "required": true},
+      {"id": "summary_net_recovery_fund", "label": "净回收资金（万元）", "type": "number", "required": true},
+      {"id": "summary_reinvestment_amount", "label": "其中，拟用于在建项目、前期工作成熟的新建项目（含改扩建）和存量资产收购的金额（万元）", "type": "text", "required": true, "placeholder": "合计金额及占净回收资金比例（%）"},
+      {"id": "summary_listing_venue", "label": "拟上市场所", "type": "select", "required": true, "options": ["上海证券交易所", "深圳证券交易所"]},
+      {"id": "summary_sponsor", "label": "发起人（如有）", "type": "text", "placeholder": "填写全称"},
+      {"id": "summary_originator", "label": "原始权益人", "type": "text", "required": true, "placeholder": "填写全称"},
+      {"id": "summary_fund_manager", "label": "基金管理人", "type": "text", "required": true, "placeholder": "填写全称"},
+      {"id": "summary_abs_manager", "label": "资产支持证券管理人", "type": "text", "required": true, "placeholder": "填写全称"},
+      {"id": "summary_law_firm", "label": "律师事务所及项目主办律师", "type": "text", "required": true, "placeholder": "填写全称及项目主办律师名称"},
+      {"id": "summary_accounting_firm", "label": "会计师事务所", "type": "text", "required": true, "placeholder": "填写全称"},
+      {"id": "summary_appraisal_firm", "label": "资产评估机构", "type": "text", "required": true, "placeholder": "填写全称"},
+      {"id": "summary_tax_consultant", "label": "税务咨询机构（如有）", "type": "text", "placeholder": "填写全称"},
+      {"id": "summary_securities_consultant", "label": "担任财务顾问的证券公司（如有）", "type": "text", "placeholder": "填写全称"}
+    ]
+  },
+  "chapters": [
+    {
+      "id": "chapter1",
+      "title": "一、项目基本情况",
+      "sections": [
+        {
+          "id": "1-1",
+          "title": "（一）项目概况",
+          "fields": [
+            {"id": "project_name", "label": "项目名称", "type": "text", "required": true},
+            {"id": "asset_type", "label": "资产类型", "type": "select", "required": true, "options": ["产业园区", "数据中心", "仓储物流", "保障性租赁住房", "收费公路", "消费基础设施", "能源基础设施", "水利设施", "市政基础设施"]},
+            {"id": "project_location", "label": "项目位置", "type": "text", "required": true},
+            {"id": "originator", "label": "原始权益人（发起人）", "type": "text", "required": true},
+            {"id": "project_company", "label": "项目公司", "type": "text", "required": true},
+            {"id": "operation_manager", "label": "运营管理机构", "type": "text", "required": true},
+            {"id": "fund_manager", "label": "基金管理人", "type": "text", "required": true},
+            {"id": "abs_manager", "label": "资产支持证券管理人", "type": "text", "required": true},
+            {"id": "fund_scale", "label": "拟发行基金规模（亿元）", "type": "text", "required": true},
+            {"id": "asset_valuation", "label": "基础设施资产评估值（亿元）", "type": "text", "required": true},
+            {"id": "total_area", "label": "项目总面积/规模", "type": "text", "required": true},
+            {"id": "operation_years", "label": "已运营年限", "type": "text", "required": true},
+            {"id": "distribution_rate", "label": "预计现金分派率", "type": "text"},
+            {"id": "base_date", "label": "基准日", "type": "date", "required": true},
+            {"id": "project_description", "label": "项目概况描述", "type": "textarea", "required": true},
+            {
+                          "id": "infrastructure_assets",
+                          "label": "表1 项目概况",
+                          "type": "form_table",
+                          "rows": [
+                            {"label": "项目名称", "id": "project_name"},
+                            {"label": "基础设施类型", "id": "infra_type"},
+                            {"label": "项目所在地", "id": "project_location"},
+                            {"label": "项目建设内容及规模", "id": "project_scale"},
+                            {"label": "开工时间", "id": "start_time"},
+                            {"label": "竣工时间", "id": "completion_time"},
+                            {"label": "投入运营时间", "id": "operation_time"},
+                            {"label": "项目总投资", "id": "total_investment"},
+                            {"label": "当前运营状态", "id": "operation_status"},
+                            {"label": "最近3年平均出租率/使用率", "id": "occupancy_rate_3yr"}
+                          ]
+                        }
+          ]
+        },
+        {
+          "id": "1-2",
+          "title": "（二）特殊限定情况说明",
+          "fields": [
+            {"id": "special_restrictions", "label": "特殊限定情况", "type": "textarea"},
+            {"id": "land_use_restrictions", "label": "土地使用权限制条件", "type": "textarea"},
+            {"id": "mortgage_pledge", "label": "抵押质押情况", "type": "textarea"},
+            {"id": "lease_restrictions", "label": "租赁限制情况", "type": "textarea"},
+            {"id": "risk_factors", "label": "主要风险因素", "type": "textarea"},
+            {"id": "risk_mitigation", "label": "风险化解措施", "type": "textarea"}
+          ]
+        },
+        {
+          "id": "1-3",
+          "title": "（三）可扩募资产情况",
+          "fields": [
+            {"id": "has_expandable_assets", "label": "是否有可扩募资产", "type": "select", "options": ["是", "否"], "required": true},
+            {"id": "expandable_assets", "label": "表2 可扩募资产清单", "type": "table", "columns": ["资产名称", "位置", "面积/规模", "运营状态", "预计纳入时间"]},
+            {"id": "expansion_plan", "label": "扩募计划说明", "type": "textarea"},
+            {"id": "expansion_criteria", "label": "扩募资产筛选标准", "type": "textarea"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chapter2",
+      "title": "二、参与主体情况",
+      "sections": [
+        {
+          "id": "2-1",
+          "title": "（一）法律关系",
+          "fields": [
+            {"id": "legal_structure_desc", "label": "法律关系结构说明", "type": "textarea", "required": true},
+            {"id": "transaction_structure", "label": "交易结构描述", "type": "textarea", "required": true},
+            {"id": "legal_relationship_diagram", "label": "法律关系结构图", "type": "file_list"},
+            {"id": "parties_overview", "label": "各参与主体概览", "type": "table", "columns": ["主体名称", "角色", "主要职责"]}
+          ]
+        },
+        {
+          "id": "2-2",
+          "title": "（二）项目公司情况",
+          "has_subsections": true,
+          "subsections": [
+            {
+              "id": "2-2-1",
+              "title": "1. 基本信息",
+              "fields": [
+                {"id": "spv_name", "label": "项目公司名称", "type": "text", "required": true},
+                {"id": "spv_unified_code", "label": "统一社会信用代码", "type": "text", "required": true},
+                {"id": "spv_registered_capital", "label": "注册资本", "type": "text", "required": true},
+                {"id": "spv_legal_representative", "label": "法定代表人", "type": "text", "required": true},
+                {"id": "spv_registered_address", "label": "注册地址", "type": "text", "required": true},
+                {"id": "spv_establish_date", "label": "成立日期", "type": "date", "required": true},
+                {"id": "spv_business_scope", "label": "经营范围", "type": "textarea", "required": true},
+                {
+                                "id": "spv_shareholders",
+                                "label": "表3 项目公司基本信息",
+                                "type": "form_table",
+                                "rows": [
+                                  {"label": "公司名称", "id": "spv_name"},
+                                  {"label": "统一社会信用代码", "id": "spv_credit_code"},
+                                  {"label": "注册资本", "id": "spv_capital"},
+                                  {"label": "法定代表人", "id": "spv_legal_rep"},
+                                  {"label": "注册地址", "id": "spv_address"},
+                                  {"label": "成立日期", "id": "spv_establish_date"},
+                                  {"label": "股东结构", "id": "spv_shareholders_info"},
+                                  {"label": "主营业务", "id": "spv_business"}
+                                ]
+                              },
+                {"id": "spv_governance", "label": "治理结构", "type": "textarea"},
+                {"id": "spv_financial_summary", "label": "近三年财务数据摘要", "type": "table", "columns": ["科目", "第一年", "第二年", "第三年", "最近一期"]}
+              ]
+            },
+            {
+              "id": "2-2-2",
+              "title": "2. 违法违规和信用情况",
+              "fields": [
+                {"id": "spv_violation_records", "label": "近3年重大违法违规记录", "type": "textarea", "required": true},
+                {"id": "spv_safety_accidents", "label": "近3年重大安全生产事故情况", "type": "textarea", "required": true},
+                {"id": "spv_credit_records", "label": "信用中国等平台信用记录情况", "type": "textarea", "required": true},
+                {"id": "spv_commitment_letter", "label": "项目公司自身运营情况承诺函", "type": "textarea", "required": true}
+              ]
+            }
+          ]
+        },
+        {
+          "id": "2-3",
+          "title": "（三）发起人（原始权益人）情况",
+          "has_subsections": true,
+          "subsections": [
+            {
+              "id": "2-3-1",
+              "title": "1. 基本信息",
+              "fields": [
+                {"id": "originator_basic_info_text", "label": "发起人基本信息", "type": "textarea", "required": true, "placeholder": "请填写发起人基本情况概述"},
+                {
+                  "id": "originator_basic_info_table",
+                  "label": "表4 发起人（原始权益人）基本信息",
+                  "type": "form_table",
+                  "rows": [
+                    {"label": "公司名称", "id": "company_name"},
+                    {"label": "法定代表人", "id": "legal_representative"},
+                    {"label": "实际控制人", "id": "actual_controller"},
+                    {"label": "成立日期", "id": "establish_date"},
+                    {"label": "注册资本", "id": "registered_capital"},
+                    {"label": "注册地址", "id": "registered_address"},
+                    {"label": "主营业务", "id": "main_business"},
+                    {"label": "已发行基础设施REITs情况", "id": "issued_reits"},
+                    {"label": "最近12个月内申报的基础设施REITs项目被国家发展改革委退回情况", "id": "rejected_reits"},
+                    {"label": "项目联系人姓名及职务", "id": "contact_person"},
+                    {"label": "联系方式", "id": "contact_info"}
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "2-3-2",
+              "title": "2. 财务状况",
+              "fields": [
+                {"id": "originator_financial_text", "label": "财务状况说明", "type": "textarea", "required": true, "placeholder": "请填写最近3个会计年度及一期财务指标分析、经营稳健性说明等"},
+                {
+                  "id": "originator_financial_table",
+                  "label": "表5 发起人（原始权益人）近三年财务数据",
+                  "type": "table",
+                  "columns": ["科目", "第一年", "第二年", "第三年", "最近一期"],
+                  "template_text": "发起人最近三个会计年度及一期主要财务数据如下："
+                }
+              ]
+            },
+            {
+              "id": "2-3-3",
+              "title": "3. 违法违规和信用情况",
+              "fields": [
+                {"id": "originator_compliance_text", "label": "违法违规和信用情况说明", "type": "textarea", "required": true, "placeholder": "请填写信用状况、发起人承诺事项、近3年重大违法违规记录、近3年重大安全生产事故情况、官方平台信用记录情况等"}
+              ]
+            }
+          ]
+        },
+        {
+          "id": "2-4",
+          "title": "（四）运营管理机构情况",
+          "has_subsections": true,
+          "subsections": [
+            {
+              "id": "2-4-1",
+              "title": "1. 运营管理机构已设立",
+              "fields": [
+                {"id": "operator_name", "label": "运营管理机构名称", "type": "text", "required": true},
+                {"id": "operator_unified_code", "label": "统一社会信用代码", "type": "text", "required": true},
+                {"id": "operator_registered_capital", "label": "注册资本", "type": "text", "required": true},
+                {"id": "operator_legal_representative", "label": "法定代表人", "type": "text", "required": true},
+                {"id": "operator_registered_address", "label": "注册地址", "type": "text", "required": true},
+                {"id": "operator_establish_date", "label": "成立日期", "type": "date"},
+                {"id": "operator_business_scope", "label": "经营范围", "type": "textarea", "required": true},
+                {"id": "operator_experience", "label": "运营管理经验", "type": "textarea", "required": true},
+                {
+                                "id": "operator_basic_info_table",
+                                "label": "表6 运营管理机构基本信息",
+                                "type": "form_table",
+                                "rows": [
+                                  {"label": "机构名称", "id": "op_name"},
+                                  {"label": "统一社会信用代码", "id": "op_credit_code"},
+                                  {"label": "注册资本", "id": "op_capital"},
+                                  {"label": "法定代表人", "id": "op_legal_rep"},
+                                  {"label": "成立日期", "id": "op_establish_date"},
+                                  {"label": "注册地址", "id": "op_address"},
+                                  {"label": "主营业务", "id": "op_business"},
+                                  {"label": "运营管理经验", "id": "op_experience"},
+                                  {"label": "核心运营团队", "id": "op_team"},
+                                  {"label": "已管理基础设施规模", "id": "op_managed_scale"}
+                                ]
+                              },
+                {"id": "operator_qualifications", "label": "资质及荣誉", "type": "textarea"},
+                {"id": "operator_credit_status", "label": "信用状况", "type": "textarea"},
+                {"id": "operator_financial_summary", "label": "运营管理机构近三年财务数据摘要", "type": "table", "columns": ["科目", "第一年", "第二年", "第三年", "最近一期"]},
+                {"id": "operator_violation_records", "label": "近3年重大违法违规及信用情况", "type": "textarea", "required": true}
+              ]
+            },
+            {
+              "id": "2-4-2",
+              "title": "2. 运营管理机构尚未设立",
+              "fields": [
+                {"id": "operator_setup_plan", "label": "设立计划", "type": "textarea", "required": true},
+                {"id": "operator_personnel_arrangement", "label": "人员安排", "type": "textarea", "required": true},
+                {"id": "operator_planned_capital", "label": "预计注册资本", "type": "text"},
+                {"id": "operator_team_experience", "label": "主要团队同类项目经验", "type": "textarea", "required": true}
+              ]
+            }
+          ]
+        },
+        {
+          "id": "2-5",
+          "title": "（五）基金管理人和资产支持证券管理人情况",
+          "has_subsections": true,
+          "subsections": [
+            {
+              "id": "2-5-1",
+              "title": "1. 基本信息",
+              "fields": [
+                {"id": "fund_mgr_name", "label": "基金管理人名称", "type": "text", "required": true},
+                {"id": "fund_mgr_license", "label": "基金管理人牌照信息", "type": "text", "required": true},
+                {"id": "fund_mgr_registered_capital", "label": "基金管理人注册资本", "type": "text"},
+                {"id": "fund_mgr_reits_experience", "label": "基金管理人REITs管理经验", "type": "textarea"},
+                {
+                                "id": "fund_mgr_basic_info",
+                                "label": "表9 基金管理人情况",
+                                "type": "form_table",
+                                "rows": [
+                                  {"label": "机构名称", "id": "fm_name"},
+                                  {"label": "统一社会信用代码", "id": "fm_credit_code"},
+                                  {"label": "注册资本", "id": "fm_capital"},
+                                  {"label": "法定代表人", "id": "fm_legal_rep"},
+                                  {"label": "注册地址", "id": "fm_address"},
+                                  {"label": "公募基金管理资格", "id": "fm_qualification"},
+                                  {"label": "管理基金规模", "id": "fm_aum"},
+                                  {"label": "REITs管理经验", "id": "fm_reits_experience"},
+                                  {"label": "核心投资团队", "id": "fm_team"}
+                                ]
+                              },
+                {"id": "abs_mgr_name", "label": "资产支持证券管理人名称", "type": "text", "required": true},
+                {"id": "abs_mgr_license", "label": "ABS管理人牌照信息", "type": "text", "required": true},
+                {"id": "abs_mgr_registered_capital", "label": "ABS管理人注册资本", "type": "text"},
+                {"id": "abs_mgr_abs_experience", "label": "ABS管理经验", "type": "textarea"}
+              ]
+            },
+            {
+              "id": "2-5-2",
+              "title": "2. 执业资格",
+              "fields": [
+                {"id": "fund_mgr_qualification_desc", "label": "基金管理人执业资格说明", "type": "textarea", "required": true},
+                {"id": "abs_mgr_qualification_desc", "label": "资产支持证券管理人执业资格说明", "type": "textarea", "required": true},
+                {"id": "qualification_commitment", "label": "执业资格承诺函出具情况", "type": "textarea", "required": true}
+              ]
+            }
+          ]
+        },
+        {
+          "id": "2-6",
+          "title": "（六）有关中介基本情况",
+          "has_subsections": true,
+          "subsections": [
+            {
+              "id": "2-6-1",
+              "title": "1. 基本信息",
+              "fields": [
+                {"id": "law_firm", "label": "律师事务所", "type": "text", "required": true},
+                {"id": "law_firm_lawyers", "label": "经办律师", "type": "text"},
+                {"id": "accounting_firm", "label": "会计师事务所", "type": "text", "required": true},
+                {"id": "accounting_firm_cpas", "label": "签字注册会计师", "type": "text"},
+                {"id": "valuation_firm", "label": "资产评估机构", "type": "text", "required": true},
+                {"id": "valuation_firm_valuers", "label": "签字评估师", "type": "text"},
+                {"id": "tax_advisor", "label": "税务咨询机构", "type": "text"},
+                {"id": "financial_advisor", "label": "财务顾问（证券公司）", "type": "text"},
+                {"id": "custodian_bank", "label": "托管银行", "type": "text"},
+                {"id": "intermediaries_table", "label": "表10 中介机构一览表", "type": "table", "columns": ["机构类型", "机构名称", "资质证书编号", "经办人员"]}
+              ]
+            },
+            {
+              "id": "2-6-2",
+              "title": "2. 中介机构违法违规情况",
+              "fields": [
+                {"id": "intermediaries_credit_records", "label": "各中介机构官方平台信用记录情况", "type": "textarea", "required": true},
+                {"id": "intermediaries_suspension_status", "label": "是否处于暂停执业/暂停证券业务/暂停REITs业务期间", "type": "textarea", "required": true},
+                {"id": "intermediaries_qualification_commitment", "label": "中介机构执业资格承诺函出具情况", "type": "textarea", "required": true}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chapter3",
+      "title": "三、REITs设立方案",
+      "sections": [
+        {
+          "id": "3-1",
+          "title": "（一）产品要素",
+          "fields": [
+            {"id": "product_name", "label": "产品全称", "type": "text", "required": true},
+            {"id": "product_short_name", "label": "产品简称", "type": "text"},
+            {"id": "fund_type", "label": "基金类型", "type": "text", "required": true},
+            {"id": "listing_exchange", "label": "拟上市交易所", "type": "select", "options": ["深圳证券交易所", "上海证券交易所"], "required": true},
+            {"id": "fund_duration", "label": "基金存续期限", "type": "text", "required": true},
+            {"id": "total_fund_shares", "label": "基金份额总额", "type": "text"},
+            {"id": "offering_price", "label": "发售价格", "type": "text"},
+            {"id": "min_subscription", "label": "最低认购份额", "type": "text"},
+            {"id": "strategic_placement_ratio", "label": "战略配售比例", "type": "text"},
+            {"id": "originator_retention_ratio", "label": "原始权益人持有比例", "type": "text", "required": true},
+            {"id": "originator_lock_period", "label": "原始权益人锁定期", "type": "text", "required": true},
+            {"id": "public_offering_ratio", "label": "公众投资者发售比例", "type": "text"},
+            {"id": "distribution_frequency", "label": "分红频率", "type": "select", "options": ["季度", "半年度", "年度"]},
+            {"id": "leverage_ratio", "label": "杠杆比例", "type": "text"},
+            {
+                          "id": "product_elements_table",
+                          "label": "表11 产品要素一览表",
+                          "type": "form_table",
+                          "rows": [
+                            {"label": "产品全称", "id": "product_name"},
+                            {"label": "产品类型", "id": "product_type"},
+                            {"label": "基础设施资产类型", "id": "asset_type"},
+                            {"label": "拟上市交易所", "id": "exchange"},
+                            {"label": "基金管理人", "id": "fund_manager"},
+                            {"label": "资产支持证券管理人", "id": "abs_manager"},
+                            {"label": "托管人", "id": "custodian"},
+                            {"label": "发起人（原始权益人）", "id": "originator"},
+                            {"label": "项目公司", "id": "project_company"},
+                            {"label": "运营管理机构", "id": "operator"},
+                            {"label": "拟发售份额总额", "id": "total_shares"},
+                            {"label": "基金存续期", "id": "fund_duration"},
+                            {"label": "拟认购比例", "id": "subscription_ratio"},
+                            {"label": "分红安排", "id": "dividend_arrangement"}
+                          ]
+                        }
+          ]
+        },
+        {
+          "id": "3-2",
+          "title": "（二）产品架构",
+          "fields": [
+            {"id": "product_structure_desc", "label": "产品架构描述", "type": "textarea", "required": true},
+            {"id": "product_structure_diagram", "label": "产品架构图", "type": "file_list"},
+            {"id": "fund_layer_desc", "label": "公募基金层描述", "type": "textarea"},
+            {"id": "abs_layer_desc", "label": "ABS层描述", "type": "textarea"},
+            {"id": "project_company_layer_desc", "label": "项目公司层描述", "type": "textarea"},
+            {"id": "asset_layer_desc", "label": "基础设施资产层描述", "type": "textarea"},
+            {"id": "cash_flow_path", "label": "现金流路径说明", "type": "textarea"}
+          ]
+        },
+        {
+          "id": "3-3",
+          "title": "（三）实施步骤",
+          "fields": [
+            {"id": "implementation_overview", "label": "实施步骤概述", "type": "textarea", "required": true},
+            {"id": "step_1_reorganization", "label": "资产重组步骤", "type": "textarea"},
+            {"id": "step_2_abs_setup", "label": "ABS设立步骤", "type": "textarea"},
+            {"id": "step_3_fund_setup", "label": "公募基金设立步骤", "type": "textarea"},
+            {"id": "step_4_asset_transfer", "label": "资产转让步骤", "type": "textarea"},
+            {"id": "step_5_fund_raising", "label": "基金募集步骤", "type": "textarea"},
+            {"id": "step_6_listing", "label": "上市交易步骤", "type": "textarea"},
+            {"id": "implementation_timeline", "label": "实施时间表", "type": "table", "columns": ["阶段", "主要工作", "预计时间", "责任方"]}
+          ]
+        },
+        {
+          "id": "3-4",
+          "title": "（四）目前进展",
+          "fields": [
+            {"id": "current_progress", "label": "目前进展概述", "type": "textarea", "required": true},
+            {"id": "regulatory_communication", "label": "与监管部门沟通情况", "type": "textarea"},
+            {"id": "due_diligence_progress", "label": "尽职调查进展", "type": "textarea"},
+            {"id": "valuation_progress", "label": "资产评估进展", "type": "textarea"},
+            {"id": "legal_opinion_progress", "label": "法律意见进展", "type": "textarea"},
+            {"id": "remaining_work", "label": "后续待完成工作", "type": "textarea"}
+          ]
+        },
+        {
+          "id": "3-5",
+          "title": "（五）其他需要说明的重大情况",
+          "fields": [
+            {"id": "major_matters", "label": "其他重大情况说明", "type": "textarea"},
+            {"id": "pending_litigation", "label": "未决诉讼仲裁", "type": "textarea"},
+            {"id": "environmental_issues", "label": "环保相关事项", "type": "textarea"},
+            {"id": "related_party_transactions", "label": "关联交易情况", "type": "textarea"},
+            {"id": "other_disclosures", "label": "其他需要披露的事项", "type": "textarea"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chapter4",
+      "title": "四、项目基本条件",
+      "sections": [
+        {
+          "id": "4-1",
+          "title": "（一）权属情况",
+          "fields": [
+            {"id": "ownership_desc", "label": "发起人依法合规拥有项目所有权、经营收益权的具体情况", "type": "textarea", "required": true},
+            {"id": "land_certificates", "label": "土地使用权证书", "type": "table", "columns": ["证书编号", "土地用途", "面积", "使用期限", "取得方式"]},
+            {"id": "building_certificates", "label": "房产证/不动产权证", "type": "table", "columns": ["证书编号", "建筑面积", "用途", "权利人"]},
+            {"id": "encumbrances", "label": "权利负担情况（抵押、质押、查封等）", "type": "textarea", "required": true},
+            {"id": "safety_quality_issues", "label": "近3年安全、质量、环保方面重大问题或重大违约事件", "type": "textarea", "required": true},
+            {"id": "ownership_commitment", "label": "发起人出具权属和运营承诺函情况", "type": "textarea", "required": true}
+          ]
+        },
+        {
+          "id": "4-2",
+          "title": "（二）资产完整情况",
+          "fields": [
+            {"id": "asset_integrity_desc", "label": "底层资产范围完整性说明", "type": "textarea", "required": true},
+            {"id": "asset_components", "label": "资产各组成部分", "type": "table", "columns": ["组成部分", "面积/规模", "功能", "是否纳入底层资产"]},
+            {"id": "excluded_assets", "label": "未纳入底层资产范围的资产情况", "type": "textarea"},
+            {"id": "independent_operation", "label": "独立运营能力说明", "type": "textarea", "required": true},
+            {"id": "shared_facilities", "label": "共用设施设备情况", "type": "textarea"}
+          ]
+        },
+        {
+          "id": "4-3",
+          "title": "（三）运营收益情况",
+          "has_subsections": true,
+          "subsections": [
+            {
+              "id": "4-3-1",
+              "title": "1. 运营时间",
+              "fields": [
+                {"id": "operation_start_date", "label": "项目运营起始时间", "type": "date", "required": true},
+                {"id": "operation_years", "label": "已运营年限", "type": "text", "required": true},
+                {"id": "operation_time_desc", "label": "运营时间补充说明", "type": "textarea"}
+              ]
+            },
+            {
+              "id": "4-3-2",
+              "title": "2. 总体经营收益情况",
+              "fields": [
+                {"id": "historical_revenue_desc", "label": "最近3个会计年度经营情况和财务情况说明", "type": "textarea", "required": true},
+                {"id": "historical_financials", "label": "近三年经营数据", "type": "table", "columns": ["指标", "第一年", "第二年", "第三年", "最近一期"], "template_text": "项目最近3个会计年度及一期主要经营数据如下："},
+                {"id": "net_operating_income", "label": "净运营收入（NOI）", "type": "text"},
+                {"id": "ebitda", "label": "EBITDA", "type": "text"},
+                {"id": "occupancy_rate", "label": "出租率/使用率", "type": "text"},
+                {"id": "revenue_comparison", "label": "近3年与未来3年收益对比", "type": "table", "columns": ["指标", "近3年平均", "未来第1年", "未来第2年", "未来第3年"]},
+                {"id": "cash_flow_forecast", "label": "未来现金流预测说明", "type": "textarea"}
+              ]
+            },
+            {
+              "id": "4-3-3",
+              "title": "3. 收入来源情况",
+              "fields": [
+                {"id": "revenue_sources_desc", "label": "收入来源结构说明", "type": "textarea", "required": true},
+                {"id": "revenue_sources", "label": "收入构成", "type": "table", "columns": ["收入类型", "金额", "占比", "说明"], "template_text": "项目收入构成情况如下："},
+                {"id": "major_tenants", "label": "主要客户/租户情况", "type": "table", "columns": ["客户名称", "合同面积", "合同金额", "合同期限", "收入占比"]},
+                {"id": "government_subsidies", "label": "政府补贴情况", "type": "textarea"}
+              ]
+            }
+          ]
+        },
+        {
+          "id": "4-4",
+          "title": "（四）资产估值情况",
+          "fields": [
+            {"id": "valuation_method", "label": "评估方法", "type": "select", "options": ["收益法", "市场法", "成本法", "收益法+市场法"], "required": true},
+            {"id": "valuation_result", "label": "评估结论（万元）", "type": "text", "required": true},
+            {"id": "valuation_date", "label": "评估基准日", "type": "date", "required": true},
+            {"id": "valuation_institution", "label": "评估机构", "type": "text", "required": true},
+            {"id": "valuation_assumptions", "label": "主要估值参数和参数选取的合理性", "type": "textarea", "required": true},
+            {"id": "cap_rate", "label": "资本化率", "type": "text"},
+            {"id": "discount_rate", "label": "折现率", "type": "text"},
+            {"id": "valuation_details", "label": "评估明细", "type": "table", "columns": ["资产名称", "评估值", "评估方法", "关键参数"]}
+          ]
+        },
+        {
+          "id": "4-5",
+          "title": "（五）可能影响项目稳定运营的重要因素",
+          "fields": [
+            {"id": "risk_factors_desc", "label": "风险因素总体说明", "type": "textarea", "required": true},
+            {"id": "market_risk", "label": "市场风险", "type": "textarea"},
+            {"id": "policy_risk", "label": "政策风险", "type": "textarea"},
+            {"id": "operation_risk", "label": "运营风险", "type": "textarea"},
+            {"id": "concentration_risk", "label": "集中度风险", "type": "textarea"},
+            {"id": "capex_plan", "label": "发行后3年内重大改扩建/设备更新计划", "type": "textarea"},
+            {"id": "stability_commitment", "label": "发起人出具稳定运营承诺函情况", "type": "textarea", "required": true},
+            {"id": "risk_response_measures", "label": "风险应对措施", "type": "textarea", "required": true}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chapter5",
+      "title": "五、项目合规情况",
+      "sections": [
+        {
+          "id": "5-1",
+          "title": "（一）符合宏观管理政策要求情况",
+          "fields": [
+            {"id": "policy_compliance_overview", "label": "符合宏观管理政策总体说明", "type": "textarea", "required": true},
+            {"id": "industry_policy", "label": "符合国家产业政策情况", "type": "textarea", "required": true},
+            {"id": "reits_pilot_policy", "label": "符合REITs试点政策要求情况", "type": "textarea", "required": true},
+            {"id": "asset_size_requirement", "label": "资产规模符合要求情况", "type": "textarea"},
+            {"id": "operation_period_requirement", "label": "运营期限符合要求情况", "type": "textarea"},
+            {"id": "cash_flow_requirement", "label": "现金流符合要求情况", "type": "textarea"}
+          ]
+        },
+        {
+          "id": "5-2",
+          "title": "（二）投资管理手续合规情况",
+          "has_subsections": true,
+          "subsections": [
+            {
+              "id": "5-2-1",
+              "title": "1. 各类项目均应取得的投资管理合规手续",
+              "fields": [
+                {"id": "general_approval_desc", "label": "通用合规手续说明", "type": "textarea", "required": true},
+                {"id": "approval_documents", "label": "核准/备案文件", "type": "table", "columns": ["文件名称", "文号", "批复机关", "批复日期"], "template_text": "项目已取得的投资管理合规手续情况如下："},
+                {"id": "construction_permit", "label": "施工许可证", "type": "text"},
+                {"id": "completion_acceptance", "label": "竣工验收情况", "type": "textarea"},
+                {"id": "fire_acceptance", "label": "消防验收情况", "type": "textarea"}
+              ]
+            },
+            {
+              "id": "5-2-2",
+              "title": "2. 特定行业投资管理合规手续",
+              "fields": [
+                {"id": "industry_specific_desc", "label": "特定行业合规手续说明", "type": "textarea", "required": true},
+                {"id": "industry_permits", "label": "行业专项许可", "type": "table", "columns": ["许可名称", "许可编号", "发证机关", "有效期"]},
+                {"id": "environmental_approval", "label": "环评批复", "type": "textarea"},
+                {"id": "energy_assessment", "label": "节能评估", "type": "textarea"}
+              ]
+            },
+            {
+              "id": "5-2-3",
+              "title": "3. 相关手续不涉及的情况",
+              "fields": [
+                {"id": "not_applicable_desc", "label": "不涉及的手续及原因说明", "type": "textarea", "required": true}
+              ]
+            },
+            {
+              "id": "5-2-4",
+              "title": "4. 相关手续缺失的情况",
+              "fields": [
+                {"id": "missing_permits_desc", "label": "缺失手续情况及补办说明", "type": "textarea", "required": true},
+                {"id": "remediation_plan", "label": "补办计划及时间表", "type": "textarea"}
+              ]
+            },
+            {
+              "id": "5-2-5",
+              "title": "5. 连廊、夹层等建筑情况",
+              "fields": [
+                {"id": "corridor_mezzanine_desc", "label": "连廊、夹层等建筑情况说明", "type": "textarea", "required": true},
+                {"id": "building_compliance", "label": "合规性说明", "type": "textarea"}
+              ]
+            }
+          ]
+        },
+        {
+          "id": "5-3",
+          "title": "（三）土地使用合规情况",
+          "has_subsections": true,
+          "subsections": [
+            {
+              "id": "5-3-1",
+              "title": "1. 总体情况",
+              "fields": [
+                {"id": "land_use_overview", "label": "土地使用合规总体说明", "type": "textarea", "required": true},
+                {"id": "land_acquisition_method", "label": "土地取得方式", "type": "select", "options": ["出让", "划拨", "租赁", "其他"], "required": true},
+                {"id": "land_use_type", "label": "土地用途", "type": "text", "required": true},
+                {"id": "land_use_period", "label": "土地使用期限", "type": "text", "required": true}
+              ]
+            },
+            {
+              "id": "5-3-2",
+              "title": "2. 土地使用手续办理情况（填写表19）",
+              "fields": [
+                {"id": "land_permits_table", "label": "土地使用手续办理情况（表19）", "type": "table", "columns": ["手续名称", "证书编号", "办理状态", "备注"], "template_text": "项目土地使用手续办理情况如下："},
+                {"id": "land_payment_status", "label": "土地出让金缴纳情况", "type": "textarea"},
+                {"id": "planning_permit", "label": "建设用地规划许可证", "type": "text"},
+                {"id": "construction_planning_permit", "label": "建设工程规划许可证", "type": "text"}
+              ]
+            },
+            {
+              "id": "5-3-3",
+              "title": "3. 具体情况说明",
+              "fields": [
+                {"id": "land_specific_desc", "label": "土地使用具体情况说明", "type": "textarea", "required": true},
+                {"id": "land_compliance_opinion", "label": "土地合规法律意见", "type": "textarea"}
+              ]
+            }
+          ]
+        },
+        {
+          "id": "5-4",
+          "title": "（四）可转让性有关情况",
+          "has_subsections": true,
+          "subsections": [
+            {
+              "id": "5-4-1",
+              "title": "1. 总体情况",
+              "fields": [
+                {"id": "transferability_overview", "label": "可转让性总体说明", "type": "textarea", "required": true},
+                {"id": "transfer_restrictions", "label": "转让限制条件", "type": "textarea"},
+                {"id": "preemptive_rights", "label": "优先购买权情况", "type": "textarea"}
+              ]
+            },
+            {
+              "id": "5-4-2",
+              "title": "2. 具体情况",
+              "fields": [
+                {"id": "transfer_specific_desc", "label": "可转让性具体情况说明", "type": "textarea", "required": true},
+                {"id": "consent_documents", "label": "相关方同意转让文件", "type": "textarea"},
+                {"id": "transfer_legal_opinion", "label": "转让合法性法律意见", "type": "textarea"}
+              ]
+            },
+            {
+              "id": "5-4-3",
+              "title": "3. 承诺函出具情况",
+              "fields": [
+                {"id": "transfer_commitment_desc", "label": "可转让性承诺函出具情况", "type": "textarea", "required": true},
+                {"id": "originator_commitment", "label": "发起人承诺函", "type": "textarea"},
+                {"id": "fund_manager_commitment", "label": "基金管理人承诺函", "type": "textarea"}
+              ]
+            }
+          ]
+        },
+        {
+          "id": "5-5",
+          "title": "（五）政府和社会资本合作（PPP）项目合规情况",
+          "fields": [
+            {"id": "is_ppp_project", "label": "是否为PPP项目", "type": "select", "options": ["是", "否"], "required": true},
+            {"id": "ppp_agreement", "label": "PPP合同/特许经营协议", "type": "textarea"},
+            {"id": "ppp_compliance", "label": "PPP合规性说明", "type": "textarea"},
+            {"id": "ppp_government_consent", "label": "政府方同意情况", "type": "textarea"},
+            {"id": "ppp_remaining_period", "label": "特许经营剩余期限", "type": "text"}
+          ]
+        },
+        {
+          "id": "5-6",
+          "title": "（六）税收处理情况",
+          "fields": [
+            {"id": "tax_overview", "label": "税收处理总体方案", "type": "textarea", "required": true},
+            {"id": "restructuring_tax", "label": "资产重组环节税务安排", "type": "textarea"},
+            {"id": "transfer_tax", "label": "资产转让环节税务处理", "type": "textarea"},
+            {"id": "operation_tax", "label": "运营环节税务处理", "type": "textarea"},
+            {"id": "distribution_tax", "label": "分配环节税务处理", "type": "textarea"},
+            {"id": "tax_commitment", "label": "税收承诺", "type": "textarea"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chapter6",
+      "title": "六、运营管理安排",
+      "sections": [
+        {
+          "id": "6-1",
+          "title": "（一）运营管理机构与基金管理人之间的运营管理权责利关系",
+          "fields": [
+            {"id": "management_relationship", "label": "运营管理权责利关系说明", "type": "textarea", "required": true},
+            {"id": "management_agreement", "label": "运营管理协议主要条款", "type": "textarea", "required": true},
+            {"id": "operator_responsibilities", "label": "运营管理机构主要职责", "type": "textarea", "required": true},
+            {"id": "fund_mgr_supervision", "label": "基金管理人监督职责", "type": "textarea", "required": true},
+            {"id": "decision_mechanism", "label": "重大事项决策机制", "type": "textarea"},
+            {"id": "reporting_mechanism", "label": "报告机制", "type": "textarea"},
+            {"id": "fee_arrangement", "label": "费用安排", "type": "table", "columns": ["费用类型", "计算方式", "支付频率", "备注"]}
+          ]
+        },
+        {
+          "id": "6-2",
+          "title": "（二）运营管理机构与基金管理人之间的激励约束机制",
+          "fields": [
+            {"id": "incentive_mechanism", "label": "激励机制", "type": "textarea", "required": true},
+            {"id": "constraint_mechanism", "label": "约束机制", "type": "textarea", "required": true},
+            {"id": "performance_assessment", "label": "绩效考核指标", "type": "table", "columns": ["考核指标", "目标值", "权重", "考核周期"]},
+            {"id": "reward_punishment", "label": "奖惩措施", "type": "textarea"},
+            {"id": "operator_replacement", "label": "运营管理机构更换机制", "type": "textarea"}
+          ]
+        },
+        {
+          "id": "6-3",
+          "title": "（三）促进项目持续健康平稳运营的保障措施",
+          "fields": [
+            {"id": "operation_guarantee", "label": "运营保障措施总体说明", "type": "textarea", "required": true},
+            {"id": "maintenance_plan", "label": "资产维护计划", "type": "textarea"},
+            {"id": "capex_arrangement", "label": "资本性支出安排", "type": "textarea"},
+            {"id": "insurance_arrangement", "label": "保险安排", "type": "textarea"},
+            {"id": "emergency_plan", "label": "应急预案", "type": "textarea"},
+            {"id": "tenant_management", "label": "租户/客户管理措施", "type": "textarea"},
+            {"id": "market_promotion", "label": "市场推广策略", "type": "textarea"}
+          ]
+        },
+        {
+          "id": "6-4",
+          "title": "（四）防范关联交易和利益冲突的主要安排",
+          "fields": [
+            {"id": "related_party_policy", "label": "关联交易管理制度", "type": "textarea", "required": true},
+            {"id": "conflict_of_interest_policy", "label": "利益冲突防范制度", "type": "textarea", "required": true},
+            {"id": "related_party_identification", "label": "关联方识别机制", "type": "textarea"},
+            {"id": "related_party_pricing", "label": "关联交易定价机制", "type": "textarea"},
+            {"id": "information_disclosure", "label": "信息披露安排", "type": "textarea"},
+            {"id": "independent_director", "label": "独立监督机制", "type": "textarea"},
+            {"id": "related_party_list", "label": "现有关联交易清单", "type": "table", "columns": ["关联方", "交易类型", "交易金额", "定价方式", "是否持续"]}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chapter7",
+      "title": "七、募集资金用途情况",
+      "sections": [
+        {
+          "id": "7-1",
+          "title": "（一）募集资金规模及使用结构",
+          "fields": [
+            {"id": "total_fundraising", "label": "募集资金总规模（亿元）", "type": "text", "required": true},
+            {"id": "fund_usage_structure", "label": "资金使用结构说明", "type": "textarea", "required": true},
+            {
+                          "id": "fund_usage_breakdown",
+                          "label": "表23 募集资金规模及使用结构",
+                          "type": "form_table",
+                          "rows": [
+                            {"label": "募集资金总额", "id": "total_fund"},
+                            {"label": "其中：战略配售部分", "id": "strategic_placement"},
+                            {"label": "网下发售部分", "id": "offline_placement"},
+                            {"label": "公众投资者部分", "id": "public_placement"},
+                            {"label": "拟用于收购基础设施资产", "id": "asset_acquisition"},
+                            {"label": "拟用于偿还借款", "id": "debt_repayment"},
+                            {"label": "补充项目营运资金", "id": "working_capital"},
+                            {"label": "其他用途", "id": "other_usage"},
+                            {"label": "发行费用", "id": "issuance_fee"}
+                          ]
+                        }
+          ]
+        },
+        {
+          "id": "7-2",
+          "title": "（二）资金流向图",
+          "fields": [
+            {"id": "fund_flow_overview", "label": "资金流向总体说明", "type": "textarea", "required": true},
+            {"id": "fund_flow_diagram", "label": "资金流向图", "type": "file_list"},
+            {"id": "fund_flow_path", "label": "资金流转路径", "type": "table", "columns": ["步骤", "付款方", "收款方", "金额", "用途"]}
+          ]
+        },
+        {
+          "id": "7-3",
+          "title": "（三）拟投资项目情况",
+          "fields": [
+            {"id": "investment_project_overview", "label": "拟投资项目概述", "type": "textarea", "required": true},
+            {"id": "investment_projects", "label": "拟投资项目清单", "type": "table", "columns": ["项目名称", "投资金额", "项目类型", "预计投资期限", "预期收益率"]},
+            {"id": "investment_feasibility", "label": "投资可行性分析", "type": "textarea"},
+            {"id": "investment_compliance", "label": "投资合规性说明", "type": "textarea"}
+          ]
+        },
+        {
+          "id": "7-4",
+          "title": "（四）拟收购存量资产情况",
+          "fields": [
+            {"id": "acquisition_overview", "label": "拟收购存量资产概述", "type": "textarea"},
+            {"id": "acquisition_targets", "label": "拟收购资产清单", "type": "table", "columns": ["资产名称", "位置", "面积/规模", "估值", "收购方式"]},
+            {"id": "acquisition_rationale", "label": "收购必要性和合理性", "type": "textarea"},
+            {"id": "originator_fund_usage_commitment", "label": "发起人回收资金使用承诺", "type": "textarea", "required": true}
+          ]
+        },
+        {
+          "id": "7-5",
+          "title": "（五）其他情况",
+          "fields": [
+            {"id": "other_fund_usage_desc", "label": "其他情况说明", "type": "textarea"}
+          ]
+        }
+      ]
+    }
+  ]
+}

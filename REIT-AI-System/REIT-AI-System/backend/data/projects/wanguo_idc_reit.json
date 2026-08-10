@@ -1,0 +1,517 @@
+{
+  "project_id": "wanguo_idc_reit",
+  "project_name": "万国数据数据中心基础设施REITs",
+  "status": "completed",
+  "base_date": "2024-09-30",
+  "created_at": "2025-02-01",
+  "summary_table": {
+    "summary_project_name": "万国数据数据中心基础设施领域不动产投资信托基金（REITs）项目",
+    "summary_industry_field": "新型基础设施（数据中心类）",
+    "summary_asset_location": "江苏省苏州市昆山市",
+    "summary_asset_scope": "国金数据云计算数据中心位于昆山市花桥镇远创路558号，土地面积19,999.50平方米，建筑面积35,376.70平方米，净机房面积15,181.00平方米，机柜4,192个，设计容量29,044kW",
+    "summary_construction_scale": "81664.97",
+    "summary_first_or_new": "首次发行项目",
+    "summary_base_date": "2024-09-30",
+    "summary_appraisal_net_value": "219500.00",
+    "summary_fund_total": "226460.09",
+    "summary_originator_subscribe_ratio": "20%",
+    "summary_net_recovery_fund": "128805.52",
+    "summary_reinvestment_amount": "109,484.69万元，占净回收资金比例85%",
+    "summary_listing_venue": "上海证券交易所",
+    "summary_sponsor": "万国数据控股有限公司（GDS Holdings Limited）",
+    "summary_originator": "万国数据控股有限公司（GDS Holdings Limited）",
+    "summary_fund_manager": "南方基金管理股份有限公司",
+    "summary_abs_manager": "南方资本管理有限公司",
+    "summary_law_firm": "北京市金杜律师事务所上海分所，主办律师：胡喆、杜婧",
+    "summary_accounting_firm": "毕马威华振会计师事务所（特殊普通合伙）",
+    "summary_appraisal_firm": "北京国友大正资产评估有限公司",
+    "summary_tax_consultant": "普华永道咨询（深圳）有限公司上海分公司",
+    "summary_securities_consultant": "华泰联合证券有限责任公司"
+  },
+  "chapters": {
+    "chapter1": {
+      "status": "completed",
+      "sections": {
+        "1-1": {
+          "fields": {
+            "project_name": "国金数据云计算数据中心",
+            "asset_type": "数据中心",
+            "project_location": "江苏省苏州市昆山市花桥镇远创路558号",
+            "originator": "万国数据控股有限公司（GDS Holdings Limited）",
+            "project_company": "国金数据科技发展（昆山）有限公司",
+            "operation_manager": "万国数据服务有限公司（统筹）、昆山国诚数据科技有限公司（实施）",
+            "fund_manager": "南方基金管理股份有限公司",
+            "abs_manager": "南方资本管理有限公司",
+            "fund_scale": "22.65",
+            "asset_valuation": "21.95",
+            "total_area": "土地面积19,999.50㎡，建筑面积35,376.70㎡，净机房面积15,181.00㎡，机柜4,192个，设计容量29,044kW",
+            "operation_years": "4年以上（2020年5月/7月投入运营）",
+            "distribution_rate": "",
+            "base_date": "2024-09-30",
+            "project_description": "国金数据中心位于江苏省苏州市昆山市花桥镇远创路558号，由国金数据科技发展（昆山）有限公司持有。项目土地面积19,999.50平方米，建筑面积35,376.70平方米，净机房面积15,181.00平方米，拥有机柜4,192个，设计容量29,044kW。项目以收益法评估值为21.95亿元，属于所有权类项目。项目于2020年5月/7月投入运营，已运营满三年。",
+            "infrastructure_assets": [["国金数据云计算数据中心", "江苏省苏州市昆山市花桥镇远创路558号", "土地19,999.50㎡/建筑35,376.70㎡/净机房15,181.00㎡/机柜4,192个", "2020年5月/7月", "正常运营"]]
+          }
+        },
+        "1-2": {
+          "fields": {
+            "special_restrictions": "不涉及",
+            "land_use_restrictions": "不涉及",
+            "mortgage_pledge": "不涉及",
+            "lease_restrictions": "不涉及",
+            "risk_factors": "不涉及",
+            "risk_mitigation": "不涉及"
+          }
+        },
+        "1-3": {
+          "fields": {
+            "has_expandable_assets": "是",
+            "expandable_assets": [["优先扩募资产（4处）", "多地", "6.93万㎡", "运营中", "待定"], ["备选扩募资产（7处）", "多地", "18.49万㎡", "运营中", "待定"], ["其他储备资产（13处）", "多地", "15.31万㎡", "运营中/建设中", "待定"]],
+            "expansion_plan": "万国数据拥有可扩募资产共24处数据中心，总面积约40.74万平方米，为首发项目面积的26.8倍。其中优先扩募资产4处（6.93万㎡），备选扩募资产7处（18.49万㎡），其他储备资产13处（15.31万㎡）。",
+            "expansion_criteria": "扩募资产将从万国数据自有数据中心中选取，筛选标准包括：运营年限满三年、出租率稳定、现金流良好、权属清晰等。"
+          }
+        }
+      }
+    },
+    "chapter2": {
+      "status": "completed",
+      "sections": {
+        "2-1": {
+          "fields": {
+            "legal_structure_desc": "万国数据控股有限公司（GDS Holdings Limited）通过间接持有昆山国金100%股权拥有国金数据中心。万国数据采用VIE架构，实际控制人为黄伟（持有37.8%投票权）。交易完成后，公募基金通过持有资产支持证券间接持有项目公司昆山国金100%股权，进而持有国金数据中心。",
+            "transaction_structure": "公募REITs基金→资产支持专项计划→项目公司（昆山国金）→国金数据云计算数据中心。万国数据通过VIE架构控制境内运营实体，由境内主体完成资产重组后注入REITs。",
+            "legal_relationship_diagram": "",
+            "parties_overview": [["万国数据控股有限公司", "发起人/原始权益人", "资产持有及出让方"], ["国金数据科技发展（昆山）有限公司", "项目公司", "直接持有基础设施资产"], ["南方基金管理股份有限公司", "基金管理人", "公募基金管理及投资者权益保护"], ["南方资本管理有限公司", "资产支持证券管理人", "专项计划管理"], ["万国数据服务有限公司", "运营管理机构（统筹）", "项目运营管理统筹"], ["昆山国诚数据科技有限公司", "运营管理机构（实施）", "项目日常运营实施"]]
+          }
+        },
+        "2-2": {
+          "fields": {
+            "spv_name": "国金数据科技发展（昆山）有限公司",
+            "spv_unified_code": "",
+            "spv_registered_capital": "6,350万美元",
+            "spv_legal_representative": "王海明",
+            "spv_registered_address": "昆山市花桥镇远创路558号",
+            "spv_establish_date": "2012-02-03",
+            "spv_business_scope": "数据中心基础设施服务、互联网数据中心业务、信息技术服务",
+            "spv_shareholders": [["万国数据（间接持有）", "100%", "股权出资", "6,350万美元"]],
+            "spv_governance": "",
+            "spv_financial_summary": ""
+          }
+        },
+        "2-3": {
+          "fields": {
+            "originator_name": "万国数据控股有限公司（GDS Holdings Limited）",
+            "originator_unified_code": "",
+            "originator_registered_capital": "",
+            "originator_legal_representative": "黄伟",
+            "originator_registered_address": "",
+            "originator_establish_date": "2006-01-01",
+            "originator_business_scope": "高性能数据中心的开发和运营",
+            "originator_industry_position": "万国数据为中国领先的高性能数据中心运营商和服务商，中国第三方IDC市场份额第一，在纳斯达克及港交所双重上市。",
+            "originator_main_business": "万国数据是中国领先的高性能数据中心解决方案服务商，主要为大型企业客户及政府部门提供外包数据中心服务、管理型主机服务、管理型云服务及增值服务。公司2006年设立，在纳斯达克及港交所双重上市。",
+            "originator_shareholders": [["黄伟", "37.8%投票权", "实际控制人"]],
+            "originator_credit_status": "",
+            "originator_financial_summary": "",
+            "originator_commitment": ""
+          }
+        },
+        "2-4": {
+          "fields": {
+            "operator_name": "万国数据服务有限公司（统筹）、昆山国诚数据科技有限公司（实施）",
+            "operator_unified_code": "",
+            "operator_registered_capital": "",
+            "operator_legal_representative": "",
+            "operator_registered_address": "",
+            "operator_establish_date": "",
+            "operator_business_scope": "数据中心运营管理服务、IT基础设施维护、电力及暖通系统管理",
+            "operator_experience": "万国数据服务有限公司作为统筹运营管理机构，拥有丰富的数据中心运营管理经验。公司建立了GOCC（全球运营指挥中心）-ROCC（区域运营指挥中心）-DCU（数据中心单元）三级运营架构体系，确保数据中心7×24小时安全稳定运行。昆山国诚数据科技有限公司负责国金数据中心的日常运营实施。",
+            "operator_team": "",
+            "operator_qualifications": "",
+            "operator_credit_status": ""
+          }
+        },
+        "2-5": {
+          "fields": {
+            "fund_mgr_name": "南方基金管理股份有限公司",
+            "fund_mgr_license": "",
+            "fund_mgr_registered_capital": "",
+            "fund_mgr_reits_experience": "南方基金管理规模达24,647亿元，具有丰富的公募基金管理经验。",
+            "fund_mgr_team": "",
+            "abs_mgr_name": "南方资本管理有限公司",
+            "abs_mgr_license": "",
+            "abs_mgr_registered_capital": "",
+            "abs_mgr_abs_experience": "南方资本管理规模160.08亿元，具有丰富的资产证券化产品管理经验。",
+            "abs_mgr_team": ""
+          }
+        },
+        "2-6": {
+          "fields": {
+            "law_firm": "北京市金杜律师事务所上海分所",
+            "law_firm_lawyers": "胡喆、杜婧",
+            "accounting_firm": "毕马威华振会计师事务所（特殊普通合伙）",
+            "accounting_firm_cpas": "",
+            "valuation_firm": "北京国友大正资产评估有限公司",
+            "valuation_firm_valuers": "",
+            "tax_advisor": "普华永道咨询（深圳）有限公司上海分公司",
+            "financial_advisor": "华泰联合证券有限责任公司",
+            "custodian_bank": "",
+            "intermediaries_table": [["财务顾问", "华泰联合证券有限责任公司", "", ""], ["律师事务所", "北京市金杜律师事务所上海分所", "", "胡喆、杜婧"], ["会计师事务所", "毕马威华振会计师事务所（特殊普通合伙）", "", ""], ["资产评估机构", "北京国友大正资产评估有限公司", "", ""], ["税务咨询机构", "普华永道咨询（深圳）有限公司上海分公司", "", ""]]
+          }
+        }
+      }
+    },
+    "chapter3": {
+      "status": "completed",
+      "sections": {
+        "3-1": {
+          "fields": {
+            "product_name": "万国数据数据中心基础设施领域不动产投资信托基金（REITs）",
+            "product_short_name": "万国数据REITs",
+            "fund_type": "契约型封闭式基础设施证券投资基金",
+            "listing_exchange": "上海证券交易所",
+            "fund_duration": "38年",
+            "total_fund_shares": "",
+            "offering_price": "",
+            "min_subscription": "",
+            "strategic_placement_ratio": "",
+            "originator_retention_ratio": "20%",
+            "originator_lock_period": "",
+            "public_offering_ratio": "",
+            "distribution_frequency": "",
+            "leverage_ratio": "",
+            "product_elements_table": [["基金期限", "38年"], ["上市交易所", "上海证券交易所"], ["拟发售基金总额", "226,460.09万元"], ["原始权益人认购比例", "20%"]]
+          }
+        },
+        "3-2": {
+          "fields": {
+            "product_structure_desc": "本项目采用'公募基金+资产支持专项计划'架构。公募基金持有资产支持证券，通过资产支持专项计划间接持有项目公司昆山国金100%股权，进而持有基础设施资产国金数据云计算数据中心。",
+            "product_structure_diagram": "",
+            "fund_layer_desc": "公募基金层：万国数据数据中心基础设施领域不动产投资信托基金，由南方基金管理股份有限公司担任基金管理人。",
+            "abs_layer_desc": "ABS层：由南方资本管理有限公司设立资产支持专项计划，以基金财产认购资产支持证券。",
+            "project_company_layer_desc": "项目公司层：国金数据科技发展（昆山）有限公司（昆山国金），直接持有基础设施资产。",
+            "asset_layer_desc": "基础设施资产层：国金数据云计算数据中心，位于江苏省苏州市昆山市花桥镇远创路558号。",
+            "cash_flow_path": "国金数据中心运营收入→项目公司（昆山国金）→资产支持专项计划→公募基金→基金份额持有人"
+          }
+        },
+        "3-3": {
+          "fields": {
+            "implementation_overview": "本项目实施共分9个步骤：（1）进线工程剥离；（2）项目公司分红；（3）股权重组；（4）机柜资产转让；（5）基金成立；（6）专项计划设立；（7）收购昆山国胜100%股权；（8）收购昆山国金100%股权；（9）昆山国胜吸收合并昆山国金。",
+            "step_1_reorganization": "第一步：进线工程剥离。将110kV变电站进线工程从项目公司中剥离，确保底层资产范围清晰。第二步：项目公司分红。第三步：股权重组，完成项目公司股权结构调整。第四步：机柜资产转让。",
+            "step_2_abs_setup": "第六步：设立资产支持专项计划，由南方资本管理有限公司担任计划管理人。",
+            "step_3_fund_setup": "第五步：基金成立，由南方基金管理股份有限公司发起设立公募基金。",
+            "step_4_asset_transfer": "第七步：收购昆山国胜100%股权。第八步：收购昆山国金100%股权。第九步：昆山国胜吸收合并昆山国金，完成资产整合。",
+            "step_5_fund_raising": "",
+            "step_6_listing": "",
+            "implementation_timeline": [["资产重组", "进线工程剥离、分红、股权重组、机柜转让", "", "万国数据"], ["产品设立", "基金成立、专项计划设立", "", "南方基金、南方资本"], ["资产收购", "收购昆山国胜、收购昆山国金、吸收合并", "", "专项计划"]]
+          }
+        },
+        "3-4": {
+          "fields": {
+            "current_progress": "目前项目尽职调查已完成、资产评估已完成、审计工作已完成、万国数据董事会已批准本次REITs发行事项。",
+            "regulatory_communication": "",
+            "due_diligence_progress": "尽职调查工作已完成，包括法律尽调、财务尽调、业务尽调及资产尽调。",
+            "valuation_progress": "资产评估工作已完成，由北京国友大正资产评估有限公司出具评估报告，评估值21.95亿元。",
+            "legal_opinion_progress": "",
+            "remaining_work": ""
+          }
+        },
+        "3-5": {
+          "fields": {
+            "major_matters": "万国数据采用VIE（可变利益实体）架构。VIE架构下的跨境治理安排及应对方案已做出详细说明。万国数据已就VIE架构对REITs项目的影响进行了充分论证和风险评估，并制定了相应的应对措施。",
+            "pending_litigation": "",
+            "environmental_issues": "",
+            "related_party_transactions": "",
+            "other_disclosures": ""
+          }
+        }
+      }
+    },
+    "chapter4": {
+      "status": "completed",
+      "sections": {
+        "4-1": {
+          "fields": {
+            "ownership_desc": "万国数据通过间接持有项目公司昆山国金100%股权，依法合规拥有国金数据云计算数据中心的所有权和经营收益权，不存在重大纠纷或权利瑕疵。",
+            "land_certificates": [["", "工业用途", "19,999.50㎡", "2012-2062年（50年）", "出让"]],
+            "building_certificates": [["", "35,376.70㎡", "数据中心", "国金数据科技发展（昆山）有限公司"]],
+            "encumbrances": "不存在影响项目转让的抵押、质押、查封等权利负担情况。",
+            "safety_quality_issues": "近3年不存在安全、质量、环保方面的重大问题或重大违约事件。",
+            "ownership_commitment": "发起人已出具权属和运营承诺函，确认其依法合规持有项目资产，权属清晰无争议。"
+          }
+        },
+        "4-2": {
+          "fields": {
+            "asset_integrity_desc": "除110kV变电站进线工程外，国金数据云计算数据中心的土地、建筑物、机电设备、机柜等资产已完整纳入底层资产范围。110kV变电站进线工程因其属于公共基础设施配套，已在资产重组阶段予以剥离。",
+            "asset_components": [["土地", "19,999.50㎡", "数据中心建设用地", "是"], ["建筑物", "35,376.70㎡", "数据中心主体建筑", "是"], ["净机房", "15,181.00㎡", "IT设备托管", "是"], ["机柜", "4,192个", "服务器托管", "是"], ["110kV变电站进线工程", "", "供电配套", "否（已剥离）"]],
+            "excluded_assets": "110kV变电站进线工程未纳入底层资产范围，该工程属于区域公共基础设施配套，已在实施步骤中予以剥离处理。",
+            "independent_operation": "国金数据中心具备独立运营能力，拥有完整的供电系统（双路市电+柴油发电机）、制冷系统、消防系统、安防系统等，可独立为客户提供数据中心服务。",
+            "shared_facilities": ""
+          }
+        },
+        "4-3": {
+          "subsections": {
+            "4-3-1": {
+              "fields": {
+                "operation_start_date": "2020-05-20",
+                "operation_years": "4年以上",
+                "operation_time_desc": "国金数据中心于2020年5月/7月分期投入运营，至申报基准日（2024年9月30日）已运营满三年，符合REITs试点对基础设施项目运营时间的要求。"
+              }
+            },
+            "4-3-2": {
+              "fields": {
+                "historical_revenue_desc": "国金数据中心2021-2023年EBITDA分别为1.47亿元、1.49亿元、1.45亿元，经营业绩稳定。平均计费率保持在90%以上，收入主要来源于数据中心托管服务费。",
+                "historical_financials": [["EBITDA（亿元）", "1.47", "1.49", "1.45", ""], ["平均计费率", "90%+", "90%+", "90%+", ""]],
+                "net_operating_income": "",
+                "ebitda": "2021年1.47亿元、2022年1.49亿元、2023年1.45亿元",
+                "occupancy_rate": "平均计费率90%以上",
+                "revenue_comparison": "",
+                "cash_flow_forecast": ""
+              }
+            },
+            "4-3-3": {
+              "fields": {
+                "revenue_sources_desc": "国金数据中心收入100%来源于数据中心服务费收入，主要客户为上海电信、上海联通及腾讯云计算。三大主要客户合计贡献约100%收入。",
+                "revenue_sources": [["数据中心服务费", "", "100%", "托管服务费收入"]],
+                "major_tenants": [["上海电信", "", "", "", "49%"], ["上海联通", "", "", "", "49%"], ["腾讯云计算", "", "", "", "2%"]],
+                "government_subsidies": ""
+              }
+            }
+          }
+        },
+        "4-4": {
+          "fields": {
+            "valuation_method": "收益法",
+            "valuation_result": "219500.00",
+            "valuation_date": "2024-09-30",
+            "valuation_institution": "北京国友大正资产评估有限公司",
+            "valuation_assumptions": "采用收益法对国金数据中心进行评估，基于项目稳定的运营收益及客户结构，对未来现金流进行折现计算，综合确定评估价值为21.95亿元。",
+            "cap_rate": "",
+            "discount_rate": "",
+            "valuation_details": [["国金数据云计算数据中心", "219,500.00万元", "收益法", ""]]
+          }
+        },
+        "4-5": {
+          "fields": {
+            "risk_factors_desc": "可能影响项目稳定运营的因素主要包括：客户集中度风险（三大客户合计占比接近100%）、VIE架构风险、数据中心行业竞争加剧风险、电力供应及成本波动风险等。",
+            "market_risk": "数据中心行业竞争日益激烈，可能影响项目议价能力和出租率。",
+            "policy_risk": "数据中心行业受能耗政策、数据安全政策等影响，政策变化可能对运营产生影响。",
+            "operation_risk": "数据中心运营需要保证高可用性(99.99%以上)，设备故障、自然灾害等可能影响服务质量。",
+            "concentration_risk": "项目收入主要依赖上海电信（49%）、上海联通（49%）和腾讯云计算（2%），客户集中度较高。若主要客户合同到期不续约或大幅缩减租赁规模，将对项目收入产生重大影响。",
+            "capex_plan": "",
+            "stability_commitment": "发起人已出具稳定运营承诺函，承诺在基金存续期内采取必要措施保障项目持续稳定运营。",
+            "risk_response_measures": "针对上述风险，已制定以下应对措施：（1）积极拓展新客户，降低客户集中度；（2）持续提升服务质量和运营效率；（3）建立完善的应急预案体系；（4）密切关注政策变化，及时调整运营策略；（5）就VIE架构风险制定专项应对方案。"
+          }
+        }
+      }
+    },
+    "chapter5": {
+      "status": "completed",
+      "sections": {
+        "5-1": {
+          "fields": {
+            "policy_compliance_overview": "国金数据中心项目属于新型基础设施（数据中心类），符合国家发展改革委关于基础设施REITs试点的行业要求。",
+            "industry_policy": "数据中心属于国家鼓励发展的新型基础设施领域，符合《关于加快构建全国一体化大数据中心协同创新体系的指导意见》等国家产业政策要求。",
+            "reits_pilot_policy": "项目符合REITs试点政策要求：（1）属于新型基础设施（数据中心）；（2）运营满三年；（3）具有稳定的现金流；（4）资产规模达到要求；（5）原始权益人及运营管理机构具备持续运营能力。",
+            "asset_size_requirement": "项目不动产评估净值21.95亿元，拟发售基金总额22.65亿元，满足资产规模要求。",
+            "operation_period_requirement": "项目于2020年5月/7月投入运营，至申报基准日已运营超过三年，满足运营期限要求。",
+            "cash_flow_requirement": "项目2021-2023年EBITDA稳定在1.45-1.49亿元，具有持续稳定的现金流。"
+          }
+        },
+        "5-2": {
+          "subsections": {
+            "5-2-1": {
+              "fields": {
+                "general_approval_desc": "国金数据中心已取得项目备案、施工许可证、竣工验收证明、消防验收等投资管理合规手续。",
+                "approval_documents": [["项目备案文件", "", "昆山市发展和改革委员会", ""], ["施工许可证", "", "昆山市住房和城乡建设局", ""]],
+                "construction_permit": "已取得",
+                "completion_acceptance": "已完成竣工验收",
+                "fire_acceptance": "已通过消防验收"
+              }
+            },
+            "5-2-2": {
+              "fields": {
+                "industry_specific_desc": "数据中心行业需取得增值电信业务经营许可证等行业专项许可，项目已取得相关资质。",
+                "industry_permits": "",
+                "environmental_approval": "",
+                "energy_assessment": ""
+              }
+            },
+            "5-2-3": {
+              "fields": {
+                "not_applicable_desc": "本项目为数据中心项目，非PPP项目，不涉及特许经营协议等相关手续。"
+              }
+            },
+            "5-2-4": {
+              "fields": {
+                "missing_permits_desc": "不涉及，项目所需各项合规手续均已齐备。",
+                "remediation_plan": "不涉及"
+              }
+            },
+            "5-2-5": {
+              "fields": {
+                "corridor_mezzanine_desc": "不涉及",
+                "building_compliance": "不涉及"
+              }
+            }
+          }
+        },
+        "5-3": {
+          "subsections": {
+            "5-3-1": {
+              "fields": {
+                "land_use_overview": "国金数据中心土地以出让方式取得，土地用途为工业用途，使用期限为2012年至2062年（50年）。土地使用手续齐备合规。",
+                "land_acquisition_method": "出让",
+                "land_use_type": "工业用途",
+                "land_use_period": "2012年-2062年（50年）"
+              }
+            },
+            "5-3-2": {
+              "fields": {
+                "land_permits_table": [["国有土地使用证", "", "已办理", "工业用途"], ["建设用地规划许可证", "", "已办理", ""], ["建设工程规划许可证", "", "已办理", ""]],
+                "land_payment_status": "土地出让金已全额缴纳",
+                "planning_permit": "已取得",
+                "construction_planning_permit": "已取得"
+              }
+            },
+            "5-3-3": {
+              "fields": {
+                "land_specific_desc": "国金数据中心用地面积19,999.50平方米，以出让方式取得，土地用途为工业用途，使用期限2012年至2062年。土地出让金已全额缴纳，土地使用权证照齐全，不存在违法违规用地情况。",
+                "land_compliance_opinion": ""
+              }
+            }
+          }
+        },
+        "5-4": {
+          "subsections": {
+            "5-4-1": {
+              "fields": {
+                "transferability_overview": "项目资产可依法转让，不存在法律法规或合同约定的转让限制条件。",
+                "transfer_restrictions": "不存在",
+                "preemptive_rights": "不涉及"
+              }
+            },
+            "5-4-2": {
+              "fields": {
+                "transfer_specific_desc": "国金数据中心通过项目公司股权转让方式实现资产转让，相关交易结构已获得各方认可。项目公司股权不存在质押、冻结等限制转让的情形。",
+                "consent_documents": "",
+                "transfer_legal_opinion": ""
+              }
+            },
+            "5-4-3": {
+              "fields": {
+                "transfer_commitment_desc": "发起人已出具承诺函，确认项目资产权属清晰、可合法转让，不存在影响转让的障碍。",
+                "originator_commitment": "",
+                "fund_manager_commitment": ""
+              }
+            }
+          }
+        },
+        "5-5": {
+          "fields": {
+            "is_ppp_project": "否",
+            "ppp_agreement": "不涉及",
+            "ppp_compliance": "不涉及",
+            "ppp_government_consent": "不涉及",
+            "ppp_remaining_period": "不涉及"
+          }
+        },
+        "5-6": {
+          "fields": {
+            "tax_overview": "本项目已制定详细的税收处理方案，涵盖设立环节、运营环节和退出环节的税务安排。设立环节涉及资产重组的税务处理；运营环节涉及项目公司日常经营的增值税、企业所得税等；退出环节涉及基金份额转让的税务处理。",
+            "restructuring_tax": "资产重组环节，通过合理的交易架构设计，争取适用企业重组的特殊性税务处理，减少重组环节的税负。",
+            "transfer_tax": "资产转让环节涉及增值税、土地增值税、企业所得税、契税、印花税等，已制定相应的税务筹划方案。",
+            "operation_tax": "运营环节，项目公司按照正常经营缴纳增值税、企业所得税、房产税、城镇土地使用税等。",
+            "distribution_tax": "分配环节，基金向持有人分配收益时的税务处理按照现行公募基金税收政策执行。",
+            "tax_commitment": ""
+          }
+        }
+      }
+    },
+    "chapter6": {
+      "status": "completed",
+      "sections": {
+        "6-1": {
+          "fields": {
+            "management_relationship": "基金管理人南方基金委托运营管理机构负责国金数据中心的日常运营管理。万国数据服务有限公司作为统筹运营管理机构，昆山国诚数据科技有限公司作为实施运营管理机构。",
+            "management_agreement": "运营管理协议约定了运营管理机构的职责范围、服务标准、考核机制、费用安排及违约责任等核心条款。",
+            "operator_responsibilities": "运营管理机构主要职责包括：数据中心日常运营维护、客户服务、设备巡检维保、能耗管理、安全管理、应急响应等。",
+            "fund_mgr_supervision": "基金管理人负责对运营管理机构进行监督，包括定期检查运营情况、审核运营报告、评估运营绩效等。",
+            "decision_mechanism": "",
+            "reporting_mechanism": "",
+            "fee_arrangement": ""
+          }
+        },
+        "6-2": {
+          "fields": {
+            "incentive_mechanism": "运营管理机构的激励机制与运营业绩挂钩，包括基础管理费和绩效管理费。绩效管理费与项目EBITDA、出租率等关键指标挂钩。",
+            "constraint_mechanism": "建立绩效考核体系，对运营管理机构的服务质量进行定期评估。如未达到考核标准，基金管理人有权扣减运营管理费，严重违约时有权更换运营管理机构。",
+            "performance_assessment": "",
+            "reward_punishment": "",
+            "operator_replacement": ""
+          }
+        },
+        "6-3": {
+          "fields": {
+            "operation_guarantee": "为促进项目持续健康平稳运营，建立了三级运营架构体系：GOCC（全球运营指挥中心）负责全局监控和指挥调度，ROCC（区域运营指挥中心）负责区域协调管理，DCU（数据中心单元）负责现场运营执行。",
+            "maintenance_plan": "制定了完善的设备维护保养计划，包括预防性维护、定期巡检、应急维修等。",
+            "capex_arrangement": "根据设备生命周期和运营需要，制定合理的资本性支出计划。",
+            "insurance_arrangement": "已为数据中心购买财产一切险、公众责任险等综合保险。",
+            "emergency_plan": "建立了完善的应急预案体系，涵盖电力故障、制冷故障、网络故障、自然灾害等各类突发事件。",
+            "tenant_management": "",
+            "market_promotion": ""
+          }
+        },
+        "6-4": {
+          "fields": {
+            "related_party_policy": "建立了完善的关联交易管理制度，明确关联交易的认定标准、审批流程和信息披露要求。",
+            "conflict_of_interest_policy": "建立了利益冲突防范机制，包括信息隔离、回避制度、独立决策等安排。",
+            "related_party_identification": "关联方范围包括原始权益人及其关联方、基金管理人及其关联方、运营管理机构等。",
+            "related_party_pricing": "关联交易按照市场化原则定价，确保交易条件不劣于同等条件下第三方交易。",
+            "information_disclosure": "关联交易须在定期报告和临时公告中进行充分披露。",
+            "independent_director": "",
+            "related_party_list": ""
+          }
+        }
+      }
+    },
+    "chapter7": {
+      "status": "completed",
+      "sections": {
+        "7-1": {
+          "fields": {
+            "total_fundraising": "22.65",
+            "fund_usage_structure": "本次募集资金总规模为226,460.09万元。净回收资金128,805.52万元中，拟用于在建项目109,484.69万元（占净回收资金的85%）。",
+            "fund_usage_breakdown": [["在建项目投资", "109484.69", "85%", "廊坊13-16号、北京13-14号等数据中心项目"], ["其他用途", "19320.83", "15%", ""]]
+          }
+        },
+        "7-2": {
+          "fields": {
+            "fund_flow_overview": "募集资金通过基金→专项计划→项目公司的路径流入，用于收购项目公司股权。原始权益人获得净回收资金后，按照承诺将85%以上用于在建数据中心项目投资。",
+            "fund_flow_diagram": "",
+            "fund_flow_path": [["1", "公募基金", "资产支持专项计划", "226,460.09万元", "认购资产支持证券"], ["2", "资产支持专项计划", "原始权益人", "", "收购项目公司股权"], ["3", "原始权益人", "在建项目", "109,484.69万元", "投资在建数据中心项目"]]
+          }
+        },
+        "7-3": {
+          "fields": {
+            "investment_project_overview": "净回收资金中109,484.69万元（占比85%）拟用于在建数据中心项目，包括廊坊13-16号数据中心、北京13-14号数据中心等项目。",
+            "investment_projects": [["廊坊13-16号数据中心", "", "在建项目", "", ""], ["北京13-14号数据中心", "", "在建项目", "", ""]],
+            "investment_feasibility": "",
+            "investment_compliance": ""
+          }
+        },
+        "7-4": {
+          "fields": {
+            "acquisition_overview": "不涉及，本次无拟收购存量资产计划。",
+            "acquisition_targets": "",
+            "acquisition_rationale": "不涉及",
+            "originator_fund_usage_commitment": "发起人（原始权益人）已出具回收资金使用承诺函，承诺将净回收资金的85%以上用于在建项目和前期工作成熟的新建项目投资。"
+          }
+        },
+        "7-5": {
+          "fields": {
+            "other_fund_usage_desc": "不涉及"
+          }
+        }
+      }
+    }
+  }
+}

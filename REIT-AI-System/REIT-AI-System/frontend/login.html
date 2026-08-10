@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 · REITS AI</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, #e8f5e9 0%, #f6f8f7 100%);
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+        }
+        .login-card {
+            background: #fff; width: 360px; max-width: 92vw; border-radius: 14px;
+            box-shadow: 0 12px 40px rgba(20, 40, 30, .14); padding: 34px 30px;
+        }
+        .brand { text-align: center; margin-bottom: 22px; }
+        .brand .logo {
+            width: 46px; height: 46px; border-radius: 10px; background: #4CAF50;
+            display: inline-flex; align-items: center; justify-content: center;
+            color: #fff; font-weight: 700; font-size: 20px; margin-bottom: 10px;
+        }
+        .brand h1 { font-size: 19px; color: #1a2330; }
+        .brand p { font-size: 12px; color: #8a97a3; margin-top: 4px; }
+        label { display: block; font-size: 13px; color: #555; margin: 14px 0 5px; }
+        input {
+            width: 100%; padding: 10px 12px; border: 1px solid #dfe4ea; border-radius: 8px;
+            font-size: 14px; outline: none;
+        }
+        input:focus { border-color: #4CAF50; }
+        .btn {
+            width: 100%; margin-top: 22px; padding: 11px; border: none; border-radius: 8px;
+            background: #4CAF50; color: #fff; font-size: 15px; cursor: pointer;
+        }
+        .btn:hover { background: #43a047; }
+        .btn:disabled { opacity: .6; cursor: default; }
+        .err { color: #c0392b; font-size: 13px; margin-top: 12px; min-height: 18px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="brand">
+            <div class="logo">R</div>
+            <h1>REITS AI</h1>
+            <p>发改委申报材料智能生成</p>
+        </div>
+        <form id="loginForm">
+            <label>账号</label>
+            <input type="text" id="username" autocomplete="username" autofocus>
+            <label>密码</label>
+            <input type="password" id="password" autocomplete="current-password">
+            <button class="btn" type="submit" id="loginBtn">登 录</button>
+            <div class="err" id="err"></div>
+        </form>
+    </div>
+    <script>
+        const form = document.getElementById('loginForm');
+        const err = document.getElementById('err');
+        const btn = document.getElementById('loginBtn');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            err.textContent = '';
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            if (!username || !password) { err.textContent = '请输入账号和密码'; return; }
+            btn.disabled = true; btn.textContent = '登录中…';
+            try {
+                const resp = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                });
+                if (resp.ok) {
+                    window.location.href = '/';
+                    return;
+                }
+                const data = await resp.json().catch(() => ({}));
+                err.textContent = data.detail || '登录失败';
+            } catch (e2) {
+                err.textContent = '网络错误，请重试';
+            }
+            btn.disabled = false; btn.textContent = '登 录';
+        });
+    </script>
+</body>
+</html>

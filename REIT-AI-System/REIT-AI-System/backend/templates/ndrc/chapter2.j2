@@ -1,0 +1,208 @@
+{% from "ndrc/base.j2" import render_table, field, paragraph, optional_section, conditional_table, numbered_list %}
+{# 第二章：参与主体情况 #}
+
+二、参与主体情况
+
+（一）法律关系
+
+{{ paragraph(legal_structure_desc) }}
+
+{% if transaction_structure %}
+交易结构说明：
+{{ paragraph(transaction_structure) }}
+{% endif %}
+
+{% if parties_overview and parties_overview.rows %}
+各参与主体概览：
+{{ render_table(parties_overview.headers, parties_overview.rows) }}
+{% endif %}
+
+（二）项目公司情况
+
+1. 公司名称：{{ field(spv_name) }}
+
+2. 统一社会信用代码：{{ field(spv_unified_code) }}
+
+3. 注册资本：{{ field(spv_registered_capital) }}
+
+4. 法定代表人：{{ field(spv_legal_representative) }}
+
+5. 注册地址：{{ field(spv_registered_address) }}
+
+6. 成立日期：{{ field(spv_establish_date) }}
+
+7. 经营范围：
+{{ paragraph(spv_business_scope) }}
+
+{% if spv_shareholders and spv_shareholders.rows %}
+8. 股东结构：
+{{ render_table(spv_shareholders.headers, spv_shareholders.rows) }}
+{% endif %}
+
+{% if spv_governance %}
+9. 治理结构：
+{{ paragraph(spv_governance) }}
+{% endif %}
+
+{% if spv_financial_summary and spv_financial_summary.rows %}
+10. 近三年财务数据摘要：
+{{ render_table(spv_financial_summary.headers, spv_financial_summary.rows) }}
+{% endif %}
+
+（三）发起人（原始权益人）情况
+
+1. 发起人名称：{{ field(originator_name) }}
+
+2. 统一社会信用代码：{{ field(originator_unified_code) }}
+
+3. 注册资本：{{ field(originator_registered_capital) }}
+
+4. 法定代表人：{{ field(originator_legal_representative) }}
+
+5. 注册地址：{{ field(originator_registered_address) }}
+
+6. 成立日期：{{ field(originator_establish_date) }}
+
+7. 经营范围：
+{{ paragraph(originator_business_scope) }}
+
+8. 主营业务描述：
+{{ paragraph(originator_main_business) }}
+
+{% if originator_industry_position %}
+9. 行业地位及竞争优势：
+{{ paragraph(originator_industry_position) }}
+{% endif %}
+
+{% if originator_shareholders and originator_shareholders.rows %}
+10. 股东结构：
+{{ render_table(originator_shareholders.headers, originator_shareholders.rows) }}
+{% endif %}
+
+{% if originator_credit_status %}
+11. 信用状况：
+{{ paragraph(originator_credit_status) }}
+{% endif %}
+
+{% if originator_financial_summary and originator_financial_summary.rows %}
+12. 近三年财务数据摘要：
+{{ render_table(originator_financial_summary.headers, originator_financial_summary.rows) }}
+{% endif %}
+
+{% if originator_commitment %}
+13. 发起人承诺事项：
+{{ paragraph(originator_commitment) }}
+{% endif %}
+
+（四）运营管理机构情况
+
+1. 机构名称：{{ field(operator_name) }}
+
+2. 统一社会信用代码：{{ field(operator_unified_code) }}
+
+3. 注册资本：{{ field(operator_registered_capital) }}
+
+4. 法定代表人：{{ field(operator_legal_representative) }}
+
+5. 注册地址：{{ field(operator_registered_address) }}
+
+{% if operator_establish_date %}
+6. 成立日期：{{ field(operator_establish_date) }}
+{% endif %}
+
+7. 经营范围：
+{{ paragraph(operator_business_scope) }}
+
+8. 运营管理经验：
+{{ paragraph(operator_experience) }}
+
+{% if operator_team and operator_team.rows %}
+9. 核心运营团队：
+{{ render_table(operator_team.headers, operator_team.rows) }}
+{% endif %}
+
+{% if operator_qualifications %}
+10. 资质及荣誉：
+{{ paragraph(operator_qualifications) }}
+{% endif %}
+
+{% if operator_credit_status %}
+11. 信用状况：
+{{ paragraph(operator_credit_status) }}
+{% endif %}
+
+（五）基金管理人和资产支持证券管理人情况
+
+1. 基金管理人
+
+（1）基金管理人名称：{{ field(fund_mgr_name) }}
+
+（2）牌照信息：{{ field(fund_mgr_license) }}
+
+{% if fund_mgr_registered_capital %}
+（3）注册资本：{{ field(fund_mgr_registered_capital) }}
+{% endif %}
+
+{% if fund_mgr_reits_experience %}
+（4）REITs管理经验：
+{{ paragraph(fund_mgr_reits_experience) }}
+{% endif %}
+
+{% if fund_mgr_team and fund_mgr_team.rows %}
+（5）核心团队：
+{{ render_table(fund_mgr_team.headers, fund_mgr_team.rows) }}
+{% endif %}
+
+2. 资产支持证券管理人
+
+（1）管理人名称：{{ field(abs_mgr_name) }}
+
+（2）牌照信息：{{ field(abs_mgr_license) }}
+
+{% if abs_mgr_registered_capital %}
+（3）注册资本：{{ field(abs_mgr_registered_capital) }}
+{% endif %}
+
+{% if abs_mgr_abs_experience %}
+（4）ABS管理经验：
+{{ paragraph(abs_mgr_abs_experience) }}
+{% endif %}
+
+{% if abs_mgr_team and abs_mgr_team.rows %}
+（5）核心团队：
+{{ render_table(abs_mgr_team.headers, abs_mgr_team.rows) }}
+{% endif %}
+
+（六）有关中介基本情况
+
+1. 律师事务所：{{ field(law_firm) }}
+{% if law_firm_lawyers %}
+   经办律师：{{ field(law_firm_lawyers) }}
+{% endif %}
+
+2. 会计师事务所：{{ field(accounting_firm) }}
+{% if accounting_firm_cpas %}
+   签字注册会计师：{{ field(accounting_firm_cpas) }}
+{% endif %}
+
+3. 资产评估机构：{{ field(valuation_firm) }}
+{% if valuation_firm_valuers %}
+   签字评估师：{{ field(valuation_firm_valuers) }}
+{% endif %}
+
+{% if tax_advisor %}
+4. 税务咨询机构：{{ field(tax_advisor) }}
+{% endif %}
+
+{% if financial_advisor %}
+5. 财务顾问（证券公司）：{{ field(financial_advisor) }}
+{% endif %}
+
+{% if custodian_bank %}
+6. 托管银行：{{ field(custodian_bank) }}
+{% endif %}
+
+{% if intermediaries_table and intermediaries_table.rows %}
+中介机构一览表：
+{{ render_table(intermediaries_table.headers, intermediaries_table.rows) }}
+{% endif %}

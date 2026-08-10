@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+*.db
+.deps_installed
+server_out.log
+server_err.log
