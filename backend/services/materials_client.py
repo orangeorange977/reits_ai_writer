@@ -423,9 +423,16 @@ def locate_quote_in_pdf(fp: Path, quote: str, cached_only: bool = False):
 
 def resolve_material_ref(name: str, mat_root: Path):
     """依据里写的文件名/文件夹名 → 磁盘真实文件（返回相对 mat_root 的路径字符串）。
-    复刻前端 _findMaterialPath 的多级规则：精确→包含→编号+核心词→任意位置编号→
-    描述性子串→核心词全含→多文件混写拆分→文件夹级。找不到返回 None。"""
-    name = re.sub(r"[《》]", "", name or "").strip().split("〈")[0].strip()
+    与前端 _findMaterialPath 同源的多级规则：精确→包含→多文件混写拆分→编号+核心词→
+    任意位置编号→描述性子串→核心词全含→文件夹级。找不到返回 None。"""
+    name = re.sub(r"[《》]", "", name or "").strip()
+    # 路径后可能跟着 〈摘录〉：文件名本身含括号时 〈…〉 可能跨多层，按“最后一个 〉”切
+    ia = name.find("〈")
+    if ia >= 0:
+        ie = name.rfind("〉")
+        if ie > ia:
+            name = name[:ia].strip()
+    name = name.strip()
     if "/" in name:
         name = name.split("/")[-1].strip()
     if not name or len(name) < 3:
@@ -455,6 +462,15 @@ def resolve_material_ref(name: str, mat_root: Path):
         for p in files:
             if s1 in stem(base(p)) or stem(base(p)) in s1:
                 return p
+    # 多文件混写（“法律意见书、不动产权证书、估价报告”）：拆开逐项递归；
+    # 仅当各段都能解析时才采信，避免把文件名里的“及/和”（如 审计报告及财务报表）误拆
+    for sep in ["、", "及", "和", "，"]:
+        if sep in name:
+            parts = [x.strip() for x in name.split(sep) if x.strip()]
+            if len(parts) >= 2:
+                rs = [resolve_material_ref(x, mat_root) for x in parts]
+                if all(rs):
+                    return rs[0]
     m = re.match(r"^(\d+(?:[-—]\d+)?)\s*[、.．]?(.+)$", name)
     if m:
         num, core = m.group(1).replace("—", "-"), stem(m.group(2).strip())
@@ -478,12 +494,6 @@ def resolve_material_ref(name: str, mat_root: Path):
         cands = [(c, p) for c, p in cands if c >= min(2, len(toks))]
         if cands:
             return max(cands, key=lambda x: x[0])[1]
-    for sep in ["、", "及", "和", "，"]:
-        if sep in name:
-            for part in name.split(sep):
-                r = resolve_material_ref(part, mat_root)
-                if r:
-                    return r
     nm2 = re.sub(r"^[号文件No.\s]+", "", name).strip()
     if len(nm2) >= 4:
         for d in dirs:

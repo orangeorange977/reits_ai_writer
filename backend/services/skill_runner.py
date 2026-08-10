@@ -427,13 +427,21 @@ def _save_json(n: int, data: dict, project_id: str = None) -> None:
 
 
 def _split_src_items(src: str) -> list:
-    """把块的 src 拆成一条条依据：先按〈数字〉引注号拆，再按“；”拆（兼容旧格式）。"""
+    """把块的 src 拆成一条条依据，返回 [(引注号或None, 条目文本), ...]：
+    先按〈数字〉引注号拆（段首的号记下来，写回时恢复），再按“；”拆（兼容旧格式）。"""
     items = []
-    for part in re.split(r"〈\d+〉", src or ""):
-        for seg in re.split(r"[；;]", part):
-            seg = seg.strip()
-            if seg:
-                items.append(seg)
+    parts = re.split(r"〈(\d+)〉", src or "")
+    # parts = [前缀, 号1, 段1, 号2, 段2, ...]
+    num = None
+    for i, part in enumerate(parts):
+        if i % 2 == 1:
+            num = part
+            continue
+        segs = [s.strip() for s in re.split(r"[；;]", part) if s.strip()]
+        for j, seg in enumerate(segs):
+            items.append((num if j == 0 else None, seg))
+        if segs:
+            num = None
     return items
 
 
@@ -470,20 +478,32 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
             if not src:
                 continue
             new_items, changed = [], False
-            for item in _split_src_items(src):
+            for num, item in _split_src_items(src):
                 stats["total"] += 1
+                prefix = f"〈{num}〉" if num else ""
                 m = re.match(r"^申报材料[：:](.+)$", item)
-                if not m:
-                    new_items.append(item)  # 天眼查/摘要等非文件依据原样保留
+                body = m.group(1).strip() if m else None
+                # 省略前缀的续行材料条目（“；2-2-4 xxx.pdf 〈…〉”）：带文件扩展名且能解析到磁盘文件才当材料依据，
+                # 避免把“天眼查查询：…”这类文字误判成文件
+                if body is None and re.search(r"\.(pdf|docx?|xlsx?|pptx?|png|jpe?g|zip|txt)\b", item, re.I):
+                    cand = item.strip()
+                    try:
+                        rel0 = materials_client.resolve_material_ref(cand, mat_root)
+                    except Exception:
+                        rel0 = None
+                    if rel0:
+                        body = cand
+                if body is None:
+                    new_items.append(prefix + item)  # 天眼查/摘要等非文件依据原样保留
                     continue
-                body = m.group(1).strip()
                 pm = body.split("〈原文摘录〉")
                 if len(pm) > 1:
                     path, quote = pm[0], "〈原文摘录〉".join(pm[1:])
                 else:
-                    mm = re.match(r"^([^〈]*)〈([^〉]*)〉", body)
-                    if mm:
-                        path, quote = mm.group(1), mm.group(2)
+                    # 文件名本身可能含括号，〈…〉 按“第一个〈到最后一个〉”取全
+                    ia, ie = body.find("〈"), body.rfind("〉")
+                    if ia >= 0 and ie > ia:
+                        path, quote = body[:ia], body[ia + 1:ie]
                     else:
                         path, quote = body, ""
                 path = path.strip().strip("《》")
@@ -494,9 +514,9 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                     rel = None
                 if rel is None:
                     stats["failed"] += 1
-                    new_items.append(item)
+                    new_items.append(prefix + item)
                     continue
-                if rel != path:
+                if rel != path or not m:
                     stats["fixed_path"] += 1
                 if quote.strip("；; "):
                     try:
@@ -522,10 +542,10 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                             quote = loc[1]
                             stats["added"] += 1
                             changed = True
-                if changed or rel != path:
-                    new_items.append(f"申报材料：{rel} 〈原文摘录〉{quote}" if quote else f"申报材料：{rel}")
-                else:
-                    new_items.append(item)
+                # 材料条目统一规范成 “申报材料：真实路径 〈原文摘录〉原文原句”，点击时逐字匹配必中
+                norm = f"申报材料：{rel} 〈原文摘录〉{quote}" if quote else f"申报材料：{rel}"
+                new_items.append(prefix + norm)
+                changed = True
             if changed:
                 blk["src"] = "；".join(new_items)
     return stats
