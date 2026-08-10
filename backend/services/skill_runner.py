@@ -513,8 +513,8 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                         # 破碎条目（旧拆分把摘录切碎，路径后拖着“；日期：…〉”垃圾尾）：截取到文件扩展名为止
                         m2 = re.match(r"^(.*?\.(?:pdf|docx?|xlsx?|pptx?|png|jpe?g|zip|txt))", body, re.I)
                         path, quote = (m2.group(1), "") if m2 else (body, "")
-                path = path.strip().strip("《》")
-                quote = (quote or "").strip()
+                path = path.strip().strip("《》；; ")
+                quote = (quote or "").strip().strip("；; ")
                 try:
                     rel = materials_client.resolve_material_ref(path, mat_root)
                 except Exception:

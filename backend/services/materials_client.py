@@ -429,7 +429,7 @@ def resolve_material_ref(name: str, mat_root: Path):
     """依据里写的文件名/文件夹名 → 磁盘真实文件（返回相对 mat_root 的路径字符串）。
     与前端 _findMaterialPath 同源的多级规则：精确→包含→多文件混写拆分→编号+核心词→
     任意位置编号→描述性子串→核心词全含→文件夹级。找不到返回 None。"""
-    name = re.sub(r"[《》]", "", name or "").strip()
+    name = re.sub(r"[《》]", "", name or "").strip().strip("；;，, ")
     # 路径后可能跟着 〈摘录〉：文件名本身含括号时 〈…〉 可能跨多层，按“最后一个 〉”切
     ia = name.find("〈")
     if ia >= 0:
