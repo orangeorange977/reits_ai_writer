@@ -202,13 +202,36 @@ async def list_projects(http_req: Request):
             (user_id,)
         )
         rows = await cursor.fetchall()
+        # 项目真实生成状态：从 generation_jobs 实时汇总（projects.status 字段创建后不再维护，
+        # 概览页“生成中/已完成”统计必须看真实任务）。任一章节 running → generating；
+        # 无 running 但有已完成章节 → generated。防僵尸：running 超 40 分钟未更新
+        # 视为重启/崩溃遗留的死任务，不计入“生成中”（用户打开该章时会被既有逻辑自动修正为中断）。
+        from datetime import datetime, timedelta
+        now = datetime.utcnow()
+        jstat = {}  # pid(str) -> [有活跃running, 有已完成章节]
+        try:
+            cur2 = await db.execute("SELECT project_id, status, updated_at FROM generation_jobs")
+            for pid, jst, upd in await cur2.fetchall():
+                live_running = False
+                if jst == "running":
+                    try:
+                        t = datetime.strptime(str(upd)[:19], "%Y-%m-%d %H:%M:%S")
+                        live_running = (now - t) <= timedelta(minutes=40)
+                    except Exception:
+                        live_running = True
+                prev = jstat.get(pid, [False, False])
+                jstat[pid] = [prev[0] or live_running, prev[1] or (jst == "done")]
+        except Exception:
+            pass  # 任务表查不到不影响项目列表返回
         projects = []
         for row in rows:
+            jr, jd = jstat.get(str(row[0]), [False, False])
+            status = "generating" if jr else ("generated" if jd else row[3])
             projects.append(ProjectResponse(
                 id=row[0],
                 name=row[1],
                 data_source_path=row[2],
-                status=row[3],
+                status=status,
                 created_at=row[4],
                 updated_at=row[5],
                 is_demo=is_preset_project(row[2]),
