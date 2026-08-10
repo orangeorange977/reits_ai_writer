@@ -426,6 +426,111 @@ def _save_json(n: int, data: dict, project_id: str = None) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _split_src_items(src: str) -> list:
+    """把块的 src 拆成一条条依据：先按〈数字〉引注号拆，再按“；”拆（兼容旧格式）。"""
+    items = []
+    for part in re.split(r"〈\d+〉", src or ""):
+        for seg in re.split(r"[；;]", part):
+            seg = seg.strip()
+            if seg:
+                items.append(seg)
+    return items
+
+
+def _ctx_of_block(blk: dict) -> str:
+    """依据没带摘录时的备选搜索文本：块自身的正文/表格值（就是这条依据支撑的内容）。"""
+    t = blk.get("type")
+    if t == "p":
+        return blk.get("text") or ""
+    if t in ("kv", "grid"):
+        vals = []
+        for r in blk.get("rows", []) or []:
+            if isinstance(r, dict):
+                v = str(r.get("value") or "").strip()
+            else:
+                v = " ".join(str(x) for x in r if str(x).strip())
+            if v:
+                vals.append(v)
+        return "；".join(vals)
+    return ""
+
+
+def verify_fix_refs(sections: list, mat_root: Path) -> dict:
+    """依据自检纠偏（生成后/手工修复都可调）：逐条 src 里的“申报材料”依据——
+    ① 路径归一到磁盘真实文件（AI 写的文件名常有出入）；
+    ② 摘录定位：文字层 PDF 逐字→片段投票搜页；扫描件只用已缓存 OCR 页（避免拖慢生成）；
+    ③ AI 摘录是改写/缺失时，替换/补上命中处的**原文原句**——点击时前端逐字匹配必中。
+    全程 try/except 容错：自检失败不阻断生成，保留原依据。返回统计。"""
+    stats = {"total": 0, "fixed_path": 0, "verbatim": 0, "replaced": 0, "added": 0, "failed": 0}
+    if not mat_root or not Path(mat_root).is_dir():
+        return stats
+    for sec in sections or []:
+        for blk in sec.get("blocks", []) or []:
+            src = (blk.get("src") or "").strip()
+            if not src:
+                continue
+            new_items, changed = [], False
+            for item in _split_src_items(src):
+                stats["total"] += 1
+                m = re.match(r"^申报材料[：:](.+)$", item)
+                if not m:
+                    new_items.append(item)  # 天眼查/摘要等非文件依据原样保留
+                    continue
+                body = m.group(1).strip()
+                pm = body.split("〈原文摘录〉")
+                if len(pm) > 1:
+                    path, quote = pm[0], "〈原文摘录〉".join(pm[1:])
+                else:
+                    mm = re.match(r"^([^〈]*)〈([^〉]*)〉", body)
+                    if mm:
+                        path, quote = mm.group(1), mm.group(2)
+                    else:
+                        path, quote = body, ""
+                path = path.strip().strip("《》")
+                quote = (quote or "").strip()
+                try:
+                    rel = materials_client.resolve_material_ref(path, mat_root)
+                except Exception:
+                    rel = None
+                if rel is None:
+                    stats["failed"] += 1
+                    new_items.append(item)
+                    continue
+                if rel != path:
+                    stats["fixed_path"] += 1
+                if quote.strip("；; "):
+                    try:
+                        loc = materials_client.locate_quote_in_pdf(mat_root / rel, quote, cached_only=True)
+                    except Exception as e:
+                        logger.debug(f"依据自检定位异常 {rel}: {e}")
+                        loc = None
+                    if loc and loc[2]:
+                        stats["verbatim"] += 1      # 摘录本就是原文，无需改
+                    elif loc and loc[1]:
+                        quote = loc[1]
+                        stats["replaced"] += 1      # 改写成原文片段，点击必中
+                        changed = True
+                else:
+                    # 无摘录：用本块正文/表格值去原文里找，找到就补上原句
+                    ctx = _ctx_of_block(blk)
+                    if len(ctx.strip()) >= 8:
+                        try:
+                            loc = materials_client.locate_quote_in_pdf(mat_root / rel, ctx, cached_only=True)
+                        except Exception:
+                            loc = None
+                        if loc and loc[1]:
+                            quote = loc[1]
+                            stats["added"] += 1
+                            changed = True
+                if changed or rel != path:
+                    new_items.append(f"申报材料：{rel} 〈原文摘录〉{quote}" if quote else f"申报材料：{rel}")
+                else:
+                    new_items.append(item)
+            if changed:
+                blk["src"] = "；".join(new_items)
+    return stats
+
+
 def _skeleton_section(n: int, i: int, title: str, tpl_entries: list) -> dict:
     """还没生成的小标题：用官方模板里该小标题下的表格骨架（空表）铺出 blocks，
     让编辑区即便没生成也能看到本节有哪些表、可直接手填。"""
@@ -913,6 +1018,15 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
     # 参考材料清单随章节落盘，编辑区据此展示“本章生成参考了哪些材料”
     if isinstance(data, dict):
         data["refs"] = refs
+    # 依据自检纠偏：落盘前把每条依据的路径归一到真实文件、摘录替换成原文原句，
+    # 保证点击依据时逐字匹配必中（失败不阻断生成）
+    if isinstance(data, dict) and mat_root is not None and data.get("sections"):
+        try:
+            st = verify_fix_refs(data["sections"], mat_root)
+            logger.info(f"ch{n} 依据自检：共{st['total']}条，路径修正{st['fixed_path']}，"
+                        f"原文直中{st['verbatim']}，摘录改原文{st['replaced']}，补摘录{st['added']}，未定位{st['failed']}")
+        except Exception as e:
+            logger.warning(f"ch{n} 依据自检失败（不影响生成）：{e}")
     try:
         _save_json(n, data, project_id)
     except Exception as e:

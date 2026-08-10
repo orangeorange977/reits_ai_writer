@@ -5,6 +5,7 @@
 扫描件（无文字层的 PDF/图片）读不出正文，会如实说明——那部分需要后续 OCR/视觉能力。
 """
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -291,6 +292,207 @@ def pdf_has_text_layer(fp: Path) -> bool:
         return any(doc[i].get_text().strip() for i in range(min(doc.page_count, 6)))
     finally:
         doc.close()
+
+
+# ===== 依据定位共享能力：搜页归一/特征词/文字层搜页/原文截取/文件解析，
+# 供 projects.py（点击预览）与 skill_runner.py（生成后自检）共用 =====
+
+def norm_q(s: str) -> str:
+    """搜页归一：抹平空白/连字符/破折号（AI 摘录 “A18” vs 原文 “A-18”）。"""
+    return re.sub(r"[\s\-—–]", "", s or "")
+
+
+def quote_tokens(quote: str):
+    """摘录的特征词：数字（≥4位）+ 中文片段（≥6字，最多8个）。
+    片段再按虚词拆出核心专名（“以国际信息云聚核港”→“国际信息云聚核港”），供搜页与高亮框共用。"""
+    nums = [t for t in re.findall(r"\d+(?:\.\d+)?", quote or "") if len(t) >= 4]
+    frags = []
+    for f in re.split(r"[，。；：、！？…〈〉《》()（）\"\u201c\u201d\s]+", quote or ""):
+        f = f.strip()
+        if len(f) >= 6 and f not in frags:
+            frags.append(f)
+        for sub in re.split(r"[以与其及作为系指在为或是等]+", f):
+            sub = sub.strip()
+            if 6 <= len(sub) <= 14 and sub not in frags:
+                frags.append(sub)
+    return nums, frags[:8]
+
+
+def quote_page_hit(doc, n: int, quote: str):
+    """文字层搜页：逐字 / 去空白 / 片段投票（命中≥2 或单片段≥10字）。AI 摘录常是改写，逐字匹配太严。"""
+    q = (quote or "").strip()
+    if not q:
+        return None
+    qn = re.sub(r"\s+", "", q)
+    for i in range(n):
+        t = doc[i].get_text()
+        if q in t or qn in re.sub(r"\s+", "", t):
+            return i + 1
+    nums, frags = quote_tokens(q)
+    if not frags and not nums:
+        return None
+    for i in range(n):
+        tn = norm_q(doc[i].get_text())
+        if any(len(f) >= 10 and norm_q(f) in tn for f in frags) or sum(1 for f in frags if norm_q(f) in tn) >= 2 \
+                or (nums and sum(1 for x in nums if x in tn) >= 2):
+            return i + 1
+    return None
+
+
+def page_original_snippet(doc, page_idx: int, quote: str, max_len: int = 140) -> str:
+    """在指定页的文字层里按片段/数字特征截取含摘录的连续原文行（去换行压空白），
+    供生成自检时把 AI 改写过的摘录替换成可逐字命中的原文。找不到返回空串。"""
+    nums, frags = quote_tokens(quote)
+    cands = [norm_q(f) for f in frags if len(f) >= 6] + list(nums)
+    qn = norm_q((quote or "").strip())[:16]
+    if qn and len(qn) >= 6:
+        cands.append(qn)
+    if not cands:
+        return ""
+    lines = []
+    for blk in doc[page_idx].get_text("dict").get("blocks", []):
+        for ln in blk.get("lines", []):
+            txt = "".join(sp.get("text", "") for sp in ln.get("spans", []))
+            if len(txt.strip()) >= 4:
+                lines.append(txt.strip())
+    hit = [False] * len(lines)
+    for i, txt in enumerate(lines):
+        nt = norm_q(txt)
+        if any(c in nt or nt in c for c in cands):
+            hit[i] = True
+    if not any(hit):
+        return ""
+    s = hit.index(True)
+    e = s
+    for j in range(s + 1, min(len(lines), s + 6)):
+        if hit[j]:
+            e = j
+        elif len(norm_q(lines[j])) >= 4:
+            break
+    snip = re.sub(r"\s+", "", "".join(lines[s:e + 1]))
+    if len(snip) > max_len:
+        center = next((snip.find(c) for c in cands if c in snip), 0)
+        a = max(0, center - max_len // 2)
+        snip = snip[a:a + max_len]
+    return snip
+
+
+def locate_quote_in_pdf(fp: Path, quote: str, cached_only: bool = False):
+    """在 PDF 里定位摘录：返回 (页码从1起, 该页可逐字命中的原文片段, 是否逐字原文, 是否文字层PDF)。
+    有文字层：逐字→片段投票搜页，再截取原文片段；
+    扫描件：逐页 OCR（cached_only=True 时只用已缓存页，避免整篇 OCR 拖慢生成）。全找不到返回 None。"""
+    import fitz
+    q = (quote or "").strip()
+    if not q or fp.suffix.lower() != ".pdf":
+        return None
+    doc = fitz.open(str(fp))
+    try:
+        n = doc.page_count
+        if any(doc[i].get_text().strip() for i in range(min(n, 6))):
+            hit = quote_page_hit(doc, n, q)
+            if not hit:
+                return None
+            qn = re.sub(r"\s+", "", q)
+            is_verbatim = False
+            for i in range(n):
+                t = re.sub(r"\s+", "", doc[i].get_text())
+                if qn in t:
+                    is_verbatim = True
+                    break
+            return hit, page_original_snippet(doc, hit - 1, q), is_verbatim, True
+    finally:
+        doc.close()
+    # 扫描件：只用（已缓存的）OCR 页文本搜，与运行时搜页同一份缓存
+    qn = norm_q(q)
+    nums, frags = quote_tokens(q)
+    is_verbatim = False
+    for i in range(pdf_page_count(fp)):
+        cf = DATA_SOURCE_BASE / ".ocr_cache"
+        if cached_only and not any(cf.rglob(f"p{i}.txt")):
+            continue
+        t = norm_q(ocr_page_text(fp, i))
+        if not t:
+            continue
+        if qn in t:
+            is_verbatim = True
+            return i + 1, re.sub(r"\s+", "", q)[:140], True, False
+        if (nums and any(x in t for x in nums)) or (frags and sum(1 for f in frags if norm_q(f) in t) >= 2):
+            return i + 1, "", False, False
+    return None
+
+
+def resolve_material_ref(name: str, mat_root: Path):
+    """依据里写的文件名/文件夹名 → 磁盘真实文件（返回相对 mat_root 的路径字符串）。
+    复刻前端 _findMaterialPath 的多级规则：精确→包含→编号+核心词→任意位置编号→
+    描述性子串→核心词全含→多文件混写拆分→文件夹级。找不到返回 None。"""
+    name = re.sub(r"[《》]", "", name or "").strip().split("〈")[0].strip()
+    if "/" in name:
+        name = name.split("/")[-1].strip()
+    if not name or len(name) < 3:
+        return None
+    files, dirs = [], set()
+    for root, ds, fs in os.walk(mat_root):
+        for f in fs:
+            rel = str(Path(root, f).relative_to(mat_root))
+            files.append(rel)
+            dirs.add(str(Path(root).relative_to(mat_root)))
+    dirs.discard(".")
+
+    def base(p):
+        return p.split("/")[-1]
+
+    def stem(s):
+        return re.sub(r"\.[^.]+$", "", s)
+
+    for p in files:
+        if base(p) == name:
+            return p
+    for p in files:
+        if name in base(p) or base(p) in name:
+            return p
+    s1 = stem(name)
+    if len(s1) >= 4:
+        for p in files:
+            if s1 in stem(base(p)) or stem(base(p)) in s1:
+                return p
+    m = re.match(r"^(\d+(?:[-—]\d+)?)\s*[、.．]?(.+)$", name)
+    if m:
+        num, core = m.group(1).replace("—", "-"), stem(m.group(2).strip())
+        if core:
+            cands = [p for p in files if stem(base(p)).startswith(num) and core in stem(base(p))]
+            if cands:
+                return cands[0]
+            cands = [p for p in files if ("-" + num) in ("-" + stem(base(p))) or stem(base(p)).startswith(num + "号")]
+            if cands:
+                return cands[0]
+    m2 = re.search(r"(\d+(?:[-—]\d+)?)\s*号?", name)
+    if m2:
+        num2 = m2.group(1).replace("—", "-")
+        cands = [p for p in files
+                 if num2 in stem(base(p)) or num2.split("-")[-1] in stem(base(p)).split("-")]
+        if cands:
+            return cands[0]
+    toks = [t for t in re.split(r"[\s，。、；：/]+", stem(name)) if len(t) >= 2]
+    if toks:
+        cands = [(sum(1 for t in toks if t in stem(base(p))), p) for p in files]
+        cands = [(c, p) for c, p in cands if c >= min(2, len(toks))]
+        if cands:
+            return max(cands, key=lambda x: x[0])[1]
+    for sep in ["、", "及", "和", "，"]:
+        if sep in name:
+            for part in name.split(sep):
+                r = resolve_material_ref(part, mat_root)
+                if r:
+                    return r
+    nm2 = re.sub(r"^[号文件No.\s]+", "", name).strip()
+    if len(nm2) >= 4:
+        for d in dirs:
+            dn = d.split("/")[-1]
+            if dn == nm2 or dn in nm2 or nm2 in dn:
+                under = sorted(p for p in files if p.startswith(d + "/"))
+                if under:
+                    return under[0]
+    return None
 
 
 def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> str:

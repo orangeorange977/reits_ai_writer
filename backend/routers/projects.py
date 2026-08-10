@@ -545,26 +545,15 @@ _quote_search_tasks = {}  # key -> {"status": "running"|"done", "hit": int|None,
 
 
 def _norm_q(s: str) -> str:
-    """搜页归一：抹平空白/连字符/破折号（AI 摘录 “A18” vs 原文 “A-18”）。"""
-    import re as _re
-    return _re.sub(r"[\s\-—–]", "", s or "")
+    return materials_client.norm_q(s)
 
 
 def _quote_tokens(quote: str):
-    """摘录的特征词：数字（≥4位）+ 中文片段（≥6字，最多8个）。
-    片段再按虚词拆出核心专名（“以国际信息云聚核港”→“国际信息云聚核港”），供搜页与高亮框共用。"""
-    import re as _re
-    nums = [t for t in _re.findall(r"\d+(?:\.\d+)?", quote or "") if len(t) >= 4]
-    frags = []
-    for f in _re.split(r"[，。；：、！？…〈〉《》()（）\"\u201c\u201d\s]+", quote or ""):
-        f = f.strip()
-        if len(f) >= 6 and f not in frags:
-            frags.append(f)
-        for sub in _re.split(r"[以与其及作为系指在为或是等]+", f):
-            sub = sub.strip()
-            if 6 <= len(sub) <= 14 and sub not in frags:
-                frags.append(sub)
-    return nums, frags[:8]
+    return materials_client.quote_tokens(quote)
+
+
+def _quote_page_hit(doc, n: int, quote: str):
+    return materials_client.quote_page_hit(doc, n, quote)
 
 
 def _text_highlight_box(doc, page_idx: int, quote: str):
@@ -605,28 +594,6 @@ def _text_highlight_box(doc, page_idx: int, quote: str):
     x1 = max(r.x1 for r in rects) * k
     y1 = max(r.y1 for r in rects) * k
     return [max(0, x0 - 14), max(0, y0 - 30), x1 + 14, y1 + 36]
-
-
-def _quote_page_hit(doc, n: int, quote: str):
-    """文字层搜页：逐字 / 去空白 / 片段投票（命中≥2 或单片段≥10字）。AI 摘录常是改写，逐字匹配太严。"""
-    import re as _re
-    q = (quote or "").strip()
-    if not q:
-        return None
-    qn = _re.sub(r"\s+", "", q)
-    for i in range(n):
-        t = doc[i].get_text()
-        if q in t or qn in _re.sub(r"\s+", "", t):
-            return i + 1
-    nums, frags = _quote_tokens(q)
-    if not frags and not nums:
-        return None
-    for i in range(n):
-        tn = _norm_q(doc[i].get_text())
-        if any(len(f) >= 10 and _norm_q(f) in tn for f in frags) or sum(1 for f in frags if _norm_q(f) in tn) >= 2 \
-                or (nums and sum(1 for x in nums if x in tn) >= 2):
-            return i + 1
-    return None
 
 
 def _resolve_material_fp(project_id: int, path: str) -> Path:
@@ -690,6 +657,26 @@ async def quote_search_result(project_id: int, http_req: Request, task: str = ""
     """轮询搜页任务结果。"""
     await _assert_project_owned(project_id, _current_user_id(http_req))
     return _quote_search_tasks.get(task) or {"status": "running", "hit": None, "scanned": 0}
+
+
+@router.post("/projects/{project_id}/chapters/{n}/verify-refs")
+async def verify_chapter_refs(project_id: int, n: int, http_req: Request):
+    """对已生成章节的依据跑一遍自检纠偏（路径归一+摘录换原文），用于修复存量章节。"""
+    await _assert_project_owned(project_id, _current_user_id(http_req))
+    from backend.services import skill_runner
+    data = skill_runner._load_json(n, str(project_id))
+    if not data.get("sections"):
+        raise HTTPException(status_code=404, detail=f"第{n}章还没有生成内容")
+    mat_root = _materials_dir(project_id)
+
+    def _run():
+        st = skill_runner.verify_fix_refs(data["sections"], mat_root)
+        skill_runner._save_json(n, data, str(project_id))
+        return st
+
+    st = await asyncio.to_thread(_run)
+    return {"message": f"依据自检完成：共{st['total']}条，路径修正{st['fixed_path']}，"
+                       f"摘录改原文{st['replaced']}，补摘录{st['added']}", **st}
 
 
 @router.delete("/projects/{project_id}/materials")
