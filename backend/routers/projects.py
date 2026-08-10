@@ -618,12 +618,13 @@ def _quote_page_hit(doc, n: int, quote: str):
         t = doc[i].get_text()
         if q in t or qn in _re.sub(r"\s+", "", t):
             return i + 1
-    _, frags = _quote_tokens(q)
-    if not frags:
+    nums, frags = _quote_tokens(q)
+    if not frags and not nums:
         return None
     for i in range(n):
         tn = _norm_q(doc[i].get_text())
-        if any(len(f) >= 10 and _norm_q(f) in tn for f in frags) or sum(1 for f in frags if _norm_q(f) in tn) >= 2:
+        if any(len(f) >= 10 and _norm_q(f) in tn for f in frags) or sum(1 for f in frags if _norm_q(f) in tn) >= 2 \
+                or (nums and sum(1 for x in nums if x in tn) >= 2):
             return i + 1
     return None
 
