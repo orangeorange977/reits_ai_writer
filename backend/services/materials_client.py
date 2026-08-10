@@ -188,10 +188,12 @@ def _reflow_text(text: str) -> str:
         new_para = bool(_NEW_PARA.match(ln))
         is_title = len(ln) <= 24 and not re.search(r'[，,。；;：:！!？?、（）()“”‘’"\'《》〈〉「」『』]', ln)
         is_heading = len(ln) <= 30 and ln.endswith(('：', ':'))
-        # 另起一行的条件：编号段 / 上一行是标题 / 上一句已完且本行像标题或引导句；
+        # 另起一行的条件：编号段 / 上一行是标题 / 本行是引导句（行尾冒号）/
+        # 上一行是引导句（冒号后内容在 Word 里另起一段）/ 上一句已完且本行像标题；
         # 上一句没完（行尾非句末标点）则无条件并入（碎片行合并）。
-        new_line = new_para or (buf and buf_is_title) or \
-            (bool(buf) and bool(_END_STOP.search(buf)) and (is_title or is_heading))
+        new_line = new_para or (buf and buf_is_title) or is_heading or \
+            (bool(buf) and buf.endswith(('：', ':'))) or \
+            (bool(buf) and bool(_END_STOP.search(buf)) and is_title)
         if buf and not new_line:
             buf += ln
         else:
