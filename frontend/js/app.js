@@ -255,6 +255,22 @@ async function openRefByName(text) {
 
 /** 解析一条依据标注并跳转：申报材料→预览原文并高亮摘录；同上文件→复用上一条；摘要表→定位字段行 */
 let _lastSrcMaterialPath = '';
+/** 从依据正文里切出“文件路径 + 摘录”。兼容两种格式：
+ * ① 路径〈原文摘录〉摘录内容；② 路径〈摘录内容〉（无标记词，第一个〈…〉即摘录）。 */
+function _splitPathQuote(body) {
+    let path, quote;
+    const pm = body.split('〈原文摘录〉');
+    if (pm.length > 1) {
+        path = pm[0]; quote = pm.slice(1).join('〈原文摘录〉');
+    } else {
+        const m = body.match(/^([^〈]*)〈([^〉]*)〉/);
+        if (m) { path = m[1]; quote = m[2]; }
+        else { path = body; quote = ''; }
+    }
+    path = path.trim().replace(/^《(.+)》$/, '$1').replace(/〈[^〉]*〉.*$/, '').trim();
+    quote = quote.replace(/[；;]\s*$/, '').trim();
+    return { path, quote };
+}
 function openSrcLink(rawText) {
     const text = String(rawText || '').replace(/^📎\s*依据[：:]/, '').trim();
     if (!text) return;
@@ -266,18 +282,11 @@ function openSrcLink(rawText) {
     for (const seg of items) {
         let m;
         if ((m = seg.match(/^申报材料[：:](.+)$/))) {
-            const body = m[1].trim();
-            // 摘录以〈原文摘录〉为界：前为文件路径，后为摘录内容
-            const pm = body.split('〈原文摘录〉');
-            let path = pm[0].trim()
-                .replace(/^《(.+)》$/, '$1')      // 兼容《xx.docx》包裹写法
-                .replace(/〈[^〉]*〉.*$/, '')          // 兼容旧式〈摘录〉后缀
-                .trim();
-            const quote = (pm[1] || '').replace(/[；;]\s*$/, '').trim();
+            const { path, quote } = _splitPathQuote(m[1].trim());
             if (path) { _lastSrcMaterialPath = path; openMaterialPreviewResolved(path, quote); return; }
         }
         if (/^同上文件/.test(seg)) {
-            const quote = ((seg.split('〈原文摘录〉')[1] || '')).replace(/[；;]\s*$/, '').trim();
+            const { quote } = _splitPathQuote(seg);
             if (_lastSrcMaterialPath) { openMaterialPreviewResolved(_lastSrcMaterialPath, quote); return; }
             showToast('未能定位“同上文件”所指的上一条依据', 'warning'); return;
         }
@@ -320,13 +329,39 @@ async function openMaterialPreview(path, quote) {
         document.getElementById('matPreviewTitle').textContent = `📄 《${d.filename}》原文`;
         const body = document.getElementById('matPreviewBody');
         const text = d.text || '（未能解析出该文件的文字）';
-        // 先逐字匹配摘录；不行再用摘录开头段兜底（标点空格可能有微小出入）
-        let idx = quote ? text.indexOf(quote) : -1;
-        let markLen = quote ? quote.length : 0;
-        if (idx < 0 && quote) {
-            const head = quote.slice(0, Math.max(6, Math.min(14, quote.length)));
-            idx = text.indexOf(head);
-            markLen = head.length;
+        // 定位摘录：①逐字匹配；②开头段兜底；③OCR/扫描件文本常夹杂空格换行，
+        // 用“去空白映射表”做忽略空格匹配；④再不行把常见标点差异也抹平后匹配。
+        let idx = -1, markLen = 0;
+        if (quote) {
+            idx = text.indexOf(quote); markLen = quote.length;
+            if (idx < 0) {
+                const head = quote.slice(0, Math.max(6, Math.min(14, quote.length)));
+                idx = text.indexOf(head); markLen = head.length;
+            }
+            if (idx < 0) {
+                // 忽略所有空白字符的匹配（OCR 输出常在汉字间夹杂空格/换行）
+                const q = quote.replace(/\s+/g, '');
+                const map = [];  // 去空白文本下标 → 原文下标
+                let norm = '';
+                for (let i = 0; i < text.length; i++) {
+                    const ch = text[i];
+                    if (!/\s/.test(ch)) { map.push(i); norm += ch; }
+                }
+                let ni = norm.indexOf(q);
+                let matchChars = q.length;
+                if (ni < 0) {
+                    // 标点归一后再试（OCR 常把“”识成""、全角半角互差）
+                    const flat = s => s.replace(/[“”]/g, '"').replace(/[‘’]/g, "'")
+                        .replace(/（/g, '(').replace(/）/g, ')').replace(/[，。；：、]/g, '');
+                    const q2 = flat(q), n2 = flat(norm);
+                    ni = n2.indexOf(q2); matchChars = q2.length;
+                }
+                if (ni >= 0) {
+                    idx = map[ni];
+                    const end = map[ni + matchChars - 1];
+                    markLen = (end !== undefined ? end : idx) - idx + 1;
+                }
+            }
         }
         let tip = '';
         if (quote && idx >= 0) {
