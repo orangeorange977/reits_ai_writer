@@ -402,19 +402,23 @@ def locate_quote_in_pdf(fp: Path, quote: str, cached_only: bool = False):
             return hit, page_original_snippet(doc, hit - 1, q), is_verbatim, True
     finally:
         doc.close()
-    # 扫描件：只用（已缓存的）OCR 页文本搜，与运行时搜页同一份缓存
+    # 扫描件：用逐页 OCR 文本搜（与运行时搜页同一份磁盘缓存）；
+    # cached_only=True 时短文档（≤12页，承诺函/证明类）允许主动 OCR 保底，长文档只用已缓存页
+    import hashlib
     qn = norm_q(q)
     nums, frags = quote_tokens(q)
-    is_verbatim = False
-    for i in range(pdf_page_count(fp)):
-        cf = DATA_SOURCE_BASE / ".ocr_cache"
-        if cached_only and not any(cf.rglob(f"p{i}.txt")):
+    n = pdf_page_count(fp)
+    st = fp.stat()
+    key = hashlib.md5(f"{fp}|{st.st_size}|{st.st_mtime}".encode()).hexdigest()
+    cache_dir = DATA_SOURCE_BASE / ".ocr_cache" / key
+    allow_full = (not cached_only) or n <= 12
+    for i in range(n):
+        if not allow_full and not (cache_dir / f"p{i}.txt").exists():
             continue
         t = norm_q(ocr_page_text(fp, i))
         if not t:
             continue
         if qn in t:
-            is_verbatim = True
             return i + 1, re.sub(r"\s+", "", q)[:140], True, False
         if (nums and any(x in t for x in nums)) or (frags and sum(1 for f in frags if norm_q(f) in t) >= 2):
             return i + 1, "", False, False
@@ -551,6 +555,20 @@ def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> st
     images = [doc[i].get_pixmap(dpi=_OCR_DPI).tobytes("png") for i in ocr_idxs]
     doc.close()
     ocr = _ocr(images, query)
+    # 后台把本次读过的页写入逐页 OCR 缓存（免费本地 tesseract）：
+    # 生成后的依据自检/运行时搜页即可直接命中这些页，不阻塞本次读取
+    try:
+        import threading
+
+        def _cache_pages(fp=str(p), idxs=list(ocr_idxs)):
+            for i in idxs:
+                try:
+                    ocr_page_text(Path(fp), i)
+                except Exception:
+                    pass
+        threading.Thread(target=_cache_pages, daemon=True).start()
+    except Exception:
+        pass
     if not ocr:
         return (f"（该 PDF 疑似扫描件（共 {n_pages} 页），视觉识别未返回文字。"
                 "文件名可作为“文件全称”使用；如需某页内容，请用 pages 指定页码重试。）")
