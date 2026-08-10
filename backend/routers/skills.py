@@ -584,6 +584,7 @@ async def list_documents(http_req: Request, project_id: str = ""):
             "filename": f.name,
             "size": st.st_size,
             "size_formatted": f"{st.st_size / 1024:.1f} KB" if st.st_size < 1024 * 1024 else f"{st.st_size / 1024 / 1024:.1f} MB",
-            "updated_at": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+            # 统一约定：后端返回 UTC 字符串，前端 _fmtTime 换算北京时间（容器本地是 CST，不能用 fromtimestamp）
+            "updated_at": datetime.utcfromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
         })
     return {"documents": docs}
