@@ -488,31 +488,67 @@ def _src_has_material(src: str) -> bool:
     return bool(re.search(r"申报材料[：:]|\.(?:pdf|docx?|xlsx?|pptx?|png|jpe?g)\b", src or "", re.I))
 
 
+def _snippet_around(text_norm: str, quote: str, span: int = 140) -> str:
+    """无页码材料（Office/txt/OCR 文本）里的原文截取：在归一化文本里找特征词最密集的窗口，
+    截取前后原文作为可逐字命中的摘录。找不到返回空串。"""
+    nums, frags = materials_client.quote_tokens(quote)
+    cands = [materials_client.norm_q(f) for f in frags if len(f) >= 4] + list(nums)
+    if not cands or len(text_norm) < 20:
+        return ""
+    best_pos, best_hits = -1, 0
+    for i in range(0, max(1, len(text_norm) - 20), 40):
+        win = text_norm[i:i + span]
+        hits = sum(1 for c in cands if c in win)
+        if hits > best_hits:
+            best_pos, best_hits = i, hits
+    if best_pos < 0 or not best_hits:
+        return ""
+    return text_norm[max(0, best_pos - 20):best_pos + span]
+
+
 def _find_quote_home(quote: str, mat_root: Path, exclude_rel: str, cache: dict):
-    """摘录不在所挂文件里（AI 挂错文件）时的通用兼底：全项目文字层 PDF 里找真实出处。
-    片段投票命中才采信，找到就返回 (真实相对路径, 该页原文原句)；只扫文字层不触发整篇 OCR。"""
+    """摘录不在所挂文件里（AI 挂错文件/用户手改摘录没改路径）时的通用兼底：
+    全项目找真实出处——①文字层 PDF；②Office/txt 文档；③扫描件已缓存 OCR 页（不主动整篇 OCR）。
+    片段投票命中才采信，找到返回 (真实相对路径, 原文原句)。"""
     import fitz
+    import hashlib
     q = (quote or "").strip()
     if len(q) < 12:
         return None
-    pdfs = cache.get("pdfs")
-    if pdfs is None:
+    if cache.get("files") is None:
         try:
-            pdfs = sorted(mat_root.rglob("*.pdf"))[:500]
+            allf = sorted(mat_root.rglob("*"))
         except Exception:
-            pdfs = []
-        cache["pdfs"] = pdfs
+            allf = []
+        cache["files"] = [p for p in allf if p.is_file()][:1200]
     nums, frags = materials_client.quote_tokens(q)
     if len(frags) < 2 and not nums:
         return None
     need = 3 if len(frags) >= 4 else 2
-    for p in pdfs:
+    qn = materials_client.norm_q(q)
+
+    def hit_in(t):
+        if not t or len(t) < 20:
+            return False
+        if qn in t:
+            return True
+        return sum(1 for f in frags if materials_client.norm_q(f) in t) >= need
+
+    pdfs, docs = [], []
+    for p in cache["files"]:
+        ext = p.suffix.lower()
         try:
             rel = p.relative_to(mat_root).as_posix()
         except Exception:
             continue
         if rel == exclude_rel:
             continue
+        if ext == ".pdf":
+            pdfs.append((p, rel))
+        elif ext in (".docx", ".doc", ".xlsx", ".xls", ".txt"):
+            docs.append((p, rel))
+    # ① 文字层 PDF
+    for p, rel in pdfs:
         try:
             doc = fitz.open(str(p))
         except Exception:
@@ -520,21 +556,44 @@ def _find_quote_home(quote: str, mat_root: Path, exclude_rel: str, cache: dict):
         try:
             n = doc.page_count
             if n > 400 or not any(doc[i].get_text().strip() for i in range(min(n, 6))):
-                continue  # 只扫文字层 PDF；扫描件不主动 OCR，避免自检拖慢
-            qn = materials_client.norm_q(q)
+                continue  # 扫描件留到③用缓存页搜
             for i in range(n):
                 t = materials_client.norm_q(doc[i].get_text())
-                if len(t) < 20:
-                    continue
-                if qn in t:  # 逐字命中：铁证
-                    return rel, materials_client.page_original_snippet(doc, i, q)
-                hit_n = sum(1 for f in frags if materials_client.norm_q(f) in t)
-                if hit_n >= need:
+                if hit_in(t):
                     return rel, materials_client.page_original_snippet(doc, i, q)
         except Exception:
             continue
         finally:
             doc.close()
+    # ② Office/txt 文档（数量少、解析快）
+    for p, rel in docs[:300]:
+        try:
+            text = materials_client.extract_file_text(p, "")
+        except Exception:
+            continue
+        t = materials_client.norm_q(text or "")
+        if hit_in(t):
+            return rel, _snippet_around(t, q)
+    # ③ 扫描件 PDF：只用已缓存 OCR 页，不主动整篇识别
+    for p, rel in pdfs:
+        try:
+            doc = fitz.open(str(p))
+            n = doc.page_count
+        except Exception:
+            continue
+        doc.close()
+        if n > 400:
+            continue
+        st = p.stat()
+        key = hashlib.md5(f"{p}|{st.st_size}|{st.st_mtime}".encode()).hexdigest()
+        cdir = materials_client.DATA_SOURCE_BASE / ".ocr_cache" / key
+        for i in range(n):
+            cf = cdir / f"p{i}.txt"
+            if not cf.exists():
+                continue
+            t = materials_client.norm_q(cf.read_text(encoding="utf-8", errors="ignore"))
+            if hit_in(t):
+                return rel, _snippet_around(t, q)
     return None
 
 
@@ -623,8 +682,18 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                 except Exception:
                     rel = None
                 if rel is None:
-                    stats["failed"] += 1
-                    new_items.append((num, item))
+                    # 描述性条目（如“备考财务报表附注〈13.营业收入…〉”，无真实路径可解析）：
+                    # 拿〈〉里的内容全项目找真实出处，找到就重建成标准材料条目
+                    ia, ie = body.find("〈"), body.rfind("〉")
+                    desc_q = body[ia + 1:ie].strip() if ia >= 0 and ie > ia else ""
+                    home = _find_quote_home(desc_q, mat_root, "", home_cache) if has_mat and desc_q else None
+                    if home:
+                        new_items.append((num, f"申报材料：{home[0]} 〈原文摘录〉{home[1] or desc_q}"))
+                        stats["rehomed"] += 1
+                        changed = True
+                    else:
+                        stats["failed"] += 1
+                        new_items.append((num, item))
                     continue
                 if rel != path or not m:
                     stats["fixed_path"] += 1
@@ -685,9 +754,12 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                     for old, new in remap.items():
                         t2 = t2.replace(f"〈{old}〉", f"〈#{new}#〉")
                     blk["text"] = re.sub(r"〈#(\d+)#〉", r"〈\1〉", t2)
-            elif changed:
-                blk["src"] = "；".join(((f"〈{num}〉" if num else "") + txt).rstrip("；; ")
-                                      for num, txt in new_items)
+            else:
+                # 无论单条是否改动，统一规范化拼回（去条目尾分号等格式残留）：拼回结果与原文不同才写
+                norm_src = "；".join(((f"〈{num}〉" if num else "") + txt).rstrip("；; ")
+                                     for num, txt in new_items)
+                if changed or norm_src != src:
+                    blk["src"] = norm_src
     return stats
 
 
