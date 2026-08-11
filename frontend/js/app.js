@@ -362,6 +362,11 @@ function openSrcLink(rawText, ctx) {
             if (company) { openTianyancha(company); return; }
         }
         if ((m = seg.match(/^摘要表[：:](.+)$/))) { jumpToSummaryField(m[1].trim()); return; }
+        if ((m = seg.match(/^planning\.md[：:](.+)$/)) || seg === 'planning.md') {
+            // 依据来自写作总纲：打开 planning.md 原文并高亮摘录（冒号后是摘录内容）
+            openMaterialPreview('planning.md', m ? m[1].trim() : '');
+            return;
+        }
     }
     // 无类型前缀的裸文件名（部分旧格式）：尝试按名定位
     if (text.length <= 60 && !/^(天眼查|网络公开|固定表述|planning)/.test(text)) {

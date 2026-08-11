@@ -460,6 +460,14 @@ async def list_materials(project_id: int, http_req: Request):
 async def preview_material(project_id: int, http_req: Request, path: str = ""):
     """解析上传材料的原文（供“依据”标注点击后核对出处用，非下载）。"""
     await _assert_project_owned(project_id, _current_user_id(http_req))
+    # planning.md（写作总纲）不是上传材料、属于模板包：依据点击时同样返回原文供核对
+    if (path or "").strip() == "planning.md":
+        from backend.database.db import get_project_pack_id
+        pp = pack_service.planning_path(await get_project_pack_id(project_id))
+        if not pp.exists():
+            raise HTTPException(status_code=404, detail="当前项目未绑定写作总纲 planning.md")
+        return {"filename": "写作总纲 planning.md", "path": path,
+                "text": pp.read_text(encoding="utf-8", errors="replace")[:120000]}
     root = _materials_dir(project_id)
     parts = [seg for seg in (path or "").replace("\\", "/").split("/") if seg and seg != "."]
     if not parts or any(seg == ".." for seg in parts):
