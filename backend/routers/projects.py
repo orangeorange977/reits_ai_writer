@@ -582,6 +582,8 @@ def _text_highlight_box(doc, page_idx: int, quote: str, toks: list = None):
     cands.append((quote or "").strip()[:16])
     cands += [t for t in (toks or []) if len(t) >= 3]
     nset = {_norm_q(f) for f in cands if len(f) >= 4}
+    # 滑窗兜底：fuzzy 词经滑窗命中页面时，行级匹配也用同一套滑窗，保证能框出大致位置
+    winset = {w for nf in nset for w in materials_client._tok_windows(nf)} if toks else set()
     hb = []
     for blk in page.get_text("dict").get("blocks", []):
         for ln in blk.get("lines", []):
@@ -589,7 +591,7 @@ def _text_highlight_box(doc, page_idx: int, quote: str, toks: list = None):
             nt = _norm_q(txt)
             if len(nt) < 6:
                 continue
-            if any(nf in nt or nt in nf for nf in nset):
+            if any(nf in nt or nt in nf for nf in nset) or (winset and any(w in nt for w in winset)):
                 hb.append(ln["bbox"])
     hb = hb[:8]
     if hb:
@@ -653,10 +655,12 @@ def _run_quote_search(key: str, fp: Path, quote: str):
                 box = [v * 1.2 for v in b] if b else None  # 100dpi→120dpi，与文字层约定一致
                 break
             m = materials_client.fuzzy_match_tokens(t, ftoks)
-            if len(m) >= need and (best_fuzzy is None or len(m) > len(best_fuzzy[1])):
+            if m and (best_fuzzy is None or len(m) > len(best_fuzzy[1])):
                 best_fuzzy = (i, m)
             _quote_search_tasks[key] = {"status": "running", "hit": None, "scanned": i + 1}
-        if hit is None and best_fuzzy:
+        # 宽松兜底（与 fuzzy_quote_page_hit 同规则）：达阈值、或重叠≥2、或≤6页小文档重叠≥1
+        if hit is None and best_fuzzy and (len(best_fuzzy[1]) >= need or len(best_fuzzy[1]) >= 2
+                                           or (n <= 6 and len(best_fuzzy[1]) >= 1)):
             hit = best_fuzzy[0] + 1
             fuzzy = True
             b = materials_client.ocr_page_highlight_box(fp, best_fuzzy[0], best_fuzzy[1])

@@ -274,7 +274,7 @@ def ocr_page_highlight_box(fp: Path, page_idx: int, nums: list):
         e["box"] = [x, y, x + w, y + h] if b is None else [min(b[0], x), min(b[1], y), max(b[2], x + w), max(b[3], y + h)]
         e["text"] += txt
     hit_boxes = [v["box"] for v in lines.values()
-                 if v["box"] and any(_norm_tok(num) in _norm_tok(v["text"]) for num in nums)]
+                 if v["box"] and any(w in norm_q(v["text"]) for num in nums for w in _tok_windows(num))]
     if not hit_boxes:
         return None
     x0 = min(b[0] for b in hit_boxes)
@@ -342,9 +342,24 @@ def fuzzy_quote_tokens(quote: str) -> list:
 
 
 def fuzzy_match_tokens(text_norm: str, toks: list) -> list:
-    """归一化文本里命中的特征词子集（toks 需已来自 fuzzy_quote_tokens）。"""
-    return [t for t in toks if norm_q(t) and norm_q(t) in (text_norm or "")]
+    """归一化文本里命中的特征词子集。整词不中时用 5 字滑窗容忍 OCR 缺字/多字
+    （如原文识别成“家企业信用信息公示系统”，整词“国家企业信用信息公示”不中、滑窗可中）。"""
+    out = []
+    for t in toks:
+        ws = _tok_windows(t)
+        if ws and any(w in (text_norm or "") for w in ws):
+            out.append(t)
+    return out
 
+
+def _tok_windows(tok: str, w: int = 5) -> list:
+    """特征词的归一化滑窗（短词整词、长词切 5 字窗），供容忍匹配/画框共用。"""
+    t = norm_q(tok)
+    if not t:
+        return []
+    if len(t) <= w:
+        return [t]
+    return [t[i:i + w] for i in range(len(t) - w + 1)]
 
 def fuzzy_hit_threshold(toks: list) -> int:
     """模糊命中阈值：特征词越多要求命中越多，少时至少 2 个（防单关键词误中他页）。"""
@@ -352,7 +367,8 @@ def fuzzy_hit_threshold(toks: list) -> int:
 
 
 def fuzzy_quote_page_hit(doc, n: int, quote: str):
-    """文字层模糊搜页：按关键词重叠数取最优页，返回 (页码从1起, 命中特征词列表)；不达阈值返回 None。"""
+    """文字层模糊搜页：按关键词重叠数取最优页，返回 (页码从1起, 命中特征词列表)。
+    达阈值直接取最优页；都不达阈值时宽松兜底（重叠≥2，或≤6页小文档重叠≥1）取最高分页框大致位置。"""
     toks = fuzzy_quote_tokens(quote)
     if len(toks) < 2:
         return None
@@ -363,9 +379,11 @@ def fuzzy_quote_page_hit(doc, n: int, quote: str):
         if len(tn) < 8:
             continue
         m = fuzzy_match_tokens(tn, toks)
-        if len(m) >= need and (best is None or len(m) > len(best[1])):
+        if m and (best is None or len(m) > len(best[1])):
             best = (i + 1, m)
-    return best
+    if best and (len(best[1]) >= need or len(best[1]) >= 2 or (n <= 6 and len(best[1]) >= 1)):
+        return best
+    return None
 
 
 def quote_page_hit(doc, n: int, quote: str):
