@@ -197,7 +197,7 @@ def _block_to_html(blk, fn_counter):
     # 固定表述/待核实/网络信息无原文可查：整条不展示（真条目边界拆分，摘录内分号不会切碎）
     src = str(blk.get("src") or "").strip()
     if html and src:
-        notes = [(num, it) for num, it in _split_src_items(src) if not _is_untraceable_src(it)]
+        notes = [(num, it.rstrip("；; ")) for num, it in _split_src_items(src) if not _is_untraceable_src(it)]
         if len(notes) > 1 or (notes and notes[0][0]):
             inner = "；".join(
                 f'<span class="src-item" title="点击查看原文出处">{_esc_html((f"〈{num}〉" if num else "") + it)}</span>'
@@ -435,13 +435,16 @@ def _save_json(n: int, data: dict, project_id: str = None) -> None:
 
 
 # 真条目边界：“；”后跟新来源前缀（申报材料/摘要表/天眼查/网络/planning/固定表述/同上/待核实）或引注号〈n〉。
-# 摘录内容里的分号（“经营异常0条；司法判决0条”）不是边界，不能在那里拆，否则条目被切碎
-_SRC_SPLIT_RE = re.compile(r"；(?=(?:申报材料|摘要表|释义|其他基本信息|天眼查|网络公开信息|planning|固定表述|同上|待核实|〈\d+〉))")
+# 摘录内容里的分号（“经营异常0条；司法判决0条”）不是边界，不能在那里拆，否则条目被切碎。
+# （?=前瞻）不消耗分号：手动把边界分号归到前一条目尾部，写回时 rstrip 才能真正清掉它；
+# 否则分号被 strip 吞掉后拼回与原文字节一致，格式残留（条目尾分号）永远写不回
+_SRC_SPLIT_RE = re.compile(r"(?=；(?:申报材料|摘要表|释义|其他基本信息|天眼查|网络公开信息|planning|固定表述|同上|待核实|〈\d+〉))")
 
 
 def _split_src_items(src: str) -> list:
     """把块的 src 拆成一条条依据，返回 [(引注号或None, 条目文本), ...]：
-    先按〈数字〉引注号拆（段首的号记下来，写回时恢复），再只在真条目边界处拆。"""
+    先按〈数字〉引注号拆（段首的号记下来，写回时恢复），再只在真条目边界处拆；
+    边界分号保留在前一条目尾部（写回时统一 rstrip 清理）。"""
     items = []
     parts = re.split(r"〈(\d+)〉", src or "")
     # parts = [前缀, 号1, 段1, 号2, 段2, ...]
@@ -450,9 +453,15 @@ def _split_src_items(src: str) -> list:
         if i % 2 == 1:
             num = part
             continue
-        segs = [s.strip() for s in _SRC_SPLIT_RE.split(part) if s.strip()]
+        segs = [s for s in _SRC_SPLIT_RE.split(part) if s.strip()]
+        # 前瞻切出的段首带边界分号：搬到前一条目尾部（写回时 rstrip 统一清理），
+        # 保证条目文本以“申报材料：/天眼查：”等前缀开头，下游正则不误判
+        for j in range(1, len(segs)):
+            if segs[j].lstrip().startswith("；") and j > 0:
+                segs[j] = segs[j].lstrip()[1:]
+                segs[j - 1] = segs[j - 1].rstrip(" ") + "；"
         for j, seg in enumerate(segs):
-            items.append((num if j == 0 else None, seg))
+            items.append((num if j == 0 else None, seg.strip(" ")))
         if segs:
             num = None
     return items
