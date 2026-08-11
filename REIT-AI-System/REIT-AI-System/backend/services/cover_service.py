@@ -14,11 +14,17 @@ import json
 import re
 from pathlib import Path
 
-from backend.config import SKILLS_DIR
-from backend.services import summary_service
+from backend.services import summary_service, project_store
 
-COVER_CONFIG_PATH = SKILLS_DIR / "cover_saved.json"
-COVER_ASSETS_DIR = SKILLS_DIR / "cover_assets"
+
+def _cover_config_path():
+    """当前项目的封面配置文件（每个项目一份）。"""
+    return project_store.current_dir() / "cover_saved.json"
+
+
+def _cover_assets_dir():
+    """当前项目的封面图片目录（每个项目一份）。"""
+    return project_store.current_dir() / "cover_assets"
 
 # 4 个 logo 角色（顺序即封面从上到下 / 从左到右）
 LOGO_ROLES = ["issuer", "fund_manager", "plan_manager", "advisor"]
@@ -40,9 +46,10 @@ _TITLE_SPLIT_ANCHOR = "基础设施"
 # ============ 配置存取 ============
 
 def _load_config() -> dict:
-    if COVER_CONFIG_PATH.exists():
+    path = _cover_config_path()
+    if path.exists():
         try:
-            data = json.loads(COVER_CONFIG_PATH.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 data.setdefault("date_text", "")
                 data.setdefault("logos", {})
@@ -53,7 +60,7 @@ def _load_config() -> dict:
 
 
 def _save_config(cfg: dict) -> None:
-    COVER_CONFIG_PATH.write_text(
+    _cover_config_path().write_text(
         json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
@@ -71,14 +78,15 @@ def logo_path(role: str):
     fname = _load_config().get("logos", {}).get(role)
     if not fname:
         return None
-    p = COVER_ASSETS_DIR / fname
+    p = _cover_assets_dir() / fname
     return p if p.exists() else None
 
 
 def save_logo(role: str, filename: str, data: bytes) -> None:
     if role not in LOGO_ROLES:
         raise ValueError(f"未知的 logo 角色：{role}")
-    COVER_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+    assets = _cover_assets_dir()
+    assets.mkdir(parents=True, exist_ok=True)
     ext = (Path(filename).suffix or ".png").lower()
     if ext not in (".png", ".jpg", ".jpeg"):
         ext = ".png"
@@ -86,14 +94,14 @@ def save_logo(role: str, filename: str, data: bytes) -> None:
     # 删掉旧文件（可能扩展名不同）
     old = cfg.get("logos", {}).get(role)
     if old:
-        old_p = COVER_ASSETS_DIR / old
+        old_p = assets / old
         if old_p.exists():
             try:
                 old_p.unlink()
             except OSError:
                 pass
     out_name = f"cover_logo_{role}{ext}"
-    (COVER_ASSETS_DIR / out_name).write_bytes(data)
+    (assets / out_name).write_bytes(data)
     cfg.setdefault("logos", {})[role] = out_name
     _save_config(cfg)
 
@@ -102,7 +110,7 @@ def delete_logo(role: str) -> None:
     cfg = _load_config()
     fname = cfg.get("logos", {}).pop(role, None)
     if fname:
-        p = COVER_ASSETS_DIR / fname
+        p = _cover_assets_dir() / fname
         if p.exists():
             try:
                 p.unlink()

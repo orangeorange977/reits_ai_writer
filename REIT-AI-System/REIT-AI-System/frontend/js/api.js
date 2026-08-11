@@ -6,10 +6,31 @@
 // 部署到服务器后，用谁的地址访问就自动用谁（http://服务器IP或域名/api），无需再改。
 const API_BASE = window.location.origin + '/api';
 
+// 本浏览器当前正在编辑的项目 id（多人各改各的：随请求带给后端，互不覆盖）。
+// 存在 localStorage，刷新/重开也记得自己在编辑哪个项目。
+let ACTIVE_PROJECT_ID = '';
+try { ACTIVE_PROJECT_ID = localStorage.getItem('reitai_activeProjectId') || ''; } catch (e) { }
+
 /**
  * API调用工具类
  */
 const API = {
+    /** 设置本浏览器“当前项目”（进入/新建项目时调用），随后所有请求都带上它 */
+    setActiveProject(id) {
+        ACTIVE_PROJECT_ID = id || '';
+        try { localStorage.setItem('reitai_activeProjectId', ACTIVE_PROJECT_ID); } catch (e) { }
+    },
+    getActiveProject() { return ACTIVE_PROJECT_ID; },
+    /** 给“图片/下载”这类无法带自定义请求头的 URL 追加 pid 查询参数 */
+    withPid(url) {
+        if (!ACTIVE_PROJECT_ID) return url;
+        return url + (url.includes('?') ? '&' : '?') + 'pid=' + encodeURIComponent(ACTIVE_PROJECT_ID);
+    },
+    /** multipart（FormData）上传用的请求头：只带项目 id，不设 Content-Type（交给浏览器） */
+    _pidHeaders() {
+        return ACTIVE_PROJECT_ID ? { 'X-Project-Id': ACTIVE_PROJECT_ID } : {};
+    },
+
     /**
      * 通用请求方法
      * @param {string} endpoint - API端点路径
@@ -21,6 +42,8 @@ const API = {
         const defaultHeaders = {
             'Content-Type': 'application/json',
         };
+        // 带上本浏览器当前项目，让后端把读写落到这个项目（多人各改各的）
+        if (ACTIVE_PROJECT_ID) defaultHeaders['X-Project-Id'] = ACTIVE_PROJECT_ID;
 
         const config = {
             headers: { ...defaultHeaders, ...options.headers },
@@ -315,7 +338,7 @@ const API = {
      */
     downloadChapterDocx(n) {
         const link = document.createElement('a');
-        link.href = `${API_BASE}/skills/chapter/${n}/download`;
+        link.href = this.withPid(`${API_BASE}/skills/chapter/${n}/download`);
         link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
@@ -373,7 +396,7 @@ const API = {
      */
     async aiCompose(formData) {
         // multipart 上传：不要手动设 Content-Type，交给浏览器带 boundary
-        const resp = await fetch(`${API_BASE}/skills/ai-compose`, { method: 'POST', body: formData });
+        const resp = await fetch(`${API_BASE}/skills/ai-compose`, { method: 'POST', body: formData, headers: this._pidHeaders() });
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             throw new Error(err.detail || `请求失败: ${resp.status}`);
@@ -386,7 +409,7 @@ const API = {
      * @returns {Promise<object>} {status, reply}
      */
     async aiChat(formData) {
-        const resp = await fetch(`${API_BASE}/skills/ai-chat`, { method: 'POST', body: formData });
+        const resp = await fetch(`${API_BASE}/skills/ai-chat`, { method: 'POST', body: formData, headers: this._pidHeaders() });
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             throw new Error(err.detail || `请求失败: ${resp.status}`);
@@ -398,6 +421,30 @@ const API = {
     async getProjectOverview() {
         const r = await this.get('/skills/project-overview');
         return r.data;
+    },
+
+    // ===== 多项目（每个项目一套独立的摘要表/章节/封面 JSON） =====
+    /** 所有项目 + 当前项目 id：{current, projects:[{id,project_name,industry,chapters_done,...}]} */
+    async listSkillProjects() {
+        const r = await this.get('/skills/projects');
+        return r.data;
+    },
+    /** 新建项目（会切换为当前项目），返回项目记录 */
+    async createSkillProject(body) {
+        const r = await this.post('/skills/projects', body);
+        return r.data;
+    },
+    /** 切换当前项目 */
+    async setCurrentProject(id) {
+        return this.post('/skills/projects/current', { id });
+    },
+    /** 修改某个项目的名称/路径/模型（不切换当前项目） */
+    async updateSkillProject(body) {
+        return this.post('/skills/projects/update', body);
+    },
+    /** 删除某个项目及其数据 */
+    async deleteSkillProject(id) {
+        return this.delete('/skills/projects/' + encodeURIComponent(id));
     },
     /** 保存项目组自定义的显示名（列表展示用） */
     async saveProjectName(name) {
@@ -426,7 +473,7 @@ const API = {
     async uploadCoverLogo(role, file) {
         const fd = new FormData();
         fd.append('file', file);
-        const resp = await fetch(`${API_BASE}/skills/cover/logo/${role}`, { method: 'POST', body: fd });
+        const resp = await fetch(`${API_BASE}/skills/cover/logo/${role}`, { method: 'POST', body: fd, headers: this._pidHeaders() });
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             throw new Error(err.detail || `上传失败: ${resp.status}`);
@@ -435,21 +482,21 @@ const API = {
     },
     /** 删除某角色 logo */
     async deleteCoverLogo(role) {
-        const resp = await fetch(`${API_BASE}/skills/cover/logo/${role}`, { method: 'DELETE' });
+        const resp = await fetch(`${API_BASE}/skills/cover/logo/${role}`, { method: 'DELETE', headers: this._pidHeaders() });
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             throw new Error(err.detail || `删除失败: ${resp.status}`);
         }
         return resp.json();
     },
-    /** 某角色 logo 的图片 URL（带时间戳防缓存） */
+    /** 某角色 logo 的图片 URL（带时间戳防缓存 + 项目 pid） */
     coverLogoUrl(role, bust) {
-        return `${API_BASE}/skills/cover/logo/${role}?t=${bust || Date.now()}`;
+        return this.withPid(`${API_BASE}/skills/cover/logo/${role}?t=${bust || Date.now()}`);
     },
     /** 下载"只有封面"的 Word */
     downloadCover() {
         const link = document.createElement('a');
-        link.href = `${API_BASE}/skills/cover/download`;
+        link.href = this.withPid(`${API_BASE}/skills/cover/download`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -484,6 +531,7 @@ const API = {
         const response = await fetch(`${API_BASE}/skills/summary/import-excel`, {
             method: 'POST',
             body: form,
+            headers: this._pidHeaders(),
         });
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));

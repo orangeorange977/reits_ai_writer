@@ -41,19 +41,25 @@ function renderProjectTable(container, projects) {
         '错误': 'badge-error'
     };
 
-    const html = projects.map(proj => `
-        <tr>
-            <td><strong>${proj.name}</strong></td>
+    const esc = (s) => String(s == null ? '' : s).replace(/'/g, "\\'");
+    const html = projects.map(proj => {
+        const pid = esc(proj.id);
+        const isCurrent = proj.isCurrent
+            ? ' <span class="badge badge-success" style="margin-left:6px;">当前</span>' : '';
+        return `
+        <tr${proj.isCurrent ? ' style="background:var(--bg-hover,rgba(0,120,255,0.05));"' : ''}>
+            <td><strong>${proj.name}</strong>${isCurrent}</td>
             <td><span class="badge badge-info">${proj.assetType}</span></td>
             <td><span class="badge badge-primary">${proj.stage}</span></td>
             <td><span class="badge ${proj.statusClass || statusBadgeMap[proj.status] || 'badge-info'}">${proj.status}</span></td>
             <td class="text-sm text-muted">${proj.updateTime}</td>
             <td>
-                <button class="btn btn-ghost btn-sm" onclick="navigate('ndrc')">发改委申报材料</button>
-                <button class="btn btn-ghost btn-sm" onclick="openEditProject()">编辑</button>
+                <button class="btn btn-primary btn-sm" onclick="enterProject('${pid}')">进入</button>
+                <button class="btn btn-ghost btn-sm" onclick="openEditProject('${pid}')">编辑</button>
+                <button class="btn btn-ghost btn-sm" onclick="deleteProjectRow('${pid}')" title="删除该项目及其数据">删除</button>
             </td>
-        </tr>
-    `).join('');
+        </tr>`;
+    }).join('');
 
     container.innerHTML = html;
 }

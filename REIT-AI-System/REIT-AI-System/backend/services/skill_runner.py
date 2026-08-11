@@ -14,7 +14,8 @@ from html.parser import HTMLParser
 
 from backend.config import SKILLS_DIR, PLANNING_MD_PATH, MOONSHOT_MODEL
 from backend.services.kimi_client import chat, chat_with_tools
-from backend.services import summary_service, tianyancha_client, materials_client
+from backend.services import (summary_service, tianyancha_client,
+                              materials_client, project_store)
 
 logger = logging.getLogger(__name__)
 
@@ -24,19 +25,19 @@ _cancel_requests: set = set()
 _cancel_lock = threading.Lock()
 
 
-def request_cancel(n: int) -> None:
+def request_cancel(key) -> None:
     with _cancel_lock:
-        _cancel_requests.add(int(n))
+        _cancel_requests.add(key)
 
 
-def clear_cancel(n: int) -> None:
+def clear_cancel(key) -> None:
     with _cancel_lock:
-        _cancel_requests.discard(int(n))
+        _cancel_requests.discard(key)
 
 
-def is_cancelled(n: int) -> bool:
+def is_cancelled(key) -> bool:
     with _cancel_lock:
-        return int(n) in _cancel_requests
+        return key in _cancel_requests
 
 # 各章配置：title 必须与官方模板里的 Heading1 一字不差；next 是下一章标题（界定本章在模板里的
 # 起止范围，最后一章为 None）；dir 是该章 reading skill 目录。三~七已配好，前端接入即可用。
@@ -52,75 +53,47 @@ CHAPTERS = {
 
 
 def chapter_json_path(n: int) -> Path:
-    """某章 reading skill 产出的结构化 JSON 路径（放在该 skill 自己的目录下）。"""
-    return SKILLS_DIR / CHAPTERS[n]["dir"] / f"ch{n}.json"
+    """某章产出的结构化 JSON 路径（存在**当前项目**自己的数据目录里）。"""
+    return project_store.current_dir() / f"ch{n}.json"
 
 
 def chapter_docx_path(n: int) -> Path:
-    """reits-writing skill 生成的某章 Word 输出路径。"""
-    return SKILLS_DIR / "reits-writing" / f"ch{n}_output.docx"
-
-
-_PROJECT_META_PATH = SKILLS_DIR / "project_meta.json"
-
-
-def _load_project_meta() -> dict:
-    try:
-        if _PROJECT_META_PATH.exists():
-            d = json.loads(_PROJECT_META_PATH.read_text(encoding="utf-8"))
-            if isinstance(d, dict):
-                return d
-    except Exception:
-        pass
-    return {}
+    """某章 Word 输出路径（当前项目目录，避免不同项目预览互相串）。"""
+    return project_store.current_dir() / f"ch{n}_output.docx"
 
 
 def get_project_display_name() -> str:
-    """项目组自定义的显示名（供列表展示，可编辑）。未设置返回空串。"""
-    return str(_load_project_meta().get("display_name", "")).strip()
+    """当前项目的显示名（供列表展示，可编辑）。未设置返回空串。"""
+    return project_store.current_name()
 
 
 def save_project_display_name(name: str) -> None:
-    meta = _load_project_meta()
-    meta["display_name"] = (name or "").strip()
-    _PROJECT_META_PATH.write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-
-
-_APP_SETTINGS_PATH = SKILLS_DIR / "app_settings.json"
+    project_store.update_project(None, {"name": (name or "").strip()})
 
 
 def get_app_settings() -> dict:
-    """服务器端统一设置（模板路径/申报材料路径等），全员共用。"""
-    try:
-        if _APP_SETTINGS_PATH.exists():
-            d = json.loads(_APP_SETTINGS_PATH.read_text(encoding="utf-8"))
-            if isinstance(d, dict):
-                return d
-    except Exception:
-        pass
-    return {}
+    """当前项目的模板路径/申报材料路径（每个项目各存一份）。"""
+    p = project_store.get_project()
+    return {
+        "template_path": p.get("template_path", ""),
+        "materials_path": p.get("materials_path", ""),
+    }
 
 
 def save_app_settings(patch: dict) -> dict:
-    d = get_app_settings()
-    for k, v in (patch or {}).items():
-        if v is not None:
-            d[k] = v
-    _APP_SETTINGS_PATH.write_text(
-        json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    return d
+    clean = {k: v for k, v in (patch or {}).items()
+             if k in ("template_path", "materials_path") and v is not None}
+    project_store.update_project(None, clean)
+    return get_app_settings()
 
 
 def effective_template_path(passed: str = "") -> str:
-    """优先用服务器统一设置里的模板路径；没有再用前端传来的（本地开发时）。"""
-    return (get_app_settings().get("template_path") or "").strip() or (passed or "").strip()
+    """优先用当前项目保存的模板路径；没有再用前端传来的（本地开发时）。"""
+    return (project_store.current_template_path() or "").strip() or (passed or "").strip()
 
 
 def effective_materials_path(passed: str = "") -> str:
-    return (get_app_settings().get("materials_path") or "").strip() or (passed or "").strip()
+    return (project_store.current_materials_path() or "").strip() or (passed or "").strip()
 
 
 def project_overview() -> dict:
@@ -151,7 +124,7 @@ def project_overview() -> dict:
             except OSError:
                 pass
     try:
-        sp = summary_service.SAVED_SUMMARY_PATH
+        sp = summary_service.saved_summary_path()
         if sp.exists():
             mtimes.append(sp.stat().st_mtime)
     except Exception:
@@ -166,6 +139,7 @@ def project_overview() -> dict:
     display_name = get_project_display_name() or sv("项目名称")
 
     return {
+        "id": project_store.current_project_id(),
         "project_name": display_name,
         "industry": sv("行业领域"),
         "stage": "发改委申报",
@@ -176,27 +150,76 @@ def project_overview() -> dict:
         "last_edit": last_edit,
     }
 
-# 网页上选择的 Kimi 模型（持久化到这里，各章生成都用它；缺省用 .env 里的 MOONSHOT_MODEL）
-_MODEL_SETTING_PATH = SKILLS_DIR / "model_setting.json"
 
-
-def get_selected_model() -> str:
-    """当前所选模型：优先读网页保存的，缺省回退到 .env 的 MOONSHOT_MODEL。"""
+def _overview_for_dir(rec: dict) -> dict:
+    """给概览列表用：读某个项目目录里的摘要表 + 各章 JSON，算出该项目的进度信息。"""
+    import time
+    d = project_store.project_dir(rec["id"])
+    summ = {}
+    sp = d / "summary_saved.json"
     try:
-        if _MODEL_SETTING_PATH.exists():
-            data = json.loads(_MODEL_SETTING_PATH.read_text(encoding="utf-8-sig"))
-            m = (data or {}).get("model")
-            if m:
-                return m
-    except Exception as e:
-        logger.warning(f"读取模型设置失败: {e}")
-    return MOONSHOT_MODEL
+        if sp.exists():
+            summ = json.loads(sp.read_text(encoding="utf-8-sig")) or {}
+    except Exception:
+        summ = {}
+
+    def sv(label):
+        for r in summ.get("summary_table", []) or []:
+            if str(r.get("label", "")).strip() == label:
+                return str(r.get("value", "")).strip()
+        return ""
+
+    total = len(CHAPTERS)
+    done = 0
+    done_chapters = []
+    mtimes = []
+    for n in CHAPTERS:
+        p = d / f"ch{n}.json"
+        if p.exists():
+            done += 1
+            done_chapters.append(n)
+            try:
+                mtimes.append(p.stat().st_mtime)
+            except OSError:
+                pass
+    try:
+        if sp.exists():
+            mtimes.append(sp.stat().st_mtime)
+    except Exception:
+        pass
+    last_edit = ""
+    if mtimes:
+        last_edit = time.strftime("%Y-%m-%d %H:%M", time.localtime(max(mtimes)))
+
+    display_name = (rec.get("name") or "").strip() or sv("项目名称")
+    return {
+        "id": rec["id"],
+        "project_name": display_name,
+        "industry": sv("行业领域"),
+        "stage": "发改委申报",
+        "chapters_done": done,
+        "chapters_total": total,
+        "done_chapters": done_chapters,
+        "summary_filled": len(summ.get("summary_table") or []) > 0,
+        "last_edit": last_edit,
+        "template_path": rec.get("template_path", ""),
+        "materials_path": rec.get("materials_path", ""),
+        "model": rec.get("model", ""),
+    }
+
+
+def project_overviews() -> list:
+    """所有项目的概览信息（名称/行业/章节进度/最近编辑时间/配置），供概览页列表展示。"""
+    return [_overview_for_dir(rec) for rec in project_store.list_projects()]
+
+# 网页上选择的 Kimi 模型（存在当前项目里；缺省用 .env 里的 MOONSHOT_MODEL）
+def get_selected_model() -> str:
+    """当前项目所选模型：优先项目里保存的，缺省回退到 .env 的 MOONSHOT_MODEL。"""
+    return project_store.current_model() or MOONSHOT_MODEL
 
 
 def set_selected_model(model: str) -> None:
-    _MODEL_SETTING_PATH.write_text(
-        json.dumps({"model": model}, ensure_ascii=False), encoding="utf-8"
-    )
+    project_store.update_project(None, {"model": model})
 
 
 def _read_text(path: Path) -> str:
@@ -890,8 +913,11 @@ def _make_materials_executor(root):
     return _exec
 
 
-def run_chapter(n: int, subtitles: list = None, materials_path: str = None) -> dict:
+def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
+                cancel_key=None) -> dict:
     """执行第 n 章：读 planning.md + 该章 SKILL.md + 已保存摘要，让 Kimi 产出结构化内容。
+
+    cancel_key：一键停止用的取消标记键（多项目并发时按“项目#章号”区分，缺省用章号）。
 
     subtitles（来自官方模板的本章小标题）如果给出，则强制 Kimi 用这几个小标题作为
     sections 的 title（一字不差），以便和模板/编辑区骨架对齐。
@@ -900,7 +926,8 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None) -> d
     参与主体的工商/股权/人员信息，据实填写，而不是编造。
     """
     cfg = CHAPTERS[n]
-    clear_cancel(n)  # 清掉上一轮可能残留的取消标志，避免本次一开始就被中止
+    ck = cancel_key if cancel_key is not None else n
+    clear_cancel(ck)  # 清掉上一轮可能残留的取消标志，避免本次一开始就被中止
     planning = _read_text(PLANNING_MD_PATH)
     skill_md = _read_text(SKILLS_DIR / cfg["dir"] / "SKILL.md")
     saved_summary = _format_saved_summary()
@@ -1012,7 +1039,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None) -> d
             return f"（未知工具 {name}）"
         raw = chat_with_tools(messages, tools, _combined_executor,
                               model=get_selected_model(), temperature=1.0,
-                              should_cancel=lambda: is_cancelled(n))
+                              should_cancel=lambda: is_cancelled(ck))
     else:
         raw = chat(messages, model=get_selected_model(), temperature=1.0)
 

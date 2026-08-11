@@ -10,6 +10,8 @@ vendor/
 图片库/
 
 # ===== 运行数据（服务器上生成，不纳入版本；git pull 不会覆盖它们）=====
+# 多项目数据目录：每个项目一套独立的摘要表/各章JSON/封面（含项目登记表 index.json）
+skills/projects/
 accounts.json
 .app_secret
 app_settings.json

@@ -85,10 +85,8 @@ async function onPageEnter(pageId) {
             await loadOverviewData();
             break;
         case 'ndrc':
-            if (currentProjectId) {
-                await loadChapters();
-            }
-            _syncChapterSteps();     // 按实际生成情况刷新章节进度（已生成/未生成）
+            await loadChapters();
+            _syncChapterSteps();     // 按当前项目实际生成情况刷新章节进度（已生成/未生成）
             _syncProjectHeader();    // 刷新头栏（名称/基准日/资产类型/生成状态）
             break;
         case 'documents':
@@ -200,53 +198,79 @@ function closeModal(id) {
 /**
  * 加载概览页面数据
  */
+// 概览页最近一次拉到的项目列表（编辑弹窗预填、进入项目时取路径都用它）
+let _overviewProjects = [];
+let _currentProjectId = null;
+
 async function loadOverviewData() {
     try {
-        const projects = await API.getProjects();
-        if (!currentProjectId && projects.length > 0) {
-            currentProjectId = projects[0].id;
-        }
+        const data = await API.listSkillProjects();
+        const projects = (data && data.projects) || [];
+        _overviewProjects = projects;
+        // “当前”＝本浏览器正在编辑的项目（各人各自的）；没设过就用服务器默认
+        _currentProjectId = API.getActiveProject() || (data && data.current) || null;
 
-        // 取当前项目概览：名称/行业/章节进度/最近编辑时间
-        let ov = null;
-        try { ov = await API.getProjectOverview(); } catch (e) {
-            console.warn('[REIT-AI] 项目概览加载失败:', e.message);
-        }
-        const hasProject = !!(ov && ov.project_name);
-        const done = ov ? (ov.chapters_done || 0) : 0;
-        const total = ov ? (ov.chapters_total || 7) : 7;
-        const isComplete = hasProject && done >= total;
+        // 统计卡片：项目总数 / 生成中（未全部完成）/ 已完成（七章全生成）
+        let totalDone = 0;
+        const rows = projects.map(p => {
+            const done = p.chapters_done || 0;
+            const total = p.chapters_total || 7;
+            const isComplete = total > 0 && done >= total;
+            if (isComplete) totalDone++;
+            return {
+                id: p.id,
+                isCurrent: p.id === _currentProjectId,
+                name: p.project_name || '（未命名项目）',
+                assetType: p.industry || '—',
+                stage: p.stage || '发改委申报',
+                status: isComplete ? '已完成' : `已生成 ${done}/${total} 章`,
+                statusClass: isComplete ? 'badge-success' : (done > 0 ? 'badge-warning' : 'badge-info'),
+                updateTime: p.last_edit || '—',
+            };
+        });
 
-        // 项目列表这一行：显示当前正在编辑的项目
-        // 名称/行业取自摘要表，状态=章节生成进度，更新时间=最近编辑时间
         const tbody = document.querySelector('#projectTable tbody');
-        if (tbody) {
-            if (hasProject) {
-                renderProjectTable(tbody, [{
-                    name: ov.project_name,
-                    assetType: ov.industry || '—',
-                    stage: ov.stage || '发改委申报',
-                    status: isComplete ? '已完成' : `已生成 ${done}/${total} 章`,
-                    statusClass: isComplete ? 'badge-success' : (done > 0 ? 'badge-warning' : 'badge-info'),
-                    updateTime: ov.last_edit || '—',
-                    id: 0,
-                }]);
-            } else {
-                tbody.innerHTML = '';
-            }
-        }
+        if (tbody) renderProjectTable(tbody, rows);
 
-        // 统计卡片：取自当前项目的章节进度（单项目——未全部完成即“生成中”，全部完成即“已完成”）
         const statsContainer = document.getElementById('overviewStats');
         if (statsContainer) {
             renderStatCards(statsContainer, [
-                { icon: '📁', value: hasProject ? 1 : 0, label: '项目总数', color: 'blue' },
-                { icon: '🔄', value: (hasProject && !isComplete) ? 1 : 0, label: '生成中', color: 'orange' },
-                { icon: '✅', value: (hasProject && isComplete) ? 1 : 0, label: '已完成', color: 'green' },
+                { icon: '📁', value: projects.length, label: '项目总数', color: 'blue' },
+                { icon: '🔄', value: projects.length - totalDone, label: '生成中', color: 'orange' },
+                { icon: '✅', value: totalDone, label: '已完成', color: 'green' },
             ]);
         }
     } catch (error) {
         console.warn('[REIT-AI] 加载项目数据失败:', error.message);
+    }
+}
+
+/** 进入某个项目：把本浏览器的“当前项目”设为它（之后所有请求都带这个 id，多人各改各的），
+ *  同步本地路径，跳到发改委材料生成页 */
+function enterProject(id) {
+    API.setActiveProject(id);
+    currentProjectId = id;
+    _currentProjectId = id;
+    // 同步该项目的模板/材料路径到本地（设置页显示、编辑区骨架都会用到）
+    const p = (_overviewProjects || []).find(x => x.id === id);
+    if (p) {
+        if (p.template_path) localStorage.setItem('reitai_settingTemplatePath', p.template_path);
+        if (p.materials_path) localStorage.setItem('reitai_settingNdrcMaterialPath', p.materials_path);
+    }
+    navigate('ndrc');
+}
+
+/** 删除某个项目（含其数据），需二次确认 */
+async function deleteProjectRow(id) {
+    const p = (_overviewProjects || []).find(x => x.id === id);
+    const name = (p && p.project_name) || '该项目';
+    if (!confirm(`确定删除「${name}」吗？该项目保存的摘要表、各章内容、封面都会一并删除，且无法恢复。`)) return;
+    try {
+        await API.deleteSkillProject(id);
+        showToast('项目已删除');
+        await loadOverviewData();
+    } catch (e) {
+        showToast('删除失败：' + e.message, 'error');
     }
 }
 
@@ -396,15 +420,18 @@ function selectLocalFile(path) {
  * 加载章节列表
  */
 async function loadChapters() {
-    if (!currentProjectId) return;
-
     try {
-        chaptersData = await API.getChapters(currentProjectId);
-        renderChapterStepper(chaptersData);
+        // 步骤条骨架（摘要表 + 一~七章固定结构）；具体“已生成/未生成”随后由 _syncChapterSteps
+        // 按当前项目的实际产出覆盖。不再依赖旧的项目数据库，改用当前项目的 skill 数据。
+        const chapters = [1, 2, 3, 4, 5, 6, 7].map(n => ({
+            title: CHAPTER_TITLES[n], status: 'pending',
+        }));
+        chaptersData = chapters;
+        renderChapterStepper(chapters);
         // 默认展示第一章（走 Kimi 生成 + Word 式编辑视图）
         await renderChapterEditor(1);
     } catch (error) {
-        console.warn('[REIT-AI] 加载章节列表失败:', error.message);
+        console.warn('[REIT-AI] 加载章节视图失败:', error.message);
     }
 }
 
@@ -2330,12 +2357,24 @@ async function initApp() {
         const health = await API.get('/health');
         console.log('[REIT-AI] 后端服务连接正常:', health);
 
-        // 自动加载项目列表
-        const projects = await API.getProjects();
-        if (projects && projects.length > 0) {
-            currentProjectId = projects[0].id;
-            console.log('[REIT-AI] 已自动选择项目:', projects[0].name, 'ID=', currentProjectId);
-        }
+        // 定位本浏览器要编辑的项目：优先上次自己进过的（localStorage），否则用服务器默认落地项目
+        try {
+            const data = await API.listSkillProjects();
+            const list = (data && data.projects) || [];
+            let pid = API.getActiveProject();
+            if (!pid || !list.some(p => p.id === pid)) pid = (data && data.current) || (list[0] && list[0].id) || '';
+            if (pid) {
+                API.setActiveProject(pid);
+                currentProjectId = pid;
+                _currentProjectId = pid;
+                const cur = list.find(p => p.id === pid);
+                if (cur) {
+                    if (cur.template_path) localStorage.setItem('reitai_settingTemplatePath', cur.template_path);
+                    if (cur.materials_path) localStorage.setItem('reitai_settingNdrcMaterialPath', cur.materials_path);
+                    console.log('[REIT-AI] 当前项目:', cur.project_name, 'id=', pid);
+                }
+            }
+        } catch (e) { console.warn('[REIT-AI] 读取项目列表失败:', e.message); }
     } catch (error) {
         console.warn('[REIT-AI] 后端服务未就绪:', error.message);
     }
@@ -2696,66 +2735,66 @@ function _applyProjectDialogMode(mode) {
     }
 }
 
+// 编辑模式下正在编辑的项目 id（新建模式为 null）
+let _projectEditId = null;
+
 function openNewProject() {
+    _projectEditId = null;
     _applyProjectDialogMode('create');
     const nameEl = document.getElementById('npName');
     const tEl = document.getElementById('npTemplatePath');
     const mEl = document.getElementById('npMaterialsPath');
     if (nameEl) nameEl.value = '';
-    // 预填已保存的路径，方便复用（可再改）
+    // 模板一般各项目通用，预填上次用过的；材料文件夹每个项目不同，留空让用户选
     if (tEl) tEl.value = localStorage.getItem('reitai_settingTemplatePath') || '';
-    if (mEl) mEl.value = localStorage.getItem('reitai_settingNdrcMaterialPath') || '';
+    if (mEl) mEl.value = '';
     _fillModelSelect('npModel');   // 加载模型下拉，默认选中当前所用模型
     openModal('modal-new-project');
     if (nameEl) setTimeout(() => nameEl.focus(), 50);
 }
 
-/** 编辑现有项目：与"新建项目"同一对话框，预填当前所选的名称/文件夹/模板/模型，可再改 */
-async function openEditProject() {
+/** 编辑某个项目：与"新建项目"同一对话框，预填该项目的名称/文件夹/模板/模型，可再改 */
+function openEditProject(id) {
+    _projectEditId = id || null;
     _applyProjectDialogMode('edit');
+    const p = (_overviewProjects || []).find(x => x.id === id) || {};
     const nameEl = document.getElementById('npName');
     const tEl = document.getElementById('npTemplatePath');
     const mEl = document.getElementById('npMaterialsPath');
-    if (tEl) tEl.value = localStorage.getItem('reitai_settingTemplatePath') || '';
-    if (mEl) mEl.value = localStorage.getItem('reitai_settingNdrcMaterialPath') || '';
-    if (nameEl) nameEl.value = '';
-    _fillModelSelect('npModel');   // 默认选中当前正在用的模型
+    if (nameEl) nameEl.value = p.project_name || '';
+    if (tEl) tEl.value = p.template_path || '';
+    if (mEl) mEl.value = p.materials_path || '';
+    _fillModelSelect('npModel');
+    const modelEl = document.getElementById('npModel');
+    if (modelEl && p.model) modelEl.value = p.model;
     openModal('modal-new-project');
-    // 预填当前项目名称（来自摘要表）
-    try {
-        const ov = await API.getProjectOverview();
-        if (nameEl && ov && ov.project_name) nameEl.value = ov.project_name;
-    } catch (e) { /* 取不到就留空 */ }
+    if (nameEl) setTimeout(() => nameEl.focus(), 50);
 }
 
 async function submitNewProject() {
     const name = (document.getElementById('npName')?.value || '').trim();
     const materials = (document.getElementById('npMaterialsPath')?.value || '').trim();
     const template = (document.getElementById('npTemplatePath')?.value || '').trim();
+    const model = (document.getElementById('npModel')?.value || '').trim();
     if (!name) { showToast('请填写项目名称', 'warning'); return; }
     if (!materials) { showToast('请选择申报材料文件夹', 'warning'); return; }
     if (!template) { showToast('请选择申报材料格式文本（模板文件）', 'warning'); return; }
 
-    // 路径存进与「系统设置」同一套 key，供后续各章生成/预览直接使用，并同步设置页输入框
-    localStorage.setItem('reitai_settingTemplatePath', template);
-    localStorage.setItem('reitai_settingNdrcMaterialPath', materials);
-    const st = document.getElementById('settingTemplatePath'); if (st) st.value = template;
-    const sm = document.getElementById('settingNdrcMaterialPath'); if (sm) sm.value = materials;
-    // 同时存到服务器（全员共用）
-    try { await API.saveServerSettings({ template_path: template, materials_path: materials }); } catch (e) { /* 不阻塞 */ }
-
-    // 应用所选模型（全局即时生效，各章生成都用它），并同步设置页下拉
-    const model = (document.getElementById('npModel')?.value || '').trim();
-    if (model) {
-        try { await API.setModel(model); } catch (e) { showToast('切换模型失败：' + e.message, 'error'); }
-        const sModel = document.getElementById('settingModel'); if (sModel) sModel.value = model;
-    }
-
-    // 保存项目组自定义显示名（列表展示用，可编辑；两种模式都保存）
-    try { await API.saveProjectName(name); } catch (e) { /* 不阻塞 */ }
-
-    // 编辑模式：只更新配置（名称/路径/模型），不新建项目
+    // 编辑模式：只更新该项目的配置（名称/路径/模型），不新建、不覆盖别的项目
     if (_projectDialogMode === 'edit') {
+        try {
+            await API.updateSkillProject({
+                id: _projectEditId, name, template_path: template,
+                materials_path: materials, model,
+            });
+        } catch (e) { showToast('保存失败：' + e.message, 'error'); return; }
+        // 若编辑的是当前项目，同步本地路径 + 头栏
+        if (_projectEditId === _currentProjectId) {
+            localStorage.setItem('reitai_settingTemplatePath', template);
+            localStorage.setItem('reitai_settingNdrcMaterialPath', materials);
+            const st = document.getElementById('settingTemplatePath'); if (st) st.value = template;
+            const sm = document.getElementById('settingNdrcMaterialPath'); if (sm) sm.value = materials;
+        }
         showToast('修改已保存');
         closeModal('modal-new-project');
         try { await loadOverviewData(); } catch (e) { /* 刷新失败不阻塞 */ }
@@ -2763,10 +2802,16 @@ async function submitNewProject() {
         return;
     }
 
-    // 新建模式：创建项目并进入材料生成页
+    // 新建模式：创建一个全新的空项目（自带独立数据目录），并切换进入
     try {
-        const proj = await API.createProject(name, materials);
-        if (proj && (proj.id || proj.project_id)) currentProjectId = proj.id || proj.project_id;
+        const proj = await API.createSkillProject({
+            name, template_path: template, materials_path: materials, model,
+        });
+        currentProjectId = (proj && proj.id) || null;
+        _currentProjectId = currentProjectId;
+        API.setActiveProject(currentProjectId);   // 本浏览器切到新项目（别人不受影响）
+        localStorage.setItem('reitai_settingTemplatePath', template);
+        localStorage.setItem('reitai_settingNdrcMaterialPath', materials);
         showToast('项目已创建');
         closeModal('modal-new-project');
         try { await loadOverviewData(); } catch (e) { /* 列表刷新失败不阻塞 */ }

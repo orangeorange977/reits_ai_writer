@@ -11,15 +11,29 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Header, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from backend.config import SKILLS_DIR
-from backend.services import skill_runner, summary_service, materials_client, cover_service
+from backend.services import (skill_runner, summary_service, materials_client,
+                              cover_service, project_store)
 from backend.services.kimi_client import chat, GenerationCancelled
 
-router = APIRouter(tags=["Skill执行"], prefix="/skills")
+
+async def _bind_project(x_project_id: str = Header(default=""), pid: str = ""):
+    """把“本请求所属项目”绑定到上下文：优先取请求头 X-Project-Id（fetch 调用用），
+    没有再取查询参数 pid（图片/下载这类无法带自定义头的 <img>/window.open 用）。
+    这样多人可以各改各的项目，互不覆盖。
+
+    必须是 async：同步依赖会被 FastAPI 丢到线程池执行，ContextVar 改动带不回请求上下文；
+    async 依赖与端点同处一个协程上下文，set 才会对端点（及其 to_thread/create_task）生效。"""
+    project_store.set_request_project(x_project_id or pid)
+
+
+# 整个 skills 路由都先绑定项目上下文（摘要表/章节/封面/设置都在这个路由下）
+router = APIRouter(tags=["Skill执行"], prefix="/skills",
+                   dependencies=[Depends(_bind_project)])
 logger = logging.getLogger(__name__)
 
 
@@ -360,14 +374,18 @@ async def import_summary_excel(file: UploadFile = File(...)):
         logger.error(f"解析上传的 Excel 失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"解析 Excel 失败：{e}")
 
-# 各章生成任务状态（内存，本地单机单用户够用），按章节号存
-_jobs = {}    # n -> {"status","data","error"}
+# 各章生成任务状态（内存），按“项目#章号”存——多人各生成各项目的同名章节互不冲突
+_jobs = {}    # "pid#n" -> {"status","data","error"}
 # 后台 task 的强引用：asyncio 只对 task 持弱引用，不保存会被 GC 掉，导致状态卡在 running
-_tasks = {}   # n -> asyncio.Task
+_tasks = {}   # "pid#n" -> asyncio.Task
+
+
+def _job_key(n: int) -> str:
+    return f"{project_store.current_project_id()}#{n}"
 
 
 def _job(n: int) -> dict:
-    return _jobs.get(n, {"status": "idle", "data": None, "error": None})
+    return _jobs.get(_job_key(n), {"status": "idle", "data": None, "error": None})
 
 
 def _valid_chapter(n: int):
@@ -375,29 +393,20 @@ def _valid_chapter(n: int):
         raise HTTPException(status_code=404, detail=f"章节 {n} 不存在")
 
 
-async def _run_chapter_job(n: int):
+async def _run_chapter_job_with_subs(key: str, n: int, subtitles: list, materials_path: str = ""):
     try:
-        result = await asyncio.to_thread(skill_runner.run_chapter, n)
-        _jobs[n] = {"status": "done", "data": result, "error": None}
-        logger.info(f"第{n}章 skill 执行完成")
-    except Exception as e:
-        logger.error(f"第{n}章 skill 执行失败: {e}", exc_info=True)
-        _jobs[n] = {"status": "error", "data": None, "error": str(e)}
-
-
-async def _run_chapter_job_with_subs(n: int, subtitles: list, materials_path: str = ""):
-    try:
-        result = await asyncio.to_thread(skill_runner.run_chapter, n, subtitles, materials_path)
-        _jobs[n] = {"status": "done", "data": result, "error": None}
-        logger.info(f"第{n}章 skill 执行完成")
+        result = await asyncio.to_thread(
+            skill_runner.run_chapter, n, subtitles, materials_path, key)
+        _jobs[key] = {"status": "done", "data": result, "error": None}
+        logger.info(f"[{key}] 第{n}章 skill 执行完成")
     except GenerationCancelled:
-        logger.info(f"第{n}章生成已被用户取消")
-        _jobs[n] = {"status": "cancelled", "data": None, "error": None}
+        logger.info(f"[{key}] 第{n}章生成已被用户取消")
+        _jobs[key] = {"status": "cancelled", "data": None, "error": None}
     except Exception as e:
-        logger.error(f"第{n}章 skill 执行失败: {e}", exc_info=True)
-        _jobs[n] = {"status": "error", "data": None, "error": str(e)}
+        logger.error(f"[{key}] 第{n}章 skill 执行失败: {e}", exc_info=True)
+        _jobs[key] = {"status": "error", "data": None, "error": str(e)}
     finally:
-        skill_runner.clear_cancel(n)
+        skill_runner.clear_cancel(key)
 
 
 @router.post("/chapter/{n}/run")
@@ -405,17 +414,19 @@ async def chapter_run(n: int, template_path: str = "", materials_path: str = "")
     """启动第 n 章生成（后台异步），立即返回。template_path 有效时强制用模板小标题；
     materials_path 有效时把"读取申报材料"的工具挂给 Kimi。"""
     _valid_chapter(n)
-    if _job(n)["status"] == "running":
+    key = _job_key(n)
+    if _jobs.get(key, {}).get("status") == "running":
         raise HTTPException(status_code=409, detail=f"第{n}章正在生成中，请稍候")
-    # 优先用服务器端统一设置的路径（全员共用），没有再用前端传来的
+    # 优先用本项目保存的路径，没有再用前端传来的
     template_path = skill_runner.effective_template_path(template_path)
     materials_path = skill_runner.effective_materials_path(materials_path)
     subs = []
     tpl = template_path.strip()
     if tpl and Path(tpl).exists():
         subs = await asyncio.to_thread(skill_runner.chapter_subtitles, n, tpl)
-    _jobs[n] = {"status": "running", "data": None, "error": None}
-    _tasks[n] = asyncio.create_task(_run_chapter_job_with_subs(n, subs, materials_path.strip()))
+    _jobs[key] = {"status": "running", "data": None, "error": None}
+    _tasks[key] = asyncio.create_task(
+        _run_chapter_job_with_subs(key, n, subs, materials_path.strip()))
     return {"status": "started", "message": f"第{n}章生成已启动，请稍候（Kimi 处理约需数分钟）"}
 
 
@@ -424,9 +435,10 @@ async def chapter_stop(n: int):
     """一键停止：请求取消第 n 章当前的生成。会在当前这一步（一次模型调用/一份文件读取）
     结束后就地中止；被中止的这一章不保存半截内容。"""
     _valid_chapter(n)
-    if _job(n)["status"] != "running":
+    key = _job_key(n)
+    if _jobs.get(key, {}).get("status") != "running":
         return {"status": "ok", "message": "当前没有正在进行的生成"}
-    skill_runner.request_cancel(n)
+    skill_runner.request_cancel(key)
     return {"status": "ok", "message": "已请求停止，正在中止当前生成…"}
 
 
@@ -484,7 +496,8 @@ _PREVIEW_CACHE: dict = {}
 
 def _preview_signature(n: int, template_path: str) -> str:
     tpl = (template_path or "").strip()
-    parts = [tpl]
+    # 带上当前项目 id：切换项目后即使章号相同也不会误用上一个项目的预览缓存
+    parts = [project_store.current_project_id(), tpl]
     srcs = [skill_runner.chapter_json_path(n), skill_runner.WRITE_CONFIG_PATH]
     if tpl:
         srcs.append(Path(tpl))
@@ -556,6 +569,80 @@ async def chapter_download(n: int):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
+
+
+# ==================== 多项目管理 ====================
+
+class ProjectCreate(BaseModel):
+    name: str = ""
+    template_path: str = ""
+    materials_path: str = ""
+    model: str = ""
+
+
+class ProjectSwitch(BaseModel):
+    id: str
+
+
+class ProjectUpdate(BaseModel):
+    id: str = ""
+    name: str = None
+    template_path: str = None
+    materials_path: str = None
+    model: str = None
+
+
+@router.get("/projects")
+async def skill_projects_list():
+    """所有项目（含各自的名称/行业/章节进度/最近编辑时间/配置）+ 当前项目 id。"""
+    def _do():
+        return {
+            "current": project_store.current_project_id(),
+            "projects": skill_runner.project_overviews(),
+        }
+    return {"status": "ok", "data": await asyncio.to_thread(_do)}
+
+
+@router.post("/projects")
+async def skill_projects_create(body: ProjectCreate):
+    """新建一个项目（独立的数据目录）。不改动服务器默认落地项目——创建者的浏览器会把
+    自己的“当前项目”切到这个新项目，别人不受影响（多人各改各的）。"""
+    rec = await asyncio.to_thread(
+        project_store.create_project, body.name, body.template_path,
+        body.materials_path, body.model, False)
+    return {"status": "ok", "data": rec}
+
+
+@router.post("/projects/current")
+async def skill_projects_switch(body: ProjectSwitch):
+    """切换当前项目（之后所有摘要表/章节/封面读写都指向这个项目）。"""
+    try:
+        pid = await asyncio.to_thread(project_store.set_current, body.id)
+        return {"status": "ok", "id": pid}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/projects/update")
+async def skill_projects_update(body: ProjectUpdate):
+    """修改某个项目的名称/模板路径/材料路径/模型（不切换当前项目）。"""
+    patch = {k: v for k, v in body.model_dump().items() if k != "id" and v is not None}
+    rec = await asyncio.to_thread(project_store.update_project, body.id or None, patch)
+    if not rec:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    return {"status": "ok", "data": rec}
+
+
+@router.delete("/projects/{pid}")
+async def skill_projects_delete(pid: str):
+    """删除一个项目及其数据目录（至少保留一个项目）。"""
+    try:
+        ok = await asyncio.to_thread(project_store.delete_project, pid)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not ok:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    return {"status": "ok", "message": "已删除"}
 
 
 # ==================== 封面 ====================
