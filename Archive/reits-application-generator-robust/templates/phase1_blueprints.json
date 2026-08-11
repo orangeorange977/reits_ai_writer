@@ -1,0 +1,174 @@
+{
+  "$schema": "phase 1 预绑定蓝图（第一章（二）特殊限定情况 + （三）可扩募资产情况）",
+  "$description": "这两条**不是无条件的固定内容**。（二）是否填「不涉及。」取决于项目行业领域是否命中格式文本列举的4类特殊行业；（三）首发项目必须实填表2、只有已发行REITs新购入（扩募）项目才法定豁免。此前本文件把两条都写成「数据中心项目固定内容」，对园区/文旅/消费类项目会直接填错，且表2 因 data_deps 为空只能整表占位。",
+  "$rules": [
+    "（二）先按 project_info.industry 逐条比对 industry_conditions 的 keywords：全部未命中 → 输出「不涉及。」；命中任一 → 必须按该条的 required_points 逐点撰写实质说明，**不得偷懒填「不涉及」**",
+    "（三）按 project_info.issuance_type 分流：首发 → 用 expandable_assets 实填表2 + 撰写引导段；扩募（新购入）→ 正文写「不涉及。」并清空/删除表2",
+    "表2 是 9 列宽表但没有备注列，来源标注一律走 table_note（表下注），不逐格加括注",
+    "严禁编造可扩募资产清单：expandable_assets.assets 为空时表格保持模版原样 + 进 .todo.json，正文写占位符并在核查报告提示「待发起人提供在建/在运项目清单」"
+  ],
+  "entries": [
+    {
+      "no": 5,
+      "chapter": "一、项目基本情况 > （二）特殊限定情况说明",
+      "phase": 1,
+      "category": "AI辅助 主观填写",
+      "target": {
+        "type": "paragraph_replace_conditional",
+        "desc": "官方模版本小节有4段指导文字（燃煤发电/园区/文化旅游/消费基础设施）。判定依据是 project_info.industry：4类都不命中才填「不涉及。」；命中任一类必须替换为实质说明段落。",
+        "condition_field": "project_info.industry",
+        "default_text": "不涉及。",
+        "default_condition": "project_info.industry 未命中下列任何一组 keywords（如「新型基础设施（数据中心类）」「交通基础设施」「生态环保」「能源（非燃煤发电）」等）",
+        "industry_conditions": [
+          {
+            "type": "燃煤发电项目",
+            "keywords": ["燃煤", "火电", "煤电", "热电"],
+            "template_match": "1.对于燃煤发电项目",
+            "required_points": [
+              "纯凝工况最小发电出力是否在30%额定负荷及以下（给出实测值）",
+              "是否掺烧生物质、氢、氨等低碳燃料，掺烧热量比例是否不低于10%（给出比例）",
+              "是否配备大规模碳捕集利用与封存（CCUS）设备（给出规模与投运时间）"
+            ],
+            "data_deps": ["compliance.special_restrictions.coal_power"]
+          },
+          {
+            "type": "园区基础设施项目",
+            "keywords": ["园区", "产业园", "物流园", "仓储物流", "标准厂房", "孵化"],
+            "template_match": "2.对于园区基础设施项目",
+            "required_points": [
+              "底层资产是否包括酒店、配套底商；如包括，说明其权属情况",
+              "与底层资产中园区基础设施部分的物理关联关系（是否为同一栋建筑）",
+              "纳入底层资产的酒店、配套底商合计占同一单体建筑的面积比例（给出百分比）"
+            ],
+            "data_deps": ["compliance.special_restrictions.park_hotel_shops"]
+          },
+          {
+            "type": "文化旅游基础设施项目",
+            "keywords": ["文化旅游", "文旅", "景区", "旅游"],
+            "template_match": "3.对于文化旅游基础设施项目",
+            "required_points": [
+              "底层资产是否包括配套旅游酒店；如包括，说明其权属情况",
+              "旅游酒店的地理位置情况",
+              "是否在景区规划范围内"
+            ],
+            "data_deps": ["compliance.special_restrictions.tourism_hotel"]
+          },
+          {
+            "type": "消费基础设施项目",
+            "keywords": ["消费", "购物中心", "百货", "商业", "农贸市场", "社区商业"],
+            "template_match": "4.对于消费基础设施项目",
+            "required_points": [
+              "底层资产是否包括酒店、商业办公用房；如包括，说明其权属情况",
+              "与底层资产中消费基础设施部分的物理关联关系（是否为同一栋建筑）",
+              "酒店、商业办公用房建筑面积占底层资产总建筑面积的比例（给出百分比）"
+            ],
+            "data_deps": ["compliance.special_restrictions.consumption_hotel_office"]
+          }
+        ]
+      },
+      "data_deps": ["project_info.industry"],
+      "strategy_initial": "按 industry 判定：未命中4类 → 4段指导文字整体替换为「不涉及。」；命中某类 → 该类指导文字替换为实质说明（覆盖 required_points 全部要点），其余3类连同标题一并删除",
+      "strategy_expansion": "同首发",
+      "fill_plan_hint": {
+        "paragraphs": [
+          {
+            "chapter": "一",
+            "section": "（二）",
+            "match": "1.对于燃煤发电项目",
+            "replace": "不涉及。",
+            "comment": "未命中4类时：本条写「不涉及。」，另用 replace_ranges 或逐段 replace 删除2/3/4三段指导文字，避免残留"
+          }
+        ]
+      }
+    },
+    {
+      "no": 6,
+      "chapter": "一、项目基本情况 > （三）可扩募资产情况",
+      "phase": 1,
+      "category": "AI辅助",
+      "target": {
+        "type": "table_rowset",
+        "table_index": 2,
+        "table_name": "表2 发起人（原始权益人）可扩募资产情况",
+        "header_hint": "资产名称",
+        "rows": 4,
+        "cols": 9,
+        "header_rows": 1,
+        "has_total_row": true,
+        "citation_placement": "table_note",
+        "data_source": "expandable_assets.assets",
+        "source_kind": "list",
+        "row_filter": {
+          "require": ["name"]
+        },
+        "header_cells": {
+          "R0C4": "资产规模（机柜数量：个）",
+          "R0C5": "决算总投资（万元）",
+          "R0C6": "运营剩余年限（年）"
+        },
+        "$header_cells_note": "官方模版表头写的是「资产规模（长度、面积等）」「决算总投资（如有）」，不带单位无法求合计。按项目行业把单位落实到表头（数据中心=机柜数量：个；其余行业改为长度/面积对应单位），与 assets[*].scale_value 口径一致",
+        "columns": [
+          {"from": "field", "field": "name"},
+          {"from": "field", "field": "industry"},
+          {"from": "field", "field": "region"},
+          {"from": "field", "field": "status"},
+          {"from": "field", "field": "scale_value", "format": "num"},
+          {"from": "field", "field": "total_investment", "format": "amount"},
+          {"from": "field", "field": "remaining_years", "format": "num"},
+          {"from": "field", "field": "holding_ratio"},
+          {"from": "field", "field": "indirect_holding_method", "default": "不涉及"}
+        ],
+        "total_row_map": {
+          "label": "合计",
+          "label_cols": [0],
+          "sum_cols": {
+            "4": "scale_value",
+            "5": "total_investment"
+          },
+          "format_cols": {
+            "4": "num"
+          }
+        }
+      },
+      "paragraph_structure": [
+        "引导段1（发起人业务布局，≤200字）：{expandable_assets.originator_profile.short_name}成立于{established_date}，{listing_status}，主要从事{main_business}，已在{cities_operating}等城市开展业务，目前正围绕{cities_expanding}持续拓展。截至{project_info.declaration_base_date}，{total_scale_text}。",
+        "引导段2（已交付规模与倍数结论）：截至{project_info.declaration_base_date}，{delivered_scale_text}，扣除本项目外，公司未来可扩募资产规模是本项目{summary.multiple_of_target}。",
+        "引导段3（优先扩募资产点名）：除本次入池资产外，目前拟优先作为扩募资产的为{assets[is_priority=true].name}，合计{summary.priority_scale}，是本项目的{summary.priority_multiple}。具体详情见表2。",
+        "表后段（已运营资产近3年收益）：逐个已运营资产写「{name}，{YYYY}-{YYYY}年实现营业收入分别为…，营业利润分别为…」——格式文本表2 注的硬要求，漏写即缺要素",
+        "（如涉及）缺乏可扩募资产说明：{expandable_assets.lack_reason}（因行业共性缺乏可扩募资产、或首发规模超50亿元需放宽规模要求的项目必写）"
+      ],
+      "data_deps": [
+        "project_info.issuance_type",
+        "project_info.declaration_base_date",
+        "expandable_assets.originator_profile.*",
+        "expandable_assets.assets[*].*",
+        "expandable_assets.summary.*",
+        "expandable_assets.lack_reason"
+      ],
+      "source_refs": [
+        "发起人（原始权益人）年报/定期报告（上市公司）",
+        "发起人提供的在建/在运项目清单",
+        "第25项其他应当出具的证明材料 / 项目追加材料",
+        "初稿第一章（三）已写内容"
+      ],
+      "strategy_initial": "首发项目必须实填：expandable_assets.assets 逐条成行填入表2（含合计行求和），并按 paragraph_structure 撰写引导段与表后的近3年运营收益说明",
+      "strategy_expansion": "扩募（已发行REITs新购入）项目法定豁免（格式文本（三）3.）：正文写「不涉及。」并清空表2",
+      "strategy_expansion_fill_plan": {
+        "paragraphs": [
+          {
+            "chapter": "一",
+            "section": "（三）",
+            "match": "1.首次发行项目，说明基础设施REITs份额公开发行后",
+            "replace": "不涉及。"
+          }
+        ],
+        "clear_tables_if_not_deleted": [
+          {
+            "table_index": 2,
+            "header_hint": "资产名称"
+          }
+        ]
+      }
+    }
+  ]
+}

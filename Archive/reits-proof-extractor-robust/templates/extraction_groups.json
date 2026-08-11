@@ -1,0 +1,392 @@
+{
+  "$schema": "各类证明材料的字段提取参考清单",
+  "$description": "按证明材料5大类列出每类通常应提取的字段。阶段B 主agent分小批读图时，可据此判断“这类材料该提什么”。本文件仅作字段参考，不定义执行编排。",
+  "$rules": [
+    "本文件仅作字段参考，读取顺序与批次由主agent自行决定",
+    "提取结果统一写入单一 extracted_data.json（不分片）",
+    "字段结构以 extracted_data_schema.json 为准"
+  ],
+  "categories": [
+    {
+      "name": "参与主体材料",
+      "proof_categories": [
+        "一、参与主体情况"
+      ],
+      "proof_nos": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        9
+      ],
+      "desc": "营业执照、审计报告、信用记录、承诺函、**运营管理协议与基金合同**。审计报告最重（3年+一期），是表5财务数据的主要来源；运营管理协议+第4项承诺函是**第六章的唯一数据源**（此前本组未列运营管理字段，导致第六章无米下锅、整章只写83字）",
+      "key_fields": [
+        "entities.originators[*].{name,short_name,legal_rep,registered_capital,credit_code,established_date,actual_controller,registered_address,main_business,reits_issued,reits_withdrawn_12m,project_contact_name_title,project_contact_details}",
+        "entities.originators[*].financials[YYYY_or_interim].{period_label,total_assets,total_liabilities,debt_ratio,revenue,net_profit,ebitda,operating_cash_flow,audit_opinion}",
+        "entities.originators[*].financial_analysis.change_reasons[*].{metric,from_period,to_period,change_pct,trigger,status,reason}",
+        "entities.originators[*].compliance_credit.{no_violation,violation_query_date,violation_official_websites,credit_query_date,credit_websites,credit_attachment_no,commitment}",
+        "entities.project_companies[*].{name,legal_rep,registered_capital,credit_code,established_date,registered_address,business_scope}",
+        "entities.project_companies[*].compliance_credit.{no_violation,violation_query_date,violation_official_websites,credit_query_date,credit_websites,credit_attachment_no,commitment}",
+        "legal_relations.{project_company_equity,originator_relations,controlling_shareholder,actual_controller,has_foreign_investment,foreign_control_chain,relation_diagram}",
+        "entities.fund_manager.name",
+        "entities.abs_manager.name",
+        "entities.{law_firm,accounting_firm,valuation_agency,tax_advisor,financial_advisor}.{name,contact_address,institution_contact_name_title,institution_contact_details,project_contact_name_title,project_contact_details,intermediary_compliance}",
+        "entities.operation_manager.{name,legal_rep,actual_controller,established_date,registered_capital,registered_address,main_business,reits_operated}",
+        "entities.operation_managers[*].{name,short_name,legal_rep,role_desc,is_originator_affiliate}",
+        "operation_management.service_agreement.{name,signing_date,parties,attachment_no,entrusted_duties,assist_matters,manager_rights}",
+        "operation_management.service_agreement.supervision.{appointed_personnel,inspection,rectification,breach_liability,dismissal_procedure}",
+        "operation_management.fee_structure.{tier_count,kpi_metric,actual_value_source,target_value_source,negative_list}",
+        "operation_management.fee_structure.tiers[*].{name,base,ratio,covers,assessment,clause_text}",
+        "operation_management.safeguards.{strategic_positioning,team_continuity,fund_level_governance}",
+        "operation_management.conflict_commitments.{doc_name,attachment_no,issuer,issue_date,related_party_items,anti_competition_items,dispute_resolution,key_text,required_wording_included}",
+        "operating_performance.period_labels + operating_performance.annual_rows[*].{label,v1,v2,v3,v4}（表4-1最终行模型，审计报告口径）",
+        "operating_performance.revenue_structure_rows[*].{label,kind,v1,v2,v3,v4}（表4-3最终行模型）",
+        "operating_performance.operation + operating_performance.scale（运营时间、规模与上架率）",
+        "operating_performance.subsidies（表4-6；无补贴也要写has_subsidy=false及依据）",
+        "operating_performance.cash_flow_providers[*]（表4-4最终行模型，审计报告收入附注+客户合同）",
+        "operating_performance.end_customer_financial_rows + end_customer_financial_meta（表4-5，客户公开财报，须写data_source_note）",
+        "project_info.originator_subscription_ratio"
+      ],
+      "extraction_principles": [
+        "【第四章（三）专项·审计报告必须整份读完】审计报告是核心材料。除主体财务外，必须直接整理为生成端所需的 operating_performance 最终行模型：annual_rows、revenue_structure_rows、cash_flow_providers、subsidies。禁止先写另一套中间字段再要求生成端猜测转换。",
+        "【第二章（一）法律关系·股权结构必录】legal_relations.project_company_equity 要列项目公司**全部股东+持股比例**（合计100%），originator_relations 记原始权益人之间的母子关系，controlling_shareholder/actual_controller 分开记（官方硬要求「项目公司所有股东的股权比例、控股股东的实际控制人」）。来源：营业执照/章程、法律意见书主体资格章节及股权结构附图、审计报告附注合并范围、天眼查。缺股东或比例对不上100% → （一）写不成、法律意见书口径打回",
+        "【第二章·违法违规和信用两类查询要分开】compliance_credit 里 violation_official_websites（证监会/金融监管总局/外汇局/人民银行/应急部/生态环境部/市场监管总局/发改委/财政部/税务总局，读第3项信用截图逐页顶部的机构名）与 credit_websites（信用中国/企业信用公示/执行信息公开网）是**两组不同网站**，分属「违法违规情况」和「信用状况」两小节，不能混填；每组缺哪个站要标注",
+        "【第二章·承诺函全称+日期+编号必录】originators/project_companies 的运营承诺函（第4项，4-1/4-2/…）与中介机构执业资格承诺函（第6项，6-1/6-2/…）都要录 doc_name（正文引用要写全称）、issue_date（落款日期）、attachment_no。裸占位 {query_date}/{attachment_ref} 无处取值 → 正文只能编造，会被第五步附件编号真实性校验 FAIL",
+        "【第二章·已发行REITs与退回情况】entities.originators[*].reits_issued（发行过填「有」+简述，否则「无」）、reits_withdrawn_12m（近12个月申报退回，无则「无」）是表4 两行的数据源，别漏",
+        "【第二章·财务表不得只读一期】对每个发起人按“主体×年度/一期×三张主表”建账，最近3个完整会计年度及一期都要填；报表原文为元时统一换算为万元，_raw_text保留原值与单位",
+        "【第二章·大幅变动原因同步提】相邻年度变动≥20%、正负转换、净利润/经营现金流为负或资产负债率变动≥5个百分点时，从审计附注/年报管理层讨论/专项说明提取原因到 financial_analysis.change_reasons。取不到标 unexplained，不猜测",
+        "【第六章专项】《运营管理服务协议》/《委托运营管理协议》与基金合同（草案）必须读，且 fee_structure.tiers[*].clause_text 要录收费条款**原文**（80字以上）——只记'分为基本收费和激励收费'这种结论，第六章（二）仍然写不出实质内容",
+        "【层级不得推定】fee_structure.tier_count 按协议实际约定填 2 或 3，严禁按首发/扩募推定（两份过审标答均为首发，一份两层、一份三层）",
+        "【第4项承诺函分组】第4项「关于自身运营情况的承诺函」除 compliance.commitment_letters 外，还要把承诺条款按「防范关联交易」/「避免同业竞争」两组拆进 operation_management.conflict_commitments.{related_party_items,anti_competition_items}，并录 attachment_no（如 4-1）",
+        "【多家运营管理机构】一个项目由两家及以上机构共同承担运营管理时（实测标答存在此情形），全部录入 entities.operation_managers 数组并写清 role_desc；entities.operation_manager 保留主机构（供 phase2 表6 使用）",
+        "【战略配售比例】project_info.originator_subscription_ratio 从基金合同/招募说明书/战略配售方案取；第六章（三）4 与第七章资金结构都要用"
+      ],
+      "expected_file_types": "审计报告(PDF→txt)、营业执照/公司章程(扫描件→图片)、**信用记录截图(图片，逐页看顶部官方机构名，区分违法违规10站与信用3站)**、承诺函(PDF→txt，第4项运营承诺函 + 第6项中介执业资格承诺函)、法律意见书(PDF→txt，主体资格与股权结构附图)、**运营管理服务协议/委托运营管理协议(PDF→txt)**、**基金合同（草案）/招募说明书(PDF→txt，智能限页：取运营管理与费用条款所在页)**"
+    },
+    {
+      "name": "项目基本条件材料",
+      "proof_categories": [
+        "二、项目基本条件"
+      ],
+      "proof_nos": [
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "desc": "不动产权证、法律意见书、运营承诺函。法律意见书较重，是权属情况的主要来源；**也是第一章表1「项目权属起止时间及剩余年限」「底层资产范围」两个复合行的主来源**",
+      "key_fields": [
+        "sub_projects[*].{property_cert,land_expiry,remaining_years}",
+        "sub_projects[*].{property_right_start,property_right_end}",
+        "sub_projects[*].{underlying_asset,asset_scope,boundaries,land_area,building_area}",
+        "compliance.transferability.{restrictions,resolution}",
+        "evaluation.{method,discount_rate,income_years,base_date,agency,report_number}"
+      ],
+      "extraction_principles": [
+        "【第一章表1专项·权属复合行】property_right_start/property_right_end 取不动产权证证载的使用权起止日期（多本证取最早起/最晚止并在 _raw_text 注明逐本口径）；remaining_years 必须按「权属到期日 − project_info.declaration_base_date」算出来（保留2位小数），只录 land_expiry 原文不算完成",
+        "【第一章表1专项·底层资产范围】underlying_asset 从法律意见书「资产范围/权属情况」章节取权属范围表述：哪几栋建筑物 + 房屋所有权 + 占用范围内的国有建设用地使用权 + 相关附属设施设备所有权，**排除项必须保留**（如「不含110千伏输变电工程」）——漏写排除项会与法律意见书口径矛盾",
+        "【四至逐向录】boundaries.east/south/west/north 逐向录原文（法律意见书或不动产权证附图说明），asset_scope 另存可直接进表1的整段描述；线性工程改录 start_point/end_point"
+      ],
+      "expected_file_types": "不动产权证(扫描件→图片)、法律意见书(PDF→txt)、承诺函(PDF→txt)"
+    },
+    {
+      "name": "项目合规材料",
+      "proof_categories": [
+        "三、项目合规情况"
+      ],
+      "proof_nos": [
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "desc": "投资管理手续、土地使用文件、可转让性文件、承诺函、法律意见书。文件数量最多（第13项常含11个子类约40份文件），单份轻但**不可只挑代表性文件读**——第五章表15/16/17/18/19/20/22 全部由本类材料逐份成行生成，漏一份就少一行",
+      "extraction_principles": [
+        "逐份成行：同类手续多份必须各占一行（备案5份、建设用地规划许可证2张、出让合同2份、IDC许可证2张、不动产权证2本），不得只填最新一份",
+        "四要素之外必提「处理方式」：正常办理/投资建设时无需办理/投资建设时未办理但已补办/投资建设时未办理但有关部门已出具明确处理意见",
+        "标「不涉及」「未办理」的手续，必须同时提取法规名称+文号+条款**原文**（150字以上）与部门函复**原文**（200字以上），否则第（二）节3、4小节写不出来",
+        "承诺函/无异议函必须提取 key_text 原文并逐字比对模版规定的必备表述（如「对该项目以100%股权转让方式发行基础设施REITs无异议」）",
+        "每条记录必带 attachment_no（材料编号如 13-1-5-1、16-5），正文引用「附件{编号}」直接取用",
+        "表17/18 一律按不动产权证/土地使用权证的**证载信息**填写，不得用出让合同或评估报告口径替代"
+      ],
+      "key_fields": [
+        "compliance.macro_policies[*].{name,doc_number,issuer,policy_type,conformity}",
+        "compliance.investment_procedures.<子项目>[*].{category,procedure_name,issue_date,authority,doc_number,handling,remark,attachment_no,scope_consistent}",
+        "compliance.procedure_notes[*].{topic,explanation,legal_basis}",
+        "compliance.industry_procedures[*].{procedure_name,holder,license_no,issue_date,authority,business_type,valid_until,transfer_restriction}",
+        "compliance.procedures_not_applicable[*].{procedure_name,legal_basis,clause_text,reason}",
+        "compliance.procedures_missing[*].{procedure_name,gap_type,rule_then,rule_now,remedy,authority_opinion{authority,doc_name,doc_number,date,key_text}}",
+        "compliance.corridor_mezzanine_commitment.{issuer,doc_name,date,key_text,required_wording_included}",
+        "compliance.land_use[*].{land_type,cert_no,cert_type,owner,location,land_purpose,land_area,use_term,acquisition_method,transferor}",
+        "compliance.building_ownership[*].{asset_name,cert_no,owner,building_location,building_purpose,building_area}",
+        "compliance.land_procedure_summary[*].{sub_project,project_company,region,acquisition_method,municipal_gov_letter,natural_resources_letter,original_contract_signer_letter}",
+        "compliance.land_contracts[*].{contract_no,electronic_supervision_no,transferor,transferee,sign_date,parcel_no,use,area,included_area,term_years,expiry,price,transfer_restriction_clause,supplementary_agreements}",
+        "compliance.asset_transfer_chain[*].{date,action,parties,doc_name,doc_number}",
+        "compliance.transferability.summary[*].{sub_project,project_company,region,restriction_desc,letter_issuer,letter_date}",
+        "compliance.transferability.restrictions[*].{type,basis_doc,clause,original_text,restricted_object,release_method,release_status}",
+        "compliance.transferability.encumbrances[*].{type,counterparty,contract_name,contract_no,sign_date,amount,secured_asset,release_letter}",
+        "compliance.transferability.no_objection_letters[*].{issuer,issuer_role,doc_name,date,addressee,required_wording_included,key_text,process}",
+        "compliance.commitment_letters[*].{topic,issuer,issuer_role,doc_name,date,key_text,required_wording_included}",
+        "compliance.legal_opinions[*].{firm,lead_lawyers,doc_name,date,scope,conclusion,annex2_items_covered,_full_text}",
+        "compliance.ppp.{applicable,not_applicable_reason,...表21各行}",
+        "compliance.tax.commitment.{issuer,doc_name,date,key_text,required_wording_included}",
+        "compliance.tax.tax_items[*].{sub_project,stage,tax_type,involved,basis,payable_amount,paid_amount,tax_location,taxpayer}",
+        "compliance.supporting_technical_docs.{fire_design_review,single_building_design_approval,lightning_protection_test,civil_air_defense_fee,pue_test_report,power_supply,energy_acceptance,environmental_acceptance}"
+      ],
+      "sub_items": [
+        {
+          "no": "13-1",
+          "name": "审批、核准或备案",
+          "typical_files": "项目建议书批复/可行性研究报告批复/初步设计批复/企业投资项目核准（多为不涉及）+ 企业投资项目备案（常有多份：首次立项、年检、备案信息变更）",
+          "extract_to": "investment_procedures（category=审批、核准或备案，逐份成行）+ procedures_not_applicable（不涉及的四项，引《国务院关于投资体制改革的决定》国发〔2004〕20号原文）+ procedure_notes（解释备案为何多份：年审制度→信息变更；签发机构更名）"
+        },
+        {
+          "no": "13-2",
+          "name": "规划",
+          "typical_files": "建设项目选址意见书（常不涉及）、建设用地规划许可证（按宗地可多张）、建设工程规划许可证",
+          "extract_to": "investment_procedures（category=规划）+ procedures_not_applicable（选址意见书，引《城乡规划法》第三十六条）"
+        },
+        {
+          "no": "13-3",
+          "name": "用地",
+          "typical_files": "建设项目用地预审意见、自然资源和规划局复函、土地使用权证/不动产权证、国有建设用地使用权出让合同",
+          "extract_to": "investment_procedures（category=用地）+ procedures_missing（建设用地批准书/用地预审缺失，须录复函原文）+ land_use + land_contracts"
+        },
+        {
+          "no": "13-4",
+          "name": "用海（多为不涉及）",
+          "typical_files": "用海预审意见、用海申请批复、海域使用许可证",
+          "extract_to": "procedures_not_applicable（引《海域使用权管理规定》第四/十三/二十三/二十四条，说明陆地项目不涉及）"
+        },
+        {
+          "no": "13-5",
+          "name": "节能审查",
+          "typical_files": "节能分析专项报告评估报告、省级发改委关于节能审查有关情况的说明（可多份，分别对应整体项目与本子项目）",
+          "extract_to": "investment_procedures（category=节能审查，逐份成行）+ 如为部门补充说明则同时记 procedures_missing.authority_opinion"
+        },
+        {
+          "no": "13-6",
+          "name": "环境影响评价",
+          "typical_files": "环境影响报告表/书的审批意见",
+          "extract_to": "investment_procedures（category=环境影响评价）；注意批复覆盖范围常为多栋数据中心，需在 remark 说明与底层资产范围的对应关系并置 scope_consistent"
+        },
+        {
+          "no": "13-7",
+          "name": "施工许可",
+          "typical_files": "建筑工程施工许可证、施工图设计文件审查合格书",
+          "extract_to": "investment_procedures（category=施工许可，审查合格书可单独成行或作 related_docs）"
+        },
+        {
+          "no": "13-8",
+          "name": "竣工验收",
+          "typical_files": "竣工验收备案证明书及验收报告、住建部门关于未及时办理竣工验收不构成重大违法违规的证明、特殊建设工程消防验收意见书、规划核实报告、竣工环境保护验收意见/报告/公示截图、节能验收报告及部门证明",
+          "extract_to": "investment_procedures（category=竣工验收，5类子手续逐份成行）+ procedures_missing（「不构成重大违法违规」「关于节能验收的证明」等部门意见）+ supporting_technical_docs.{energy_acceptance,environmental_acceptance}"
+        },
+        {
+          "no": "13-9",
+          "name": "外资（多为不涉及）",
+          "typical_files": "商务部门关于外商投资企业的批复、外商投资安全审查意见",
+          "extract_to": "procedures_not_applicable（说明项目公司与原始权益人均无外资股东）"
+        },
+        {
+          "no": "13-10",
+          "name": "特定行业投资管理合规手续",
+          "typical_files": "数据中心=增值电信业务经营许可证（常有多张，分属不同持证主体）；其他行业见模版表16列举",
+          "extract_to": "industry_procedures（逐证一行，须提许可证编号/持证主体/业务种类/覆盖范围/有效期，并判断是否构成转让限制）"
+        },
+        {
+          "no": "13-11",
+          "name": "其他重要手续",
+          "typical_files": "建设工程消防设计审核意见书、防雷防静电装置检测报告、防空地下室易地建设费缴纳凭证、PUE测试报告、单体设计批复、供电方案及批复、高压供用电合同（多份）",
+          "extract_to": "investment_procedures（category=其他重要手续，模版表15无对应行需插行）+ supporting_technical_docs（PUE值、供电容量、电价条款等同时供第四章使用）"
+        },
+        {
+          "no": "15",
+          "name": "土地使用合规证明材料",
+          "typical_files": "国有建设用地使用权出让合同（按宗地多份）、国有土地使用证/不动产权证书（新旧证多本）、自然资源和规划局转让证明、园区管委会关于用地转让事项的证明函",
+          "extract_to": "land_use（表17）+ building_ownership（表18）+ land_contracts + asset_transfer_chain + transferability.no_objection_letters"
+        },
+        {
+          "no": "16",
+          "name": "可转让性相关规定/文件/协议与无异议函",
+          "typical_files": "地方产业用地活化利用实施意见等政策文件、部门转让证明、融资租赁合同、应收账款质押合同、出租人同意提前还款与解除质押的同意函、管委会证明函",
+          "extract_to": "transferability.restrictions（政策/合同限制条款原文）+ transferability.encumbrances（融资租赁/质押及解除安排）+ transferability.no_objection_letters + transferability.summary（表20，每份函一行）"
+        },
+        {
+          "no": "14/17/18/21",
+          "name": "各类承诺函",
+          "typical_files": "连廊夹层承诺函（14）、原始权益人可转让性承诺函（17）、基金管理人可转让性承诺函（18）、税收处理承诺函（21）",
+          "extract_to": "commitment_letters + corridor_mezzanine_commitment + tax.commitment；每份必须录 key_text 原文并置 required_wording_included"
+        },
+        {
+          "no": "19",
+          "name": "律师事务所转让行为合法性法律意见书",
+          "typical_files": "法律意见书（docx+pdf，属核心材料必须100%读完）",
+          "extract_to": "legal_opinions（结论性意见原文 + 附件2必备内容逐项核对 + _full_text 全文备份）；同时可回填 land_use/transferability 的确认性表述"
+        },
+        {
+          "no": "20",
+          "name": "PPP项目材料（多为不涉及）",
+          "typical_files": "实施方案/特许经营方案、协议等",
+          "extract_to": "compliance.ppp（不涉及时置 applicable=false 并记 not_applicable_reason）"
+        }
+      ],
+      "expected_file_types": "批复文件/许可证/权证(扫描件→图片)、出让合同与融资租赁合同(大体积PDF，智能限页取前2+末2页，但转让限制条款所在页需单独补渲)、承诺函与法律意见书(PDF→txt)"
+    },
+    {
+      "name": "募集资金材料",
+      "proof_categories": [
+        "四、募集资金用途"
+      ],
+      "proof_nos": [
+        22
+      ],
+      "desc": "回收资金使用承诺函。最轻量，通常只有1-2个文件",
+      "key_fields": [
+        "fund_usage.{net_recovery_amount,new_project_amount,repay_debt_amount,other_amount}",
+        "fund_usage.new_projects[*].{name,investment_amount,approval_status,expected_start}",
+        "project_info.{total_fund_size,originator_subscription_ratio}"
+      ],
+      "expected_file_types": "承诺函(PDF→txt)"
+    },
+    {
+      "name": "其他材料（含评估报告）",
+      "proof_categories": [
+        "五、其他材料"
+      ],
+      "proof_nos": [
+        23,
+        24,
+        25,
+        28
+      ],
+      "desc": "综合承诺函、房地产/资产评估报告。评估报告按文件名语义识别，不限编号；实测项目的《房地产估价报告》位于第28项“其他应当出具的证明材料”，只绑定23~25会整份漏掉。**评估报告是全项目最重的一份材料**：既是评估值的唯一来源，又支撑第一章复合行、第四章估值表及第五章权属/转让交叉核对。摘要页只有结论，参数与预测表全在报告中后部",
+      "key_fields": [
+        "evaluation.{report_number,total_value,total_net_value,method,discount_rate,income_years,base_date,agency,page_count,extracted_pages}",
+        "operating_performance.operation + operating_performance.scale",
+        "operating_performance.period_labels + operating_performance.forecast_rows[*].{label,v1,v2,v3,v4,v5,v6,v7}（表4-2最终行模型）",
+        "operating_performance.seventy_percent_test.{metric_name,history_3y_avg,forecast_3y_avg,ratio_pct,conclusion,forecast_lower_reason}",
+        "operating_performance.valuation_params.occupancy_rows（表4-7）",
+        "operating_performance.valuation_params.comparable_case_rows（表4-8）",
+        "operating_performance.valuation_params.cpi_rows + cpi_years（表4-9）",
+        "operating_performance.valuation_params.comparable_price_rows（表4-10）",
+        "operating_performance.valuation_params.opex_param_rows（表4-11）",
+        "operating_performance.valuation_params.tax_param_rows（表4-12）",
+        "operating_performance.valuation_params.capex_equipment_rows（表4-13）",
+        "operating_performance.valuation_params.capex_forecast_rows + capex_forecast_header（表4-14）",
+        "sub_projects[*].{park_name,park_land_area,park_building_area,land_area,building_area}",
+        "sub_projects[*].{billing_rack_count,rack_count,total_rack_power,design_power,pue}",
+        "sub_projects[*].{construction_start,construction_completion,operation_start,construction_cost}",
+        "evaluation._full_text（阶段A 的 images/<主干>.txt 全文，便于复核与补提）"
+      ],
+      "extraction_principles": [
+        "【必须整份读完，摘要页远远不够】评估报告是核心材料，`check_extraction_coverage.py` 已把「核心材料页级读完」做成**硬门槛**（全部页图 + txt 单元都要已读，只读前几页会 exit=1）。数十页的报告分多轮读，`--next-pages 8` 一轮一轮推到队列清空为止",
+        "【报告结构导航】摘要页只填 evaluation 摘要字段；市场调研、收益法测算和附表中的数据直接整理进 operating_performance.valuation_params 的八组 *_rows。读到报告末页且跨页表已合并才算完成。",
+        "【表格逐行逐列，跨页合并】先保留原表表头、单位、期间和全部行列，再按 phase4 蓝图所需字段整理为最终行模型。只摘结论句等同于未提取。",
+        "【参数必须连依据一起录】折现率、增长率、上架率和费用参数必须带取值依据与溯源；只有数值不能支持第四章合理性论述。",
+        "【预测数据不得与历史混填】forecast_rows 的历史列只能取审计报告，预测列只能取评估报告。70%测试从两侧基础值重新计算并保留计算证据。",
+        "【第一章表1专项·建设内容和规模】这一格是复合行，必须成组提齐：园区整体口径（park_land_area/park_building_area）+ 入池资产口径（land_area/building_area）+ 计费机柜（billing_rack_count）+ 机柜总功率（total_rack_power）+ 建设规模（construction_cost）+ 底层资产（underlying_asset，主来源在法律意见书）。**只提 building_area 一个字段会让该格内容缺大半**",
+        "【口径不得混淆】园区/信息港整体的规划用地面积与总建筑面积 ≠ 入池资产占用的土地面积与建筑面积，两个口径都要提、分别存字段；机柜也分「计费机柜数」与「机柜总数」，功率分「机柜总功率」与「单机柜设计功率」；服务费单价分「元/月/个」与「元/kW/月」两个口径",
+        "【第一章表1专项·开竣工时间】construction_start 与 construction_completion 各精确到年月，两者都要提（只填竣工年份不合格）。评估报告取不到时按 data_crossref 的 fallback 链找施工许可证/竣工验收备案表/法律意见书"
+      ],
+      "expected_file_types": "评估报告(PDF→txt **+ 全量页图**：阶段A 对审计/评估/估值/法律意见类核心报告全量渲染，不受前置页与 --max-pages 限制)、承诺函(PDF→txt)、其他证明材料(扫描件→图片)"
+    },
+    {
+      "name": "发起人可扩募资产材料（第一章（三）专项）",
+      "proof_categories": [
+        "五、其他材料",
+        "项目追加材料"
+      ],
+      "proof_nos": [
+        25
+      ],
+      "desc": "第一章（三）可扩募资产情况（表2 + 引导段）的唯一数据源。优先在第25项“其他证明材料/拟投资项目合规材料”按资产清单语义寻找，不能因文件名没有“扩募”二字而跳过；其次才是发起人年报/定期报告、在建与在运项目清单、投资者关系资料和初稿。首发项目缺这一组 → 表2整表占位，但不得写一大段“无扩募/扩募豁免”说明",
+      "key_fields": [
+        "expandable_assets.originator_profile.{short_name,established_date,listing_status,main_business,cities_operating,cities_expanding,total_scale_text,delivered_scale_text}",
+        "expandable_assets.assets[*].{name,industry,region,status,scale_value,scale_text,total_investment,remaining_years,holding_ratio,indirect_holding_method,is_priority,attachment_no}",
+        "expandable_assets.assets[*].recent_financials[YYYY].{revenue,operating_profit}",
+        "expandable_assets.summary.{total_count,total_scale,total_investment,multiple_of_target,priority_scale,priority_multiple}",
+        "expandable_assets.lack_reason"
+      ],
+      "extraction_principles": [
+        "【首发必提，扩募可跳】project_info.issuance_type=首发 时本组为必提项；已发行REITs新购入（扩募）项目按格式文本（三）3. 法定豁免，本组可整组跳过",
+        "【规模口径与本项目一致】assets[*].scale_value 用与入池资产相同的口径（数据中心=机柜数「个」），否则算不出 summary.multiple_of_target 那句「可扩募资产规模是本项目的N倍」的结论",
+        "【金额统一万元】total_investment 一律换算为万元（年报常写亿元），原值保留在 _raw_text",
+        "【已运营资产必录近3年收益】格式文本表2 注明「已运营的资产，还应简要说明资产最近3个会计年度运营收益情况」→ 逐个资产录 recent_financials（营业收入+营业利润，按年）；漏录则表后段写不出来，属缺要素",
+        "【优先扩募要打标】正文惯例先点名拟优先扩募的资产，对应资产置 is_priority=true 并汇总 summary.priority_scale/priority_multiple",
+        "【严禁拼凑】取不到明细就让 assets 留空数组（脚本会跳过表2并写 todo），在核查报告写「待发起人提供在建/在运项目清单」，不得用行业公开信息编造行"
+      ],
+      "expected_file_types": "发起人年报/定期报告(PDF→txt，智能限页：取「主要资产」「在建工程」「分区域经营情况」章节)、在建与在运项目清单(xlsx/PDF)、初稿docx"
+    },
+    {
+      "name": "第三方企业信用报告（天眼查专业版）",
+      "proof_categories": [
+        "五、其他材料",
+        "项目追加材料"
+      ],
+      "proof_nos": [],
+      "desc": "项目自行提供的「专业版企业信用报告」（原始权益人 + 项目公司各一份）。**本组材料编号随项目而变**（实测某项目在 `五、其他材料/28 其他应当出具的证明材料/28-4 天眼查文件/`），因此 proof_nos 刻意留空——按文件名语义匹配，不依赖固定编号；`proof_nos` 也不能随便填已被占用的编号，否则会顶掉别组的 key_fields 提示（`check_extraction_coverage` 里 `item_fields[no]` 是覆盖赋值）。**格式陷阱：文件后缀常是 `.doc` 但实为 docx（PK 头），python-docx 直接可读**——因此不走阶段A 的拆图/OCR 路径，一律用 `scripts/parse_tianyancha.py` 确定性解析。它是表3/表4 工商字段与第二章（一）法律关系此前只能填【待填写】的直接补位来源。",
+      "key_fields": [
+        "entities.originators[*].{name,credit_code,legal_rep,registered_capital,established_date,registered_address,business_scope,enterprise_type,registration_status,business_term}",
+        "entities.project_companies[*].{name,credit_code,legal_rep,registered_capital,established_date,registered_address,business_scope,enterprise_type,registration_status,business_term}",
+        "entities.{originators,project_companies}[*].key_personnel[*].{name,title}",
+        "entities.{originators,project_companies}[*].tyc_report.{sections_parsed,sections_unparsed,risk_summary,risk_nonzero,financials_fuzzy,licenses,branches,outbound_investments,honors_raw,parse_warnings}",
+        "legal_relations.{project_company_equity,actual_controller,control_path,originator_relations}"
+      ],
+      "extraction_principles": [
+        "【财务数据只做交叉校验，严禁进表5】报告里的财务是**模糊值**（只有2位有效数字：`资产总计348亿`、`营业总收入12亿`、`应收票据164万`），且年份常不连续（实测表头为 `2025一季度|2024年报|2022年报|2021年报`，**缺2023年**）——凑不齐「最近3年及一期」，也填不了「保留2位小数的万元」。一律只写 `tyc_report.financials_fuzzy` 并带 `_precision`，**绝不写 `entities.*.financials[YYYY]`**；正式财务一律以审计报告为准，天眼查值只用来核对数量级",
+        "【风险计数是线索不是结论】四、法律诉讼与五、经营风险的各项计数（失信被执行人/被执行人/裁判文书/行政处罚/严重违法/税收违法/经营异常…）原样记入 `risk_summary`。全0 可支撑「近3年无重大违法违规记录、不存在失信被执行人」的表述，但**非0项（实测 动产抵押11、对外担保1）是风险信号**：必须回第五章（四）可转让性逐项核实是否涉及标的资产，并登记到 `compliance.transferability.{restrictions,encumbrances}`。脚本只给线索、不下结论，agent 也不得据计数直接写「不影响转让」",
+        "【股东比例合计必须=100% 才采纳】`2.2股东信息` 解析出的股东行，比例合计对不上100%时**不写入** `legal_relations.project_company_equity`（schema 硬要求，不得凑数），只进 `parse_warnings`，回营业执照/公司章程人工核对补录",
+        "【实际控制人只记姓名】`2.10实际控制人` 取最高受益比例者写 `legal_relations.actual_controller`（如「周超男」），**不记身份证号等敏感信息**；完整的「股权关联路径」原文写 `legal_relations.control_path`，作为（一）法律关系文字说明的依据，不自行简化比例",
+        "【与证照原件冲突以原件为准】工商信息若与营业执照/公司章程不一致，以证照为准，差异记入核查报告；`parse_tianyancha.py` 默认**不覆盖**已有非空值，冲突会逐条打印，需人工判断后才加 `--overwrite`",
+        "【注册资本要换算口径】报告写「59999万人民币」，schema 要求万元数值 → 59999.00；`X亿` 乘10000、无量词按元除10000；**非人民币币种不换算**（置 null + 告警），避免把「100万美元」当成100万元填进表3/表4",
+        "【溯源：无页码就不编页码】`_page` 一律 null，靠 `_section`（如 `2.1工商信息`）定位；`_attachment_no` 取自**真实存在的**编号——文件名数字前缀 > 最深一级带编号祖先目录（如 `28-4`）> 二级材料目录编号（如 `28`），三者皆无则 null 并在正文标 pending，严禁编造",
+        "【顺带可交叉核对的项】`6.3行政许可`/`6.17电信许可` 计数 → 与 `compliance.industry_procedures` 对份数，查是否漏提 IDC 许可证；`6.9资质证书`/`6.20上榜榜单` → `tyc_report.honors_raw`，**仅「年份+奖项名+授予方」三要素齐全**的才升级进 `awards[]`（荣誉表数据源），缺要素的不得编造补齐；`2.6分支机构`/`2.4对外投资` → 主体架构论述",
+        "【不要回去重跑阶段A】`batch_render_pdfs.py` 只处理 `.pdf`，对 `.doc` 无效。`parse_tianyancha.py` 会同时导出全文到 `<work_dir>/images/<主干>.txt`，页级队列因此拿到正常的 txt 单元；`tyc_report.sections_unparsed` 里的小节若需补提，读这个 txt 即可"
+      ],
+      "expected_file_types": "天眼查专业版企业信用报告（**`.doc` 后缀实为 docx**，含自定义样式 `报告一级/二级/三级标题` 与数十张规整表格，由 `scripts/parse_tianyancha.py` 确定性解析——不拆图、不 OCR、不联网）"
+    },
+    {
+      "name": "涉税咨询意见材料",
+      "proof_categories": [
+        "五、其他材料",
+        "项目追加材料"
+      ],
+      "proof_nos": [
+        25
+      ],
+      "desc": "税务咨询机构（项目的中介机构之一）就资产重组、股权转让等交易环节出具的涉税咨询意见/涉税分析报告。**本组材料编号以项目追加形式挂在25项下**（如 25-2 涉税咨询意见.pdf），不参与25项标准骨架的缺件核对。它是第五章（六）税收处理情况中「2.项目涉税情况」的核心数据源——税收处理承诺函（第21项）只负责 commitment 字段，而本组材料负责 transaction_steps / assumptions / stage_subtotals / total_payable / total_paid / measure_base_date 等全部测算数据。此前这些字段被标注为「表22不是提取所得，而是税务测算结果……优先取自初稿或税务顾问提供的测算表」——本组材料正是那个「税务顾问提供的测算表」的落地形态，有了它就不必整表占位。",
+      "key_fields": [
+        "compliance.tax.assumptions[*].{item,value,basis}",
+        "compliance.tax.measure_base_date",
+        "compliance.tax.transaction_steps[*].{step_no,stage,name,tax_items[*].{tax_type,involved,basis,payable_amount,paid_amount,tax_location,taxpayer}}",
+        "compliance.tax.stage_subtotals.{资产重组,股权转让}",
+        "compliance.tax.total_payable",
+        "compliance.tax.total_paid",
+        "compliance.tax.sub_project_tables[*].{sub_project,note}"
+      ],
+      "extraction_principles": [
+        "【本组是表22测算数据的主要来源】第21项税收处理承诺函只负责 compliance.tax.commitment（承诺函原文），而本组材料负责表22的全部测算行——transaction_steps（按交易环节分组的各税种行）、assumptions（测算假设）、stage_subtotals（阶段小计）、total_payable/total_paid（合计）。此前 schema 的 $important 标注「优先取自初稿或税务顾问提供的测算表」，本组材料就是该来源的证明材料形态",
+        "【按交易环节逐行提取】涉税咨询意见通常按交易步骤组织（如：转让固定资产→向股东分配股息→转让100%股权→新设公司并实缴出资→转让机柜资产→专项计划收购股权并搭建股+债→受让方收购股权→吸收合并），每个环节下列出涉及的税种（增值税/土地增值税/企业所得税/印花税/契税/增值税附加等）。必须逐环节逐税种成行提取，不得只摘结论句",
+        "【计税依据和公式原文必录】tax_items[*].basis 字段要录计税依据和计算公式的原文（标准答案单格常达200~400字），须写清政策依据+公式+代入数值，不得只记应纳税额数字",
+        "【不涉及的税种也要成行】每个环节下，即使某税种「不涉及」也要成行，involved 填「否」、basis 填「/」、payable_amount 填「/」——模版表22要求覆盖全部税种",
+        "【阶段小计与合计必录】stage_subtotals 按交易阶段（资产重组/股权转让）汇总，total_payable/total_paid 是全表合计——这些是第七章资金结构中「（拟）缴纳税费情况」的取数依据",
+        "【测算假设逐条录】assumptions 包括美元兑人民币汇率、资产公允价值口径、股权转让对价、测算截止日等假设项，每条录 item/value/basis 三要素——这些假设直接影响税额计算结果，不录则后续无法复核",
+        "【多子项目分别提取】如涉税咨询意见按子项目分别列示测算表，sub_project_tables 逐个记录；总体表与子项目表的数据都要提取",
+        "【与承诺函分工明确】第21项承诺函 → compliance.tax.commitment（key_text 原文+required_wording_included）；本组材料 → compliance.tax.{transaction_steps, assumptions, stage_subtotals, total_payable, total_paid, measure_base_date}。两者不互替代",
+        "【溯源要求】每条记录带 _source/_page/_raw_text + _attachment_no（25项追加编号，如 25-2）/_doc_name（如「XX项目涉税咨询意见」）。涉税咨询意见通常含文字层，阶段A 会产出 txt，可逐页读取",
+        "【材料缺失时的处理】如项目未提供涉税咨询意见，表22 整表用占位符并在核查报告提示「表22待税务顾问提供」——这是 schema 原有设计。有了本组材料则应尽量提全，不得因部分内容不清晰而整表留空"
+      ],
+      "expected_file_types": "涉税咨询意见/涉税分析报告（PDF，通常含文字层；由税务咨询机构出具，按交易环节分章节列示各税种测算过程与结论）"
+    }
+  ]
+}

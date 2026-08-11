@@ -186,6 +186,14 @@ async function _findMaterialPath(nameRaw) {
         }
     }
     if (!hit) {
+        // 文号强匹配：报告类文件的文号是唯一标识（“容诚审字[2024]518Z0922号”“JLL-BJ[2025]房估字第0001号”）
+        const dn = (name.match(/[（(]([^（）()]*\[\d{4}\][^（）()]*)[）)]/) || [])[1];
+        if (dn) {
+            const core = dn.replace(/\s+/g, '');
+            hit = files.find(p => base(p).replace(/\s+/g, '').includes(core)) || null;
+        }
+    }
+    if (!hit) {
         // 编号+核心词：依据里“9-1 法律意见书” → 磁盘上同为“9-1 …”开头且含“法律意见书”的文件
         const m = name.match(/^(\d+(?:[-—]\d+)?)\s*[、.．]?(.+)$/);
         if (m) {
@@ -374,11 +382,36 @@ async function openSrcLink(rawText, ctx) {
             return;
         }
     }
-    // 无类型前缀的裸文件名（部分旧格式）：尝试按名定位
-    if (text.length <= 60 && !/^(天眼查|网络公开|固定表述|planning)/.test(text)) {
-        openRefByName(text); return;
+    // 网络信息类依据：直接跳网页搜索查看出处（要言有据，不给死胡同）
+    if (/网络公开信息|网络信息|网站|网页|官网/.test(text)) {
+        const q = text.replace(/^网络公开信息[：:]/, '').trim() || text;
+        window.open('https://www.baidu.com/s?wd=' + encodeURIComponent(q), '_blank');
+        showToast('已跳转网页搜索查看该依据出处');
+        return;
     }
-    showToast('这类依据无法定位原文（如网络信息、固定表述等）', 'warning');
+    // 固定表述类依据：原文即系统内置模板套话，依据内容本身就是原文
+    if (/^固定表述/.test(text)) {
+        showToast('该依据为系统内置的固定表述模板，展示内容即模板原文');
+        return;
+    }
+    // 通用来源召回：“实际/预测数据来源：备考财务报表（文号）；…估价报告（文号）”这类子句，
+    // 剥“来源：”前缀后按文件名/文号模糊匹配材料库，命中即跳原文（子句当摘录搜页+红框）
+    const clauses = text.split(/[；;]/).map(s => s.trim()).filter(Boolean);
+    for (const c of clauses) {
+        const name = c.replace(/^(实际|预测|估算|历史|财务)?(数据)?来源[：:]\s*/, '').trim();
+        if (name.length < 4) continue;
+        try {
+            const p = await _findMaterialPath(name);
+            if (p) {
+                if (clauses.length > 1) showToast(`依据涉及多个来源，已打开首个可定位的：《${p.split('/').pop()}》`);
+                openMaterialPreviewResolved(p, c, 0);
+                return;
+            }
+        } catch (e) { /* 材料清单拉取失败则继续试下一子句 */ }
+    }
+    // 最终兜底：按名召回材料（裸文件名、多文件混写等旧格式）；
+    // 召回失败时 openRefByName 会给出“材料库缺该文件、上传后可回查”的行动指引，不再说“无法定位”
+    openRefByName(text);
 }
 
 /** 天眼查依据→官网：点击上下文里先开搜索页（不会被浏览器拦截），

@@ -1,0 +1,1086 @@
+{
+  "$schema": "extracted_data.json 标准结构定义",
+  "_contract": {"name": "reits_handoff", "version": "2.0"},
+  "_quality": {
+    "$description": "结构化质量台账。issues记录缺失/不可读/低置信度；conflicts记录候选值与采用理由；source_attempts记录每个字段的候选来源检索结果；table_audits记录表头、单位、行数、合计和跨页检查。新任务从空数组开始。",
+    "issues": [],
+    "conflicts": [],
+    "source_attempts": [],
+    "table_audits": []
+  },
+  "$description": "提取端与生成端共同使用的唯一现行结构。原件、页图和全文文本必须保留；extracted_data.json 是结构化索引，不替代原始证据。第四章所有可生成表格统一写入 operating_performance。",
+  "$rules": [
+    "所有金额字段统一为万元（保留2位小数），除非字段名明确标注'元'",
+    "日期字段统一格式：YYYY年M月D日（精确到日）",
+    "每个数据项必须附带 _source（来源文件路径）和 _page（页码），便于溯源",
+    "【正文括注原料，必录】每个数据项还必须附带 _attachment_no（证明材料编号，如 13-1-5-1 / 25-1，取自文件名编号前缀）与 _doc_name（该文件的正式名称，不含编号与扩展名，如「资产评估报告」「企业投资项目备案通知书」）。原因：最终 docx 要求所有AI填充内容在正文内联标明来源（「提取自附件25-1《资产评估报告》第43页」），而 _source 是磁盘路径/图片路径（如 images/xxx/page_003.png），不能进正文——进正文的是 _attachment_no + _doc_name + _page。话术规范见 templates/citation_rules.json",
+    "_page 规范：整数（如 43）或页码区间字符串（如 \"43-45\"）；跨多页的表格数据取起始页",
+    "【无页码材料用 _section 代替 _page】docx/xlsx 类材料（如天眼查专业版企业信用报告，`.doc` 后缀实为 docx）没有稳定页码，改录 _section（报告内小节名，如「2.1工商信息」「2.10实际控制人」「2.8财务数据」）。gen_phase_fill_plan.py 只在 _page 为空时取 _section，渲染为「（提取自附件28-4《…信用报告》，2.1工商信息）」；取不到就整段丢弃，**严禁为了让括注看起来完整而编造页码**",
+    "溯源字段的存放层级：与数据字段同层（同一个对象内），即 {\"revenue\": 12345.67, \"_source\": \"...\", \"_page\": 12, \"_attachment_no\": \"2-2-1-2\", \"_doc_name\": \"XX公司2024年审计报告\", \"_raw_text\": \"...\"}。脚本 gen_phase_fill_plan.py 按此约定从叶子字段的父对象取溯源信息生成括注",
+    "每个数据项必须附带 _raw_text（来源原文段落/表格片段）。原件不删除，_raw_text 用于快速复核；值类型为字符串，存储该数据点所在的原始文本片段（约200-500字），包含上下文句",
+    "表格数据必须完整提取：所有行列的原值和提取值都要记录，不得只摘取关键字段。如审计报告的资产负债表，必须把资产/负债/权益各科目全部列出",
+    "无法提取的字段填 null，不得编造",
+    "ratio/rate类字段保留原文精度（如7.75%）",
+    "对于重要文件（评估报告、审计报告、法律意见书），建议在文件级增加 _full_text 字段存储该文件的全部文字层文本（如有），作为原始文档的完整备份",
+    "extracted_data.json 的体积不是限制因素——它只是文本JSON，几十MB也远小于单个PDF的磁盘占用",
+    "公式取数类字段仅在基础值齐全且来源明确时计算，并记录公式、输入值和输入来源。基础值缺失时结果填 null，不得部分估算。EBITDA、70%测试、评估净值和资产负债率均遵守此规则",
+    "交叉验证规则：提取端交付前和生成端生成fill_plan前都必须读 templates/data_crossref.json，检查多来源冲突、等价字段复用和公式一致性；缺失与冲突写入 _quality 结构化问题清单"
+  ],
+  "project_info": {
+    "fund_name": "基金全称",
+    "project_name": "项目名称（含扩募/新购入等限定语）",
+    "project_type": "产权类（所有权类）/ 经营收益权类",
+    "industry": "行业领域（发改委分类，如'新型基础设施（数据中心类）'）",
+    "issuance_type": "首发 / 扩募（新购入）",
+    "first_fund_name": "首发基金名称（扩募时填）",
+    "first_fund_code": "首发基金代码",
+    "declaration_base_date": "申报基准日",
+    "exchange": "上市场所（根据基金管理人确定）",
+    "total_fund_size": "拟发售基金总额（万元）",
+    "originator_subscription_ratio": "原始权益人及其关联方拟持有（战略配售）的基金份额比例，保留原文精度（如 '20%' / '34%'）。来源：基金合同/招募说明书/战略配售方案/回收资金使用承诺函。第六章（三）「原始权益人继续持有一定比例份额」与第七章资金结构都要用，缺失时第六章该要点只能写占位符"
+  },
+  "evaluation": {
+    "$description": "资产评估报告的**摘要级**字段。⚠️ 本段只是评估报告的封面/摘要页信息，**不等于评估报告已提取完毕**：第四章（四）资产估值情况的正文与表4-7~表4-14 全部依赖 `operating_performance.valuation_params`，那些数据在报告后面几十页。",
+    "$extraction_rules": [
+      "【必须读全，不能只读摘要页】实测事故：评估报告有数十页，提取阶段只读了前 3 页摘要 → 本段有值（报告编号/评估机构/评估总值/单价/建筑面积/机柜数量），但现金流预测表、运营费用参数、资本性支出明细、可比实例、客户财务数据、CPI **全部缺失** → 第四章表4-7~表4-14 八张表整表建不出来，正文写了表标题却没有表格实体（交付稿里 15 张表只有 3 张有表格）。",
+      "【报告内必须逐节提取到 operating_performance.valuation_params 的清单】①现金流预测表（收入/成本/EBITDA/经营性净现金流逐年预测 → forecast_rows）②折现率累加法构成（安全利率 + 风险溢价各项取值）③收益期与预测期确定依据 ④服务费/租金水平与签约率、上架率/出租率假设（→ occupancy_rows + occupancy_table_header）⑤市场可比实例比较修正过程（→ comparable_case_rows）⑥CPI 等宏观依据（→ cpi_rows/cpi_years）⑦可比项目单价（→ comparable_price_rows）⑧运营费用各科目年增长率假设（→ opex_param_rows）⑨非运营支出税费种类/税率/计税依据（→ tax_param_rows）⑩设备生命周期与前20大设备支出（→ capex_equipment_rows）⑪预测期分年资本性支出（→ capex_forecast_rows）⑫评估结果与账面价值差异分析。",
+      "【建议同时留全文备份】对评估报告这类关键文件，按 $rules 第16条在文件级记 `_full_text`（文字层全文），便于后续复核与补提取——源文件提取后即删除，漏提的内容只能从这里找回。",
+      "【严禁用摘要值顶替明细】摘要页的评估总值/单价不能拿来推算上面 12 项明细，取不到就留空并在缺口清单里报缺。"
+    ],
+    "report_number": "评估报告编号",
+    "total_value": "评估值（万元）",
+    "total_net_value": "评估净值（万元）= 评估值 - 对外借款",
+    "method": "评估方法（收益法/市场法/成本法）",
+    "discount_rate": "折现率",
+    "income_years": "收益年限",
+    "base_date": "评估基准日",
+    "agency": "评估机构全称",
+    "page_count": "评估报告总页数（用于判断是否只提取了摘要页：本字段远大于实际提取页数时，必然漏提了后面的参数表）",
+    "extracted_pages": "实际已提取的页码范围（如 \"1-3\" / \"1-86\"）。**只有摘要页时必须如实填，不得留空**——第一步体检据此提醒上游补提取"
+  },
+  "operating_performance": {
+    "$description": "第四章「项目基本条件」的**唯一结构化数据源**（表4-1~表4-15 与（三）（四）（五）正文里的全部数字）。此前 schema 中没有本节 → 第四章的 3 张模版表只能整表空白、子agent被迫去《公司章程》《建设工程规划许可证》里凑机柜数与建筑面积（实测事故：机柜数 2,770 vs 评估报告 5,897；建筑面积 45,272.60㎡ vs 评估报告 42,076.98㎡）。本节数据**只来自两份材料**：`近3年及一期经审计的（备考）财务报表` 与 `资产评估报告`，其余材料不得作为本节来源。缺哪一段，对应表整表不生成并进 .todo.json。",
+    "$extraction_rules": [
+      "【只认两个源】历史经营与财务数据一律取备考财务报表；规模指标、全部估值参数与未来预测一律取评估报告。⛔ 公司章程/规划许可证/施工许可证/第三方信用报告都不是本节的合法来源",
+      "【行记录式】表4-1/4-2/4-3/4-6/4-14 是「行=科目、列=期间」的转置表，因此按**行记录**提取：每行一个对象 {label, v1..vN}，vN 与 period_labels 的期间一一对应；列数不足的期间留空字符串",
+      "【分节标题行也要给】annual_rows 里的「经营指标」「财务指标（万元）」两行是模版自带的分节标题行，也要作为记录给出（只填 label，v1~v4 留空），否则行序会错位",
+      "【单位】金额一律万元、保留2位小数、千分位逗号；比率带百分号（如 \"99.2%\"）；单价按材料原口径并在 label 里写明单位（如 \"平均服务费（元/月/kW）\"）",
+      "【期间标签必须是实际年份】period_labels 直接替换模版的「第n-3年」「第n-2年」占位表头；不给就会残留占位表头（第三步会判 FAIL）",
+      "【指标名要带口径】label 写全口径，如 \"实际服务量：平均上架功率（kW）\"、\"实际服务量：平均上架率\"，不要只写 \"实际服务量\"",
+      "【溯源】每个数组元素与每个子对象都要带 _attachment_no + _doc_name + _page；表4-1/4-3 取自备考报表，表4-2/4-7~4-14 取自评估报告",
+      "【取不到就留空，不要推测】折现率构成、增长率、签约率假设、资本性支出等参数**严禁按行业经验或可比项目推测**，评估报告里没写就留空并在 todo 里报缺"
+    ],
+    "period_labels": {
+      "$description": "表4-1/4-2/4-3 的列标题（按实际年份，替换模版「第n-3年」占位）。history 3 个 + base 1 个 = 表4-1/4-3 的 4 列；history 3 + base_full_year 1 + forecast 3 = 表4-2 的 7 列",
+      "history": ["最早年份（如 2021年）", "次年（如 2022年）", "上年（如 2023年）"],
+      "base": "基准期（如 2024年1-9月（基准年，最新一期））",
+      "base_full_year": "基准年全年（如 2024年（基准年）），表4-2 用",
+      "forecast": ["预测第1年（如 2025年）", "预测第2年", "预测第3年"]
+    },
+    "operation": {
+      "$description": "（三）1.运营时间。三个日期都要精确到日；⛔ put_into_use_date 不得早于 completion_date（实测事故：写出「2021年3月竣工、2020年12月投入使用」）。⚠️ **operated_years 是「运营满3年」原则的唯一判定依据，必录**：phase4 蓝图 no:40 只读这个字段（不用日期反推），不满 3 年或读不出时会在交付稿的（三）1.运营时间处自动插一段黄底 `【待确认：…】` 提示（只提示不阻断），并要求正文写出 under_3_years_reason",
+      "put_into_use_date": "投入使用日期（YYYY年M月D日，取评估报告/竣工验收材料）",
+      "completion_date": "竣工日期（YYYY年M月D日）",
+      "operated_years": "截至申报基准日的已运营年限。**建议给数值或带单位的数值**（3.75 / \"3.75年\" / \"3年9个月\"），脚本也能读中文数字（\"已满三年\"）与否定表述（\"不满三年\"）；写成 \"运营情况良好\" 这类读不出年限的文字会被判「无法核验」并插提示。⛔ 不得因不满3年就留空或含糊化——它是「运营满3年」这一原则性要求的判定依据",
+      "under_3_years_reason": "运营不满3年时，能够实现长期稳定收益的原因（在手合同覆盖情况、签约率与剩余合同期、预计收益可实现性、与主管部门沟通的豁免依据等；满3年则留空）。operated_years<3 而本字段为空时，第四章该处只能写占位符 + 黄底提示"
+    },
+    "scale": {
+      "$description": "（三）2.总体经营收益情况的规模口径。**全文统一以本节为准**，与第一章表1、评估报告一致",
+      "building_area": "建筑面积（评估报告口径，带单位，如 42,076.98平方米）",
+      "service_capacity": "可服务规模（如 机柜数量5,897个 / 可租面积 / 车道数），带单位",
+      "design_power": "设计总功率或其他设计能力指标（如有）",
+      "base_period_occupancy": "基准期上架率/出租率（如 99.2%）",
+      "base_period_summary": "上年营业收入/净利润/EBITDA 的亿元口径概述（如 营业收入约5.46亿元、净利润约2.79亿元、EBITDA约3.14亿元）"
+    },
+    "annual_rows": [
+      {
+        "$description": "**表4-1**（项目最近3个会计年度及一期经营收益情况，13行×5列）的逐行数据，**按最终表行序给出**。标准答案行序：经营指标 / 服务量指标1 / 服务量指标2 / 服务量增长率 / 平均服务费 / 服务价格增长率 / 财务指标（万元） / 营业收入 / 营业成本 / 净利润 / EBITDA / 经营性净现金流。服务量指标可 1~N 个，表行数自适应（多于模版 12 行时脚本自动扩行、少于则删行）",
+        "label": "行标签（写全口径，如「实际服务量：平均上架功率（kW）」；「经营指标」「财务指标（万元）」两行分节标题也要作为记录给出，v1~v4 留空字符串）",
+        "v1": "history[0] 期的值",
+        "v2": "history[1] 期的值",
+        "v3": "history[2] 期的值",
+        "v4": "base 期的值",
+        "$example_rows": [
+          {"label": "经营指标", "v1": "", "v2": "", "v3": "", "v4": ""},
+          {"label": "实际服务量：平均上架功率（kW）", "v1": "23,173.83", "v2": "40,799.62", "v3": "42,319.44", "v4": "42,205.44"},
+          {"label": "实际服务量：平均上架率", "v1": "54.5%", "v2": "95.9%", "v3": "99.5%", "v4": "99.2%"},
+          {"label": "实际服务量增长率", "v1": "-", "v2": "76.06%", "v3": "3.73%", "v4": "-0.3%"},
+          {"label": "平均服务费（元/月/kW）", "v1": "1,076.02", "v2": "1,075.08", "v3": "1,074.70", "v4": "1,074.24"},
+          {"label": "实际服务价格增长率", "v1": "-", "v2": "-0.09%", "v3": "-0.04%", "v4": "-0.04%"},
+          {"label": "财务指标（万元）", "v1": "", "v2": "", "v3": "", "v4": ""},
+          {"label": "营业收入", "v1": "30,282.92", "v2": "52,281.70", "v3": "54,571.41", "v4": "40,804.96"}
+        ]
+      }
+    ],
+    "annual_analysis": {
+      "$description": "（三）2（1）历史经营收益的正文分析（表4-1 的读表说明）",
+      "trend": "逐期趋势与同比分析（收入/成本/净利润/EBITDA 随上架率或出租率的变化）",
+      "cagr": "EBITDA（或经营性净现金流）年均复合增长率及计算口径",
+      "volatility_reason": "明显大幅波动的逐项归因（如经营性净现金流波动系投入初期资本性支出大）",
+      "negative_check": "净利润/EBITDA/经营性净现金流是否为负及原因（均为正也要明确写出结论）"
+    },
+    "forecast_rows": [
+      {
+        "$description": "**表4-2**（项目最近及未来3个会计年度收益情况，8行×8列）的 5 个科目行 × 7 期。历史 3 期取备考报表，基准年全年与预测 3 期取评估报告现金流预测表。科目行序固定：营业收入 / 营业成本 / 净利润 / 息税折旧摊销前利润（EBITDA） / 经营性净现金流",
+        "label": "科目名（与模版左列一致，不需改写）",
+        "v1": "history[0]", "v2": "history[1]", "v3": "history[2]",
+        "v4": "base_full_year（基准年全年）",
+        "v5": "forecast[0]", "v6": "forecast[1]", "v7": "forecast[2]",
+        "$example_rows": [
+          {"label": "营业收入", "v1": "30,282.92", "v2": "52,281.70", "v3": "54,571.41", "v4": "54,375.69", "v5": "54,337.25", "v6": "54,337.25", "v7": "54,337.25"},
+          {"label": "息税折旧摊销前利润（EBITDA）", "v1": "18,543.81", "v2": "28,932.02", "v3": "31,374.04", "v4": "29,780.06", "v5": "30,825.40", "v6": "30,546.60", "v7": "30,428.61"}
+        ]
+      }
+    ],
+    "seventy_percent_test": {
+      "$description": "**表4-2 最后两行**（合并单元格行）+（三）2（2）的 70% 测试结论",
+      "metric_name": "采用的指标名（息税折旧摊销前利润 / 经营性净现金流）",
+      "history_3y_avg": "最近3个会计年度平均值（万元，如 26,283.29）",
+      "forecast_3y_avg": "未来3个会计年度平均预计值（万元，如 30,600.20）",
+      "ratio_pct": "前者占后者的比例（只写数字，如 85.89）",
+      "conclusion": "是否不低于70%的结论句",
+      "forecast_lower_reason": "预测值低于历史值时的原因说明（如 出于谨慎性原则考虑运营成本自然增长；并给出差额）"
+    },
+    "revenue_structure_rows": [
+      {
+        "$description": "**表4-3**（收入结构，4行×6列）。第 1 行为「营业收入-金额」，其后每个收入类型各 2 行（金额行 + 占比行，占比行 label 留空）。收入类型名替换模版的「收入类型1/收入类型2」，多余的模版占位行由脚本自动删除",
+        "label": "行标签（营业收入 / 各收入类型名 / 占比行留空字符串）",
+        "kind": "「金额」或「占比」",
+        "v1": "history[0]", "v2": "history[1]", "v3": "history[2]", "v4": "base",
+        "$example_rows": [
+          {"label": "营业收入", "kind": "金额", "v1": "30,282.92", "v2": "52,281.70", "v3": "54,571.41", "v4": "40,804.96"},
+          {"label": "托管服务费收入", "kind": "金额", "v1": "30,282.92", "v2": "52,281.70", "v3": "54,571.41", "v4": "40,804.96"},
+          {"label": "", "kind": "占比", "v1": "100.00", "v2": "100.00", "v3": "100.00", "v4": "100.00"}
+        ]
+      }
+    ],
+    "revenue_business_content": "各类收入的业务内容说明（（三）3（1）正文用：收入类型、业务内容、服务范围）",
+    "cash_flow_providers": [
+      {
+        "$description": "**表4-4**（占比超过10%的现金流提供方服务情况，4行×13列、3行表头）。只列占比超过10%的直接签约客户；穿透后的终端客户写在 end_customer",
+        "name": "客户名称（涉密可脱敏为「客户A」，但占比必须真实）",
+        "quantity": "接受服务数量（机柜数/租赁面积等）",
+        "quantity_pct": "数量占比（%，只写数字）",
+        "amt1": "history[0] 贡献收入金额（万元）", "pct1": "history[0] 收入占比（%）",
+        "amt2": "history[1] 金额", "pct2": "history[1] 占比",
+        "amt3": "history[2] 金额", "pct3": "history[2] 占比",
+        "amt4": "base 金额", "pct4": "base 占比",
+        "contract_period": "合同期限（如 2020/1/1至2034/12/31）",
+        "industry_type": "产业类型"
+      }
+    ],
+    "end_customer": {
+      "$description": "（三）3（2）穿透后的终端客户情况（正文用）",
+      "name": "终端客户名称（涉密可脱敏为「终端客户A」）",
+      "industry": "所属行业",
+      "cooperation_model": "三方/两方合作模式描述（谁与谁签约、各自提供什么）",
+      "cooperation_since": "合作起始年份",
+      "contract_expiry": "现有合同到期日与剩余期限",
+      "renewal_intent": "续约意愿与依据",
+      "non_renewal_measures": "不续约的应对措施（备选直接客户与终端客户清单 + 业务机会优先提供承诺）"
+    },
+    "end_customer_financial_rows": [
+      {
+        "$description": "**表4-5**（主要终端客户财务情况，7行×3列）。行=财务科目，列=两个期间",
+        "label": "科目名（收入/净亏损/营业利润/销售成本/现金及现金等价物/总资产等）",
+        "v1": "较早期间的值", "v2": "较晚期间的值"
+      }
+    ],
+    "end_customer_financial_meta": {
+      "unit_label": "表头首格文字（如「类别（十亿美元）」）",
+      "period_labels": ["较早期间列标题", "较晚期间列标题"],
+      "data_source_note": "资料来源说明（如 资料来源：XXX，作为表下注）"
+    },
+    "subsidies": {
+      "$description": "（三）3（4）政府补贴情况。项目收入中不含补贴时只填 has_subsidy=false + commitment，其余留空、表4-6 不生成",
+      "has_subsidy": "true/false：项目收入来源中是否直接包含政府补贴",
+      "policy_basis": "政策依据（文件全称 + 文号 + 关键条款原文）",
+      "grantor": "补贴方",
+      "fund_source": "资金来源",
+      "grantee": "补贴对象",
+      "conditions": "补贴条件",
+      "procedure": "补贴程序（申请→审核→拨付，含分摊到本项目的计算口径）",
+      "allocated_amount": "分摊至本项目的补贴金额（万元）",
+      "receipt_history": "补贴资金的历年到账情况",
+      "in_valuation": "是否纳入估值（未纳入则说明原因）",
+      "account_period_measures": "未来应对账期不确定性的措施（不涉及则写「不涉及。」）",
+      "sustainability": "补贴政策可持续性分析（偶发性/可持续 + 理由）",
+      "commitment": {"doc_name": "政府补贴承诺函全称", "issue_date": "出具日期", "attachment_no": "附件编号", "text": "承诺原文"},
+      "provider_subsidy": "现金流提供方收入中是否含与底层资产相关的政府补贴（无则「不涉及。」）",
+      "subsidy_rows": [
+        {
+          "$description": "**表4-6**（最近3个会计年度及一期的政府补贴情况，4行×5列）。无补贴则本数组留空、该表不生成",
+          "label": "行标签（政府补贴金额（万元）/ 占当期营业收入比例（%）等）",
+          "v1": "history[0]", "v2": "history[1]", "v3": "history[2]", "v4": "base"
+        }
+      ]
+    },
+    "valuation_params": {
+      "$description": "（四）资产估值情况。**全部取自评估报告原文**，⛔ 严禁按行业经验、可比项目或范例推测。evaluation 段已有的 report_number/total_value/total_net_value/base_date/agency/method/discount_rate/income_years 不在此重复",
+      "estimator_names": "估价人员姓名与注册号",
+      "client": "委托方",
+      "appraisal_object": "估价对象（地址 + 名称）",
+      "method_reason": "选用该评估方法的理由与适用性论证（收益法/报酬资本化法的适用条件）",
+      "forecast_period_basis": "预测期的确定方式（至权属/经营权到期日等）",
+      "income_period": "（1）收益期：剩余年限及推算依据",
+      "discount_rate_buildup": "（2）折现率的累加法构成（安全利率取值与依据 + 风险溢价区间）",
+      "discount_rate_benchmark": "市场对同类物业的预期回报率区间及本项目取值合理性论证",
+      "price_level_desc": "（3）合同期内服务费/租金水平说明（现行单价、签约率、剩余合同期、协议期内假设）",
+      "market_price_conclusion": "市场客观水平调研结论（可比实例比准单价与实际水平的差异幅度）",
+      "growth_rate": "（4）服务费/租金增长率取值与调价节奏",
+      "growth_rate_basis": "增长率依据（CPI 等宏观指标 + 项目特征）",
+      "occupancy_assumption": "（5）签约率与上架率/出租率的预测期假设及审慎性说明",
+      "opex_desc": "（6）运营支出构成说明",
+      "non_opex_desc": "（7）非运营支出说明（保险计费基数与费率、增长安排、税费种类）",
+      "capex_total": "（8）预测期资本性支出合计（万元）",
+      "capex_ratio": "资本性支出占决算总投资比例（%）",
+      "capex_desc": "资本性支出的计提方式与涉及的关键设备、更新周期",
+      "book_value_diff": "评估结果与账面价值的差异及原因分析",
+      "occupancy_rows": [
+        {"$description": "**表4-7**（本项目上架/出租情况（合同期内），4行×5列）", "label": "行标签", "v1": "列1", "v2": "列2", "v3": "列3", "v4": "列4"}
+      ],
+      "occupancy_table_header": ["表4-7 的表头文字，按评估报告实际列口径给（长度须与 occupancy_rows 的列数一致）"],
+      "comparable_case_rows": [
+        {"$description": "**表4-8**（市场可比实例情况，18行×5列）：行=比较/修正因素", "factor": "比较因素/修正项", "case1": "可比实例1", "case2": "可比实例2", "case3": "可比实例3", "adjust": "修正说明或修正后结果"}
+      ],
+      "cpi_rows": [
+        {"$description": "**表4-9**（项目所在省份居民消费价格指数，2行×7列）：表头为年份，本数组给 1 行数据", "label": "行标签（如 居民消费价格指数（上年=100））", "v1": "年1", "v2": "年2", "v3": "年3", "v4": "年4", "v5": "年5", "v6": "年6"}
+      ],
+      "cpi_years": ["表4-9 的年份表头，6 个（如 2019年…2024年）"],
+      "comparable_price_rows": [
+        {"$description": "**表4-10**（可比项目服务费/租金情况，9行×5列）", "name": "可比项目名称", "location": "位置/区域", "spec": "规模或规格", "price": "单价", "note": "备注"}
+      ],
+      "opex_param_rows": [
+        {"$description": "**表4-11**（运营费用参数选取情况，7行×2列）", "item": "费用类型（电费/其他能源费/人员成本/运杂费/维保成本/物业费等）", "assumption": "年增长率假设及依据"}
+      ],
+      "tax_param_rows": [
+        {"$description": "**表4-12**（非运营支出中的税费及取费依据，5行×4列）", "tax_name": "税种", "rate": "税率", "base": "计税依据", "note": "备注"}
+      ],
+      "capex_equipment_rows": [
+        {"$description": "**表4-13**（按价值排序前20的设备支出情况，21行×2列），取自评估报告设备生命周期表", "equipment": "设备名称", "amount": "金额（万元）或更新周期"}
+      ],
+      "capex_forecast_rows": [
+        {"$description": "**表4-14**（预测期前十年的资本性支出，4行×6列）：行=科目/年段，列=期间", "label": "行标签", "v1": "列1", "v2": "列2", "v3": "列3", "v4": "列4", "v5": "列5"}
+      ],
+      "capex_forecast_header": ["表4-14 的表头文字（长度须与 capex_forecast_rows 的列数一致）"]
+    },
+    "risk_factors": [
+      {
+        "$description": "（五）1.影响未来收益稳定性的主要因素。**每个类目必须成对给出 risk 与 response**（只列风险不给应对是本节最常见失分点）；类目不少于 5 个，常见 8 类：市场情况/经济环境/政策变化/竞争项目/重要客户不续约/技术迭代/终端客户自建/区域新增供给",
+        "category": "风险类目名（作为（N）级小标题）",
+        "risk": "1）主要风险因素：风险的具体情形与影响路径",
+        "response": "2）应对方式：项目端的具体措施 + 量化论据 + 影响可控的结论"
+      }
+    ],
+    "self_built_rows": [
+      {"$description": "**表4-15**（终端客户自建情况，4行×4列）：用于论证自建风险可控；不涉及则本数组留空、该表不生成", "label": "行标签", "v1": "列1", "v2": "列2", "v3": "列3"}
+    ],
+    "self_built_table_header": ["表4-15 的表头文字（长度须与 self_built_rows 的列数一致）"],
+    "major_renovation": "（五）2.发行后3年内是否开展重大改扩建/设备更新（无则写「不涉及，项目发行后3年内将不开展显著影响正常运营的重大改扩建、设备更新等活动。」；有则写活动内容 + 对收益稳定性的影响 + 应对措施）",
+    "stability_commitment": {"doc_name": "关于影响项目稳定运营重要因素的承诺函全称", "issue_date": "出具日期", "attachment_no": "附件编号", "text": "承诺原文（含风险已全面报告充分分析 + 改扩建披露/不开展 两段必备话术）"}
+  },
+  "sub_projects": [
+    {
+      "$description": "第一章表1「各子项目情况」与（一）项目概况正文的唯一数据源。表1 有 3 个**复合行**（建设内容和规模 / 开竣工时间 / 项目权属起止时间及剩余年限），每行由多个字段拼成，只提一个字段会导致该格内容缺大半——因此下列字段要成组提齐。",
+      "$extraction_rules": [
+        "【复合行成组提取】①「建设内容和规模」= park_land_area + land_area + building_area + billing_rack_count + total_rack_power + construction_cost + underlying_asset；②「开竣工时间」= construction_start + construction_completion（各精确到年月，不能只填竣工年份）；③「项目权属起止时间及剩余年限」= property_right_start + property_right_end + remaining_years",
+        "【剩余年限强制计算】remaining_years = 权属到期日(property_right_end) − 申报基准日(project_info.declaration_base_date)，按年保留2位小数。property_right_end 已取到时必须算出来，不得留空",
+        "【入池口径 vs 园区口径要分开】land_area/building_area 是**入池资产**占用的土地面积与建筑面积；park_land_area/park_building_area 是资产所在园区（信息港）**整体**的规划用地面积与总建筑面积。表1 与正文都要同时写两个口径，混为一谈是硬错误",
+        "【机柜口径】billing_rack_count（计费机柜数）是表1与正文的口径，与 rack_count（机柜总数/设计机柜数）可能不同，两者都提；total_rack_power（机柜总功率kW）与 design_power（单机柜设计功率kW）同理",
+        "【底层资产要录权属范围原文】underlying_asset 必须写清「哪几栋建筑物 + 房屋所有权 + 占用范围内的国有建设用地使用权 + 相关附属设施设备所有权」，并保留**排除项**（如「不含110千伏输变电工程」）——排除项漏写会与法律意见书口径矛盾",
+        "【四至】boundaries 逐向录原文（东/南/西/北），asset_scope 为可直接进表1的整段四至描述；线性工程改录起止地点",
+        "通用溯源要求同全局 $rules：每条记录带 _source/_page/_raw_text + _attachment_no/_doc_name"
+      ],
+      "name": "子项目名称（不带'栋'字）",
+      "asset_scope": "资产范围（四至描述：东至/西至/南至/北至，或线性工程起止地点；取不到时回退为子项目名称）",
+      "boundaries": {
+        "$description": "四至逐向原文，用于（一）正文第2段与表1「资产范围」行；线性工程改用 start_point/end_point",
+        "east": "东至",
+        "south": "南至",
+        "west": "西至",
+        "north": "北至",
+        "start_point": "（线性工程）起点",
+        "end_point": "（线性工程）终点"
+      },
+      "underlying_asset": "底层资产权属范围描述（含建筑物清单+房屋所有权+国有建设用地使用权+附属设施设备所有权，**必须保留排除项**，如「不含110千伏南涌输变电工程」）",
+      "project_company": "对应项目公司全称",
+      "park_name": "资产所在园区/信息港名称（如「XX数字智慧产业园」）",
+      "park_land_area": "所在园区**整体**规划总用地面积（㎡）",
+      "park_building_area": "所在园区**整体**总建筑面积（㎡）",
+      "land_area": "入池资产占用的国有建设用地面积（㎡）",
+      "building_area": "入池资产建筑面积（㎡）",
+      "rack_count": "机柜总数/设计机柜数（个）",
+      "billing_rack_count": "计费机柜数（个）——表1「建设内容和规模」与正文用此口径",
+      "design_power": "单机柜设计功率（kW）",
+      "total_rack_power": "机柜总功率（kW）——表1「建设内容和规模」与正文用此口径",
+      "pue": "PUE值",
+      "construction_start": "开工时间（YYYY年M月）",
+      "construction_completion": "竣工时间（YYYY年M月）",
+      "operation_start": "运营起始时间（精确到日；表1「运营起始时间（年月）」行取到年月即可）",
+      "completion_year": "竣工年份（construction_completion 的年份，兼容旧字段）",
+      "location": "资产所在地（区/县级，如「广东省广州市南沙区」）",
+      "property_cert": "不动产权证编号",
+      "property_right_start": "项目权属起始日（YYYY年M月D日）",
+      "property_right_end": "项目权属到期日（YYYY年M月D日）",
+      "land_expiry": "土地使用期限（原文表述，如「2021年2月1日至2071年1月31日」）",
+      "remaining_years": "剩余年限（年，保留2位小数）= property_right_end − project_info.declaration_base_date，**强制计算**",
+      "construction_cost": "建设规模/决算总投资（万元）",
+      "financials": {
+        "$description": "按年度填写，键为'2023'/'2024'/'2025'/'2026Q1'等",
+        "YYYY": {
+          "revenue": "营业收入（万元）",
+          "net_profit": "净利润（万元）",
+          "total_assets": "总资产（万元）",
+          "total_liabilities": "总负债（万元）",
+          "ebitda": "EBITDA（万元）——仅当上游材料直接给出时存放；本 SKILL 不计算 EBITDA，表格中相应单元格直接写【待填写】",
+          "operating_cash_flow": "经营性净现金流（万元）",
+          "depreciation": "折旧及摊销（万元）",
+          "interest_expense": "利息支出（万元）",
+          "income_tax": "所得税费用（万元）"
+        }
+      }
+    }
+  ],
+  "expandable_assets": {
+    "$description": "第一章（三）可扩募资产情况的**唯一结构化数据源**（表2 + 该小节正文）。此前本节不存在、phase1 蓝图 data_deps 为空，表2 只能整表占位。数据不来自25项证明材料骨架，而来自：发起人（原始权益人）年报/定期报告、发起人提供的在建/在运项目清单、发起人官网与投资者关系资料、初稿第一章（三）已写内容。**首发项目必填；已发行REITs新购入（扩募）项目法定豁免**（格式文本（三）3.）。",
+    "$extraction_rules": [
+      "【首发必填】首发项目本节为空 → 表2 整表占位 + 该小节只能写占位符，属硬缺口；扩募项目按格式文本可不提供，本节留空并在（三）写「不涉及。」",
+      "【正文与表分工】originator_profile 支撑（三）的引导段（主营业务、已开展业务的城市、正在推动的业务与拟拓展城市，控制在200字以内）；assets[] 支撑表2 逐行；summary 支撑「可扩募资产规模是本项目的N倍」这类结论句",
+      "【规模口径要与本项目一致】assets[*].scale_value 用与本项目相同的口径（数据中心用机柜数「个」，其余行业用长度/面积），便于 summary.multiple_of_target 计算倍数；scale_text 另存带单位的原文表述",
+      "【已运营资产要录近3年收益】格式文本表2 注明「已运营的资产，还应简要说明资产最近3个会计年度运营收益情况」→ 逐个资产录 recent_financials（营业收入/营业利润，按年）",
+      "【缺乏可扩募资产的情形】因行业共性缺乏可扩募资产、或首发规模超50亿元需放宽规模要求的项目，填 lack_reason（格式文本（三）2. 要求详细说明缺乏原因与企业可扩募资产实际情况），不得直接留空",
+      "【严禁编造清单】取不到明细时 assets 留空数组，正文写「【待填写：可扩募资产清单】」并在核查报告提示「待发起人提供在建/在运项目清单」，不得用行业公开信息拼凑充数",
+      "通用溯源要求同全局 $rules：每条记录带 _source/_page/_raw_text + _attachment_no/_doc_name（发起人年报等非25项材料时，_attachment_no 记项目追加材料编号；确实无编号则留空并在正文标 pending）"
+    ],
+    "originator_profile": {
+      "$description": "（三）引导段用：发起人主体与业务布局概况",
+      "short_name": "发起人简称（正文行文用，= entities.originators[0].short_name）",
+      "established_date": "成立时间",
+      "listing_status": "上市情况（如「深圳证券交易所上市公司，股票代码300738」；非上市填「非上市」）",
+      "main_business": "主营业务描述",
+      "cities_operating": ["已开展业务/已建成运营的城市或区域"],
+      "cities_expanding": ["正在推动业务与拟拓展的城市或区域（含算力枢纽节点等国家布局表述）"],
+      "total_scale_text": "全国总体布局规模的原文表述（如「规划布局61栋数据中心、约32万个机柜」）",
+      "delivered_scale_text": "已交付运营规模的原文表述（如「控股持有并已交付运营13栋数据中心，合计约7.6万个机柜」）"
+    },
+    "assets": [
+      {
+        "$description": "表2 逐行（一个资产一行）。列序与官方模版一致：资产名称/所属行业/所在地区/资产状态/资产规模/决算总投资/运营剩余年限/持股比例/间接持有方式",
+        "name": "资产名称",
+        "industry": "所属行业（如「数据中心」）",
+        "region": "所在地区（省市区，颗粒度与表1 location 一致）",
+        "status": "资产状态（在建/完工/已运营及时间，如「已运营，2021年4月」）",
+        "scale_value": "资产规模数值（与本项目同口径，数据中心=机柜数「个」）",
+        "scale_text": "资产规模原文表述（带单位，如「6,000个机柜」）",
+        "total_investment": "决算总投资（**万元**，与表1口径统一；原文为亿元时换算并在 _raw_text 保留原值）",
+        "remaining_years": "运营剩余年限（年，保留2位小数）",
+        "holding_ratio": "发起人直接或间接持股比例（如「直接持股，100%」）",
+        "indirect_holding_method": "间接持有的具体方式（直接持股则填「不涉及」）",
+        "is_priority": "是否列为优先扩募资产（true/false，正文常先点名优先扩募的资产）",
+        "recent_financials": {
+          "$description": "已运营资产最近3个会计年度运营收益（格式文本表2 注的硬要求），键为年份",
+          "YYYY": {"revenue": "营业收入（万元）", "operating_profit": "营业利润（万元）"}
+        },
+        "attachment_no": "该资产信息来源的材料编号（如为发起人年报等追加材料，记追加编号；无则留空）"
+      }
+    ],
+    "summary": {
+      "$description": "（三）正文结论句用",
+      "total_count": "可扩募资产数量（个/栋）",
+      "total_scale": "可扩募资产规模合计（与 assets[*].scale_value 同口径）",
+      "total_investment": "决算总投资合计（万元）",
+      "multiple_of_target": "可扩募资产规模相当于本项目入池资产的倍数（如「11.89倍」；= total_scale ÷ sub_projects 合计规模）",
+      "priority_scale": "拟优先扩募资产的规模合计",
+      "priority_multiple": "拟优先扩募资产相当于本项目的倍数"
+    },
+    "lack_reason": "（如涉及）因行业共性等原因确实缺乏其他可扩募资产的原因说明，或首发规模超50亿元需放宽规模要求时的企业可扩募资产实际情况说明（格式文本（三）2.）"
+  },
+  "legal_relations": {
+    "$description": "第二章（一）法律关系的**唯一结构化数据源**。官方模版要求：绘制项目主要法律关系图，完整反映发起人（原始权益人）、项目公司、基础设施项目（底层资产）、运营管理机构、实际控制人之间的股权或协议控制关系，并进行文字说明；**须体现项目公司所有股东的股权比例、控股股东的实际控制人**；如涉及外资须完整反映境内外股权/协议控制关系。此前本节不存在——（一）法律关系整个小节（含股权结构文字说明）无数据可依，只能写占位符。数据来源：项目公司/原始权益人的营业执照与章程、股权结构图、法律意见书（权属与主体资格章节）、审计报告附注（合并范围/股东情况）、天眼查等工商信息。",
+    "$extraction_rules": [
+      "【股东比例必须齐全且合计100%】project_company_equity 要列出项目公司的**全部股东**及各自持股比例，比例之和应为100%（官方硬要求「项目公司所有股东的股权比例」）。缺任一股东或比例对不上100%都会被法律意见书口径打回",
+      "【原始权益人之间的关系要写清】多个原始权益人常互为母子公司（如 B、C 均为 A 的全资子公司）。originator_relations 逐条记录控股关系（parent→subsidiary + 比例），（一）正文据此写「X 为 Y 全资子公司（持股100%）」",
+      "【控股股东与实际控制人分开记】controlling_shareholder（控股股东，可能是持股主体）与 actual_controller（实际控制人，通常为自然人或最终控制方）是两个字段，官方要求「控股股东的实际控制人」——两者都要有；实际控制人为自然人时只记姓名，不记身份证号等敏感信息",
+      "【外资架构必录】涉及外资/VIE/境外上市主体时 has_foreign_investment=true 并在 foreign_control_chain 记境内外股权或协议控制链条；纯境内架构填 false",
+      "【法律关系图是图片占位】relation_diagram 只记「是否已有图/图片来源」，正文用 insert_image_placeholders 插占位框，不编造图；文字说明部分才由结构化字段生成",
+      "通用溯源要求同全局 $rules：每条记录带 _source/_page/_raw_text + _attachment_no/_doc_name"
+    ],
+    "project_company_equity": [
+      {
+        "$description": "项目公司的股东与持股比例（一个股东一条；比例之和=100%）",
+        "project_company": "项目公司名称（多项目公司时区分）",
+        "shareholder": "股东名称（用全称，正文行文可用简称）",
+        "ratio": "持股比例（保留原文精度，如 40.5306%）"
+      }
+    ],
+    "originator_relations": [
+      {
+        "$description": "原始权益人之间/与其他主体的控股关系（如子公司关系）",
+        "parent": "母公司/控股方名称",
+        "subsidiary": "子公司/被控方名称",
+        "ratio": "持股比例（如 100%）"
+      }
+    ],
+    "controlling_shareholder": "主原始权益人的控股股东（名称+持股比例，如「广州市昊盟计算机科技有限公司（持股80%）」）",
+    "actual_controller": "最终实际控制人（自然人只记姓名，如「冯康」）",
+    "has_foreign_investment": "是否涉及外资/VIE/境外上市主体（true/false）",
+    "foreign_control_chain": "（如涉及外资）境内外股权或协议控制链条的文字描述",
+    "relation_diagram": {
+      "available": "是否已取得法律关系图（true/false；无则正文插图片占位框，不编造）",
+      "attachment_no": "法律关系图所在材料编号（如取自法律意见书附图）"
+    }
+  },
+  "entities": {
+    "$description": "各参与主体信息，按角色分节",
+    "$compliance_credit_schema": {
+      "$description": "【第二章（二）(2)、（三）(3)、（六）2 通用子结构】违法违规和信用情况的结构化原料，originators[*]/project_companies[*]/各中介机构对象都可挂一个 compliance_credit 对象。此前这些字段完全没有结构，phase2 蓝图 #9/#12/#18 只能用 {query_date}/{attachment_ref} 裸占位，主agent无处取值 → 正文只能写占位符或编造日期/附件号。",
+      "no_violation": "近3年是否无重大违法违规、无重大安全生产事故（true/false；true 时正文写标准表述，false 时必须在 violation_detail 详述）",
+      "violation_detail": "（no_violation=false 时必填）重大违法违规/安全事故的具体情况",
+      "violation_query_date": "违法违规查询截止日（YYYY年M月D日）",
+      "violation_official_websites": ["违法违规查询涉及的官方机构网站名称，逐个成元素（如 中国证监会网站、国家金融监督管理总局网站、国家外汇管理局网站、中国人民银行网站、应急管理部网站、生态环境部网站、国家市场监督管理总局网站、国家发展和改革委员会网站、财政部网站、国家税务总局网站）。**注意：这一组不含 信用中国/企业信用公示/执行信息公开网**（那三个属信用状况）"],
+      "credit_query_date": "信用状况查询截止日（YYYY年M月D日）",
+      "credit_websites": ["信用状况查询网站，逐个成元素（信用中国网站、国家企业信用信息公示系统网站、中国执行信息公开网；缺哪个要标注）"],
+      "credit_attachment_no": "信用记录查询结果截图的材料编号（如 3-1；正文写「详见附件3-1」）",
+      "commitment": {
+        "$description": "关于自身运营情况的承诺函（第4项材料）",
+        "doc_name": "承诺函正式全称（如《XX公司关于XX项目的承诺函》，正文引用要写全称）",
+        "issue_date": "承诺函落款日期（YYYY年M月D日）",
+        "attachment_no": "承诺函材料编号（如 4-1）",
+        "key_text": "承诺函必备表述原文（须含「近3年在投资建设、生产运营、市场监管、税务等方面无重大违法违规记录，未发生重大安全生产事故」）"
+      }
+    },
+    "originators": [
+      {
+        "name": "公司全称",
+        "short_name": "简称",
+        "legal_rep": "法定代表人",
+        "registered_capital": "注册资本（万元）",
+        "credit_code": "统一社会信用代码",
+        "established_date": "成立日期",
+        "actual_controller": "实际控制人（表10 R2）",
+        "registered_address": "注册地址（表10 R5）",
+      "main_business": "主营业务（表10 R6）",
+      "role": "发起人/原始权益人",
+      "reits_issued": "已发行基础设施REITs情况（表4 该行；发行过填「有」并简述，否则填「无」）",
+      "reits_withdrawn_12m": "最近12个月内申报的基础设施REITs项目被国家发展改革委退回情况（表4 该行；无则填「无」）",
+      "project_contact_name_title": "项目联系人姓名及职务（表4；材料未提供时为null）",
+      "project_contact_details": "项目联系人联系方式（表4；材料未提供时为null）",
+        "financials": {
+          "$description": "表5的唯一财务数据源。键为完整会计年度（2023/2024/2025）或最近一期（2026Q1等）；每个发起人最少3个年度及一期。",
+          "YYYY_or_interim": {
+            "period_label": "报表原文期间标签（如2025年/2025年12月31日、2026年1-3月/2026年3月31日）",
+            "total_assets": "总资产（万元）",
+            "total_liabilities": "总负债（万元）",
+            "debt_ratio": "资产负债率（%）=总负债/总资产×100，保留两位小数",
+            "revenue": "营业收入（万元）",
+            "net_profit": "净利润（万元）",
+            "ebitda": "EBITDA（万元）；仅材料直接披露时填，不代算",
+            "operating_cash_flow": "经营活动产生的现金流量净额（万元）",
+            "audit_opinion": "审计意见类型（最近一期未审计时填未审计）"
+          }
+        },
+        "financial_analysis": {
+          "$description": "第二章表后分析数据源。只记需要解释的大幅变动/异常值，变动幅度在正文标明，不另建同比表。",
+          "change_threshold_pct": 20,
+          "change_reasons": [
+            {
+              "metric": "total_assets/total_liabilities/debt_ratio/revenue/net_profit/operating_cash_flow",
+              "from_period": "起始期间键",
+              "to_period": "终止期间键",
+              "change_pct": "变动幅度%（资产负债率填百分点变动）",
+              "trigger": "abs_change_gte_20pct/sign_flip/negative/debt_ratio_5pp",
+              "status": "explained / unexplained",
+              "reason": "审计附注、年报管理层讨论或业务专项说明给出的原因；unexplained时为null"
+            }
+          ]
+        },
+        "compliance_credit": "见 entities.$compliance_credit_schema（第二章（三）(3)违法违规和信用情况的数据源：承诺函全称/日期/编号 + 信用查询截止日/网站/编号 + 违法违规查询网站清单）"
+      }
+    ],
+    "project_companies": [
+      {
+        "name": "公司全称",
+        "legal_rep": "法定代表人",
+        "registered_capital": "注册资本（万元）",
+        "credit_code": "统一社会信用代码",
+        "established_date": "成立日期（表8 C2）",
+        "registered_address": "注册地址（表8 C4）",
+        "business_scope": "经营范围（表8 C5）",
+        "sub_project": "对应子项目名称",
+        "compliance_credit": "见 entities.$compliance_credit_schema（第二章（二）2违法违规和信用情况的数据源，结构与 originators 相同）"
+      }
+    ],
+    "fund_manager": {
+      "name": "南方基金管理股份有限公司",
+      "$ref": "templates/fund_manager_profile.json"
+    },
+    "abs_manager": {
+      "name": "南方资本管理有限公司",
+      "$ref": "templates/fund_manager_profile.json"
+    },
+    "operation_manager": {
+      "$description": "**主**运营管理机构（= operation_managers[0]，保持单对象是因为 phase2 蓝图表6 的 data_dep 指向本节，不要改成数组）。运营管理机构由原始权益人兼任时，按 data_crossref.json 的等价规则直接复用 originators[0] 的同名字段",
+      "name": "运营管理机构全称",
+      "legal_rep": "法定代表人",
+      "actual_controller": "实际控制人（表6 R3）",
+      "established_date": "成立日期（表6 R4）",
+      "registered_capital": "注册资本（万元，表6 R5）",
+      "registered_address": "注册地址（表6 R6）",
+      "main_business": "主营业务（表6 R7）",
+      "reits_operated": "运营的已发行基础设施REITs情况（表6 R8，没有则填'无'）"
+    },
+    "operation_managers": [
+      {
+        "$description": "全部运营管理机构列表（**多家场景必填**）。实测标准答案存在「一个项目由两家机构共同承担运营管理」的情形（如 A 公司负责数据中心运营 + B 公司作为项目公司层面运营主体），单对象无法表达，第六章（三）1、（四）引导段都需要逐家点名。只有一家时该数组只放一条，与 operation_manager 内容一致",
+        "name": "公司全称",
+        "short_name": "简称（正文行文用）",
+        "legal_rep": "法定代表人",
+        "role_desc": "承担的运营管理角色（如'基础设施项目日常运营管理''项目公司层面运营主体'）",
+        "is_originator_affiliate": "是否为原始权益人或其关联方（true/false，第六章（三）4、（四）需据此判断关联交易范围）"
+      }
+    ],
+  "law_firm": {
+      "name": "律师事务所全称",
+      "lead_lawyers": ["主办律师1", "主办律师2"],
+    "contact_address": "联系地址（表10/表11 用；无公开源时为null，Word统一显示并标黄「【待填写】」）",
+    "institution_contact_name_title": "机构联系人姓名及职务（材料未提供时为null）",
+    "institution_contact_details": "机构联系人联系方式（材料未提供时为null）",
+    "project_contact_name_title": "本项目联系人姓名及职务（材料未提供时为null）",
+    "project_contact_details": "本项目联系人联系方式（材料未提供时为null）",
+      "intermediary_compliance": "见 entities.$intermediary_compliance_schema（第二章（六）2：信用查询 + 执业资格承诺函 6-x）"
+    },
+  "accounting_firm": {
+    "name": "会计师事务所全称",
+    "contact_address": "联系地址",
+    "institution_contact_name_title": "机构联系人姓名及职务",
+    "institution_contact_details": "机构联系人联系方式",
+    "project_contact_name_title": "本项目联系人姓名及职务",
+    "project_contact_details": "本项目联系人联系方式",
+      "intermediary_compliance": "见 entities.$intermediary_compliance_schema"
+    },
+  "valuation_agency": {
+    "name": "评估机构全称",
+    "contact_address": "联系地址",
+    "institution_contact_name_title": "机构联系人姓名及职务",
+    "institution_contact_details": "机构联系人联系方式",
+    "project_contact_name_title": "本项目联系人姓名及职务",
+    "project_contact_details": "本项目联系人联系方式",
+      "intermediary_compliance": "见 entities.$intermediary_compliance_schema"
+    },
+  "tax_advisor": {
+    "name": "税务咨询机构全称",
+    "contact_address": "联系地址",
+    "institution_contact_name_title": "机构联系人姓名及职务",
+    "institution_contact_details": "机构联系人联系方式",
+    "project_contact_name_title": "本项目联系人姓名及职务",
+    "project_contact_details": "本项目联系人联系方式",
+      "intermediary_compliance": "见 entities.$intermediary_compliance_schema"
+    },
+  "financial_advisor": {
+    "name": "财务顾问（证券公司）全称",
+    "contact_address": "联系地址",
+    "institution_contact_name_title": "机构联系人姓名及职务",
+    "institution_contact_details": "机构联系人联系方式",
+    "project_contact_name_title": "本项目联系人姓名及职务",
+    "project_contact_details": "本项目联系人联系方式",
+      "intermediary_compliance": "见 entities.$intermediary_compliance_schema"
+    },
+    "$intermediary_compliance_schema": {
+      "$description": "【第二章（六）2 中介机构违法违规情况通用子结构】每家中介机构（律所/会计/评估/税务/财顾）挂一个。分两小节：(1)信用情况——信用中国等3网站查询；(2)执业资格承诺——是否在暂停执业期间 + 出具执业资格承诺函。此前无结构，phase2 蓝图 #18 用裸 {attachment_ref} 占位，无处取值。中介机构的执业资格承诺函是第6项材料（6-1~6-5），与运营主体的第4项运营承诺函不同，不要混。",
+      "credit_query_date": "信用情况查询截止日（YYYY年M月D日）",
+      "credit_websites": ["信用中国网站、国家企业信用信息公示系统网站、中国执行信息公开网"],
+      "credit_attachment_no": "信用记录截图材料编号（如 3-5）",
+      "no_suspension": "申报时是否不在严重失信主体名单、不在被暂停执业期间、不在被暂停证券/REITs业务期间（true/false）",
+      "qualification_commitment": {
+        "doc_name": "执业资格承诺函正式全称（如《XX关于XX项目的承诺函》）",
+        "issue_date": "承诺函落款日期（YYYY年M月D日）",
+        "attachment_no": "承诺函材料编号（如 6-1）",
+        "key_text": "执业资格承诺必备表述原文（「在本项目向国家发展改革委报送时不在严重失信主体名单内，不在被行业主管部门要求暂停执业期间，不在被有关监管机构要求暂停开展证券业务或基础设施REITs业务期间」）"
+      }
+    }
+  },
+  "operation_management": {
+    "$description": "第六章「运营管理安排」的**唯一结构化数据源**。此前本节不存在，第六章只有 entities.operation_manager.{name,legal_rep} 可用，导致（二）激励约束机制与（三）保障措施写不出实质内容（历史事故：整章只写83字）。本节数据不来自尽调表格，而来自《运营管理服务协议》/《委托运营管理协议》、基金合同（草案）、招募说明书，以及标准证明材料第4项「发起人（原始权益人）、项目公司、运营管理机构关于自身运营情况的承诺函」。",
+    "$extraction_rules": [
+      "【条款原文必录】fee_structure 各层的 clause_text 必须录《运营管理服务协议》对应条款**原文**（80字以上）。只记结论（如'分为基本收费和激励收费'）写不出（二）小节，仍会被 validate_output 判篇幅不足",
+      "【层级不得推定】tier_count 只能按协议实际约定填 2 或 3，**严禁按首发/扩募推定**——两份过审标准答案均为首发项目，一份两层、一份三层（详见 mapping_rules #45 的 key_notes）",
+      "【比例可缺不可编】ratio/计提比例协议未明确时填 null，正文写「计提比例将根据相关成本占营业收入比例情况确定」这类协议原话，不得编造具体百分数",
+      "【承诺函分组录入】conflict_commitments 的两组承诺（防范关联交易/避免同业竞争）逐条成数组元素，每条录 key_text 原文；正文引用时写「承诺要点＋详见附件X」，**不得整段照抄原文凑篇幅**",
+      "【可模板化部分允许为空】entrusted_duties（委托职责6项）、fund_level_governance、conflict_commitments 属于行业通用制度安排，材料缺失时子agent按 chapter_guides/ch6_guide.md 的要点清单套写即可，**本节为空不等于该小节可以省略**",
+      "通用溯源要求同全局 $rules：每条记录带 _source/_page/_raw_text，并必录 _attachment_no/_doc_name"
+    ],
+    "service_agreement": {
+      "name": "运营管理协议正式名称（如《运营管理服务协议》《委托运营管理协议》）",
+      "signing_date": "签署日期（未签署则填'拟签署'）",
+      "parties": "协议各方（基金管理人/项目公司/运营管理机构）",
+      "attachment_no": "该协议的证明材料编号",
+      "entrusted_duties": [
+        "基金管理人委托运营管理机构的职责，逐项成条。协议未列明时按《公开募集基础设施证券投资基金指引（试行）》第三十八/三十九条的6项通用职责填：①购买财产保险和公众责任保险 ②制定及落实运营策略 ③签署并执行运营相关协议 ④收取租赁运营收益、追收欠缴款项 ⑤执行日常运营服务（安保/消防/通讯/紧急事故管理） ⑥实施维修改造"
+      ],
+      "assist_matters": ["除委托职责外约定由运营管理机构协助完成的事项，逐项成条"],
+      "manager_rights": "运营管理机构的权利（收费权、信息获取权等）",
+      "supervision": {
+        "$description": "基金管理人的监督机制，第六章（一）末段的数据源",
+        "appointed_personnel": "向项目公司委派的人员（管理人员/财务负责人）",
+        "inspection": "检查方式（定期/不定期）",
+        "rectification": "限期整改约定",
+        "breach_liability": "违约责任追究约定",
+        "dismissal_procedure": "解聘运营管理机构的程序与依据（法律法规/基金合同/本协议约定）"
+      }
+    },
+    "fee_structure": {
+      "$description": "运营管理费/运营管理服务费结构，第六章（二）激励约束机制的核心数据源",
+      "tier_count": "层级数：2（基本收费+激励收费）或 3（基础管理费+达标管理费+激励管理费），按协议实际约定填",
+      "tiers": [
+        {
+          "name": "该层名称（如'基本收费'/'基础管理费'/'达标管理费'/'激励收费'/'激励管理费'）",
+          "base": "计提基数（如'基础设施项目主营业务收入''实际NOI与目标NOI的差额'）",
+          "ratio": "计提比例或计算方式（协议未明确填 null）",
+          "covers": "该层费用覆盖的成本项（如'行政费用、人员成本等运营费用''管理、营销费用'）",
+          "assessment": "考核方式（如'按负面清单考核，达标足额支付、未达标相应扣减''超目标值部分按一定比例奖励'）",
+          "clause_text": "《运营管理服务协议》该层收费的条款原文（80字以上，必录）"
+        }
+      ],
+      "kpi_metric": "核心考核指标（如 'NOI'、'营业收入'、'出租率'）",
+      "actual_value_source": "实际值取数来源（惯例：每年审计报告）",
+      "target_value_source": "目标值取数来源（惯例：资产评估报告的相关预测数据）",
+      "negative_list": ["负面清单考核项（三层收费的达标管理费适用），逐项成条；不适用填空数组"]
+    },
+    "safeguards": {
+      "$description": "第六章（三）促进项目持续健康平稳运营的保障措施。要点清单见 chapter_guides/ch6_guide.md，其中 1/2/3/6 属可模板化，4 依赖 project_info.originator_subscription_ratio，5 依赖 conflict_commitments",
+      "strategic_positioning": "项目战略定位与品牌效应延续的具体表述（服务标准、资产安全稳定高效运行承诺）",
+      "team_continuity": {
+        "operation_mode_unchanged": "运营管理模式不变的具体约定（原运营团队继续负责实施）",
+        "core_team_unchanged": "核心团队保持不变（true/false 或具体表述）",
+        "customer_contracts_unchanged": "客户相关协议条款保持不变（true/false 或具体表述）",
+        "reward_punishment_in_legal_docs": "REITs法律文件中明确约定的运营管理机构奖惩机制"
+      },
+      "fund_level_governance": {
+        "$description": "**历史高发缺口**：基金层面项目管理机制（第六章（三）6）。两份过审标答其中一份专设此要点，另一份缺——按并集必写",
+        "duty_separation": "敏感与非敏感管理职能分离的治理安排",
+        "fund_level_major_matters": ["由基金管理人在基金层面决策的重大事项，如项目公司年度预算、经营计划审批、年度财务决算方案审批"],
+        "operator_daily_matters": ["运营管理机构负责执行的日常运营事项，如编制项目公司年度经营计划及预算"],
+        "related_party_review": "基金拟定的关联交易审核机制（份额持有人大会审议、存续期拟购入项目的机制安排等）",
+        "abstention_arrangement": "关联方回避表决安排（份额持有人大会表决机制，中国证监会另有规定的除外）"
+      }
+    },
+    "conflict_commitments": {
+      "$description": "第六章（四）防范关联交易和利益冲突。来源：标准证明材料第4项承诺函（如《关于自身运营情况的承诺函》《避免同业竞争的承诺函》）",
+      "doc_name": "承诺函正式名称",
+      "attachment_no": "承诺函的证明材料编号（如 4-1），正文写「详见附件{编号}」",
+      "issuer": "出具主体（原始权益人/项目公司/运营管理机构）",
+      "issue_date": "出具日期",
+      "committed_subjects": ["承诺覆盖的主体范围（如'原始权益人及其控制企业'），以及被督促执行的运营管理机构名单"],
+      "related_party_items": [
+        "防范关联交易的安排，逐条成元素（通用4项：①规范并尽量减少关联交易 ②无法避免的按公开公平公正定公允价格并签规范合同 ③严格履行审批程序（含关联方回避表决）与信息披露义务 ④不通过关联交易非法转移资金利润、不损害份额持有人权益）"
+      ],
+      "anti_competition_items": [
+        "避免同业竞争的安排，逐条成元素（通用5项：①竞争性业务机会优先提供给REITs ②平等对待各项目、不故意降低其市场竞争能力 ③其他同类资产具备条件时按合理价格注入 ④出售转让同类资产时REITs项下载体享有同等条件优先购买权 ⑤同业竞争争议与基金管理人积极协商解决）"
+      ],
+      "dispute_resolution": "同业竞争争议的协商解决机制与违反承诺的损失承担约定",
+      "key_text": "承诺函关键段落原文（供核对必备表述；正文引用改写为要点+附件编号，不整段照抄）",
+      "required_wording_included": "是否逐字包含格式文本要求的必备表述（true/false）"
+    }
+  },
+  "compliance": {
+    "$description": "第五章「项目合规情况」的唯一数据源，对应证明材料第13~21项（文件数最多的一类）。表15/16/17/18/19/20/21/22 全部由本节直接生成，正文四个小节（不涉及情况/缺失情况/土地分情形说明/转让限制具体情况）也全部依赖本节，因此必须逐份文件提取、不得只提一份代表。",
+    "$extraction_rules": [
+      "【逐份成行】同一类手续有多份文件时必须逐份成行，不得只填最新一份。示例：企业投资项目备案5份（首次立项+年检+信息变更）、建设用地规划许可证2张（对应2宗地）、国有建设用地使用权出让合同2份、增值电信业务经营许可证2张（不同持证主体）、不动产权证2本，均需各占一行",
+      "【模版表需插行】表15 官方模版仅25行9大类，实际提取行数通常远超（标准范例38行）；表16 模版为21行的行业对照表，实际应改为「序号/手续名称/签发时间/签发机构/文件编号/处理方式/备注」7列并按实际手续填行。行数不足时用 fill_plan 的 insert_tables/插行处理，不得因模版行数不够而丢弃已提取的手续",
+      "【处理方式四选一】handling 字段只能取：正常办理 / 投资建设时无需办理 / 投资建设时未办理但已补办 / 投资建设时未办理但有关部门已出具明确处理意见。取「不涉及」或「未办理」时，必须同步在 procedures_not_applicable 或 procedures_missing 中补齐法规依据与条款原文，否则第五章第（二）节3、4小节写不出来",
+      "【法规原文必录】不涉及/缺失情形的论述属于强论证段落，必须提取法规名称+文号+适用条款的**原文引用**（每条150字以上）以及有权部门函件的**函复原文**（200字以上），仅记结论无法支撑正文",
+      "【承诺函/无异议函逐字比对】格式文本对承诺函与无异议函规定了必备表述（如「对该项目以100%股权转让方式发行基础设施REITs无异议」「不存在未办理投资管理、规划、用地、施工许可和产权登记手续的连廊、夹层等建筑」）。必须提取 key_text 原文并置 required_wording_included 标记是否逐字包含，缺失需在核查报告中提示",
+      "【附件编号必录】每条记录都要记 attachment_no（材料编号，如 13-1-5-1 / 16-5），正文引用「附件{编号}」时直接取用，不得自行编号",
+      "【多子项目分组】investment_procedures 以子项目名称为键分组（sub_project_name 为占位键）；单子项目也保留分组结构",
+      "【证载信息为准】表17/表18 的产权证书编号、权利人、坐落、用途、面积、年限一律按不动产权证/土地使用权证的证载信息填写，不得用出让合同或评估报告的口径替代",
+      "【(一)节靠知识库+项目指标】宏观政策原文不在证明材料里，取自 industry_knowledge.json；但符合性论证必须用项目实测指标对标（上电率/PUE/绿证/园区资质），这些指标要在读评估报告、审计报告、PUE测试报告、其他材料时一并采集到 macro_policies.conformity_metrics",
+      "【(六)节表22 不由提取生成】表22 是税务测算结果（依赖交易方案与汇率、公允价值假设），材料里没有；提取阶段只负责税收承诺函与已纳税额，测算表取自初稿或税务顾问，缺失则整表占位并在核查报告提示，严禁编造税额",
+      "通用溯源要求同全局 $rules：每条记录带 _source/_page/_raw_text，并必录 _attachment_no/_doc_name（正文括注原料）。本节记录本身已有 attachment_no 字段时，_attachment_no 与其保持一致即可"
+    ],
+    "macro_policies": {
+      "$description": "第五章（一）符合宏观管理政策要求情况。标准答案本节分 5 个编号小节、约 25 段 / 3,700 字，每小节结构=【逐份政策原文摘要段】×N + 【项目符合性论证段】×1，因此必须按 subsection 分组存放，不能只存一串政策名称。政策原文来自 industry_knowledge.json 的 macro_policies（内置知识库），项目端指标与资质来自材料，两者缺一不可。",
+      "$subsections": [
+        "national_strategy = 1.项目符合国家重大战略、国家宏观调控政策、国民经济和社会发展总体规划情况",
+        "special_regional_plan = 2.项目符合有关专项规划和区域规划（实施方案）情况（须含省级/市级规划，是本节字数主力）",
+        "industry_catalog = 3.项目符合《产业结构调整指导目录》和相关行业政策规定的情况（须写到目录的类别与条目号、行业强制性能效标准号）",
+        "foreign_investment = 4.项目符合外资准入规定（外资/VIE 架构项目必写，见 foreign_investment_access）",
+        "other_special = 5.其他专项政策符合情况（如绿电/可再生能源、数据安全、地方产业扶持；数据中心项目常单列绿电小节）"
+      ],
+      "items": [
+        {
+          "subsection": "所属小节键（上方 $subsections 之一）",
+          "name": "政策/规划/战略/标准文件名称（如《“十四五”数字经济发展规划》《全国一体化大数据中心协同创新体系算力枢纽实施方案》《数据中心能效限定值及能效等级》GB40879-2021）",
+          "doc_number": "文号/标准号（如有）",
+          "issuer": "发布机关（多部门联合发布须写全，如“国家发展改革委等部门”“工业和信息化部、中央网信办等六部门”）",
+          "issue_date": "发布时间（YYYY年M月，标准答案每段以此开头）",
+          "level": "国家级 / 省级 / 市级（区县）/ 行业标准",
+          "key_text": "政策要点摘要 100~250 字（标准答案每份政策一段，须写出具体目标数值，如“新建大型及以上数据中心PUE降低到1.3以下”“国家枢纽节点新增算力占比60%以上”）",
+          "catalog_entry": "（仅产业目录类）类别+条目号+条目原文（如 第一类“鼓励类”第四十六条“人工智能”→“网络基础设施、大数据基础设施、高效能计算基础设施等智能化基础设施”）"
+        }
+      ],
+      "conformity_conclusions": [
+        {
+          "subsection": "所属小节键",
+          "text": "该小节末尾的项目符合性论证段（须用 conformity_metrics 的实测值逐条对标政策目标，不得只写“符合上述政策要求”）"
+        }
+      ],
+      "conformity_metrics": {
+        "$description": "项目端用于对标政策目标的实测指标与资质，是符合性论证段的唯一数据来源，取不到就写不出实质论证",
+        "rack_utilization": "上电率/机柜利用率（如 2021-2023年平均约92%，用于对标省级规划的“平均利用率提升到65%”）",
+        "pue_actual": "实测PUE（如 2024年平均1.24，对标“PUE降低到1.3以下”；与 supporting_technical_docs.pue_test_report 交叉校验）",
+        "energy_efficiency_grade": "能效等级（对标 GB40879-2021 强制性准入要求）",
+        "green_power": {
+          "green_certificate_volume": "绿证购买量（MWh）",
+          "renewable_ratio": "可再生能源使用比例（%）",
+          "coverage_period": "覆盖期间（如“完全覆盖2024全年能源使用”）",
+          "purchase_entity": "购买主体",
+          "future_plan": "后续绿电/绿证采购与直购渠道拓展计划",
+          "attachment_no": "证明材料编号（常为项目追加材料，不在25项骨架内）"
+        },
+        "park_qualifications": ["园区/项目所获国家级或省级资质（如 国家新型工业化产业示范基地（数据中心）、省级大数据产业园、省级数据中心产业示范基地）"],
+        "cluster_position": "在算力枢纽/集群布局中的定位（如“对接长三角枢纽节点的桥头堡”）",
+        "local_incentive_policies": ["项目所在地针对本行业的扶持政策名称+文号"]
+      }
+    },
+    "foreign_investment_access": {
+      "$description": "第五章（一）4.项目符合外资准入规定。境外上市主体/VIE 架构/外资股东项目必填（如境外主体通过 VIE 控制境内运营实体持有增值电信业务经营许可证）；纯境内架构项目置 applicable=false 并说明“无外资股东，不涉及”",
+      "applicable": "true/false",
+      "not_applicable_reason": "不涉及的理由（false 时填，如“项目公司与原始权益人均无外资股东”）",
+      "regulations": [
+        {"name": "适用法规名称（如《外商投资电信企业管理规定》《外商投资准入特别管理措施（负面清单）（2024年版）》《外商投资安全审查办法》）", "key_text": "限制条款原文（如增值电信业务外资股比不超过50%、基础电信业务须由中方控股）"}
+      ],
+      "structure_type": "境内直接持股 / 中外合资 / 境外上市主体+VIE / 其他",
+      "offshore_entities": [
+        {"name": "境外主体全称", "role": "境外上市主体 / 中间控股主体（如香港公司）", "jurisdiction": "注册地", "relation": "与境内主体的控制关系"}
+      ],
+      "vie_analysis": "VIE 是否构成外商投资的论证（须引用依据：商务部相关问答、工信部〔2015〕196号通告、公开市场实操案例；并说明 VIE 协议双方不存在股权出资关系）",
+      "post_issuance_structure": "发行后架构说明（如许可证由项目公司直接持有、项目公司登记股东为专项计划管理人、不再涉及VIE）",
+      "conclusion": "符合外资准入比例要求的结论 + 交叉引用位置（标准答案指向“三、REITs设立方案”之“（五）其他需要说明的重大情况”）",
+      "license_holder_arrangement": "增值电信业务经营许可证的现状持有人与业务合同签订安排（现状常为境内运营实体持证并与客户签约）"
+    },
+    "investment_procedures": {
+      "$description": "表15 项目投资管理手续情况（全文最大表格）。键为子项目名称，值为该子项目全部手续行的数组，逐份文件一行",
+      "sub_project_name": [
+        {
+          "category": "手续大类（须与模版第2列一致）：审批、核准或备案 / 规划 / 用地 / 用海 / 节能审查 / 环境影响评价 / 施工许可 / 竣工验收 / 外资 / 其他重要手续",
+          "procedure_name": "具体手续名称（须与模版第3列文字一致，如「企业投资项目备案（2004年以后）」「建设用地规划许可证」「建设工程规划许可证」「竣工验收备案」「特殊建设工程消防验收意见书」「规划核实」「竣工环境保护验收」「节能验收」）",
+          "issue_date": "签发时间（YYYY年M月D日）；不涉及填「-」",
+          "authority": "签发机构全称（注意主管部门更名/职能调整的情况，需在 remark 说明）；不涉及填「-」",
+          "doc_number": "文件编号/证书编号/合同编号（如 廊开管招备字[2009]33号、地字第131001201000003号、131001201905070101号）；不涉及填「-」",
+          "handling": "处理方式（四选一，见 $extraction_rules）",
+          "remark": "备注：对应主体、对应子项目范围、与底层资产范围不一致的说明、同类多份的原因（如年检/信息变更）、「见附件{编号}」",
+          "attachment_no": "证明材料编号（如 13-1-5-1）",
+          "scope_consistent": "true/false：手续对应项目范围是否与纳入底层资产范围一致（不一致必须在 remark 说明，模版注2硬要求）",
+          "related_docs": ["同一手续的配套文件（如施工图审查合格书、验收报告、公示截图、部门证明），各自也可单独成行"]
+        }
+      ]
+    },
+    "procedure_notes": [
+      {
+        "topic": "需要额外文字说明的手续专项（如「企业投资项目备案手续包含多项的原因」「签发机构不一致的原因」）",
+        "explanation": "说明原文（引用法规条款：如年审制度、备案信息变更规定）",
+        "legal_basis": "法规名称+文号+条款原文",
+        "_note": "标准范例在第（二）节末尾单列了「企业投资项目备案手续的具体情况」一小节，专门解释5份备案的来由与签发机构变化，属必要论述"
+      }
+    ],
+    "industry_procedures": [
+      {
+        "procedure_name": "特定行业手续名称（数据中心=增值电信业务经营许可证；其他行业见模版表16列举：取水许可证/并网意见书/并网调度协议/保障性租赁住房项目认定书/航道通航条件影响评价等）",
+        "holder": "持证主体全称（可能是项目公司或原始权益人，需分别列）",
+        "license_no": "经营许可证编号（如 B1-20241494、A2.B1.B2-20160109）",
+        "issue_date": "签发时间",
+        "authority": "签发机构（如 中华人民共和国工业和信息化部 / 省通信管理局）",
+        "business_type": "业务种类（如 互联网数据中心业务、互联网接入服务业务）",
+        "coverage": "业务覆盖范围/服务地域",
+        "valid_until": "有效期至",
+        "handling": "处理方式",
+        "remark": "备注 + 「见附件{编号}」",
+        "attachment_no": "材料编号（如 13-10-1）",
+        "transfer_restriction": "该许可证是否构成转让限制（IDC许可证常见），如有须同步登记到 transferability.restrictions"
+      }
+    ],
+    "procedures_not_applicable": [
+      {
+        "procedure_name": "不涉及的手续名称（可合并同类，如「项目建议书批复、可行性研究报告批复、初步设计批复、企业投资项目核准」）",
+        "legal_basis": "法律法规/政策名称+文号（如《国务院关于投资体制改革的决定》（国发〔2004〕20号）、《中华人民共和国城乡规划法》第三十六条）",
+        "clause_text": "适用条款**原文引用**（150字以上，正文需整段引用）",
+        "reason": "结合项目实际的不涉及理由（如项目不属于《政府核准的投资项目目录》、非划拨供地、陆地项目不涉及用海、无外资股东）",
+        "attachment_no": "如有部门证明文件则记编号"
+      }
+    ],
+    "procedures_missing": [
+      {
+        "procedure_name": "缺失的手续名称（如 建设用地批准书、建设项目用地预审意见）",
+        "gap_type": "type1=投资建设时无需办理但按现行规定应当办理 / type2=投资建设时应当办理但现行规定已取消或与其他手续合并 / type3=投资建设时和现行规定均需办理",
+        "rule_then": "投资建设时的法规名称+令号/文号+条款原文",
+        "rule_now": "现行法规名称+文号+条款原文（如《关于以“多规合一”为基础推进规划用地“多审合一、多证合一”改革的通知》（自然资规〔2019〕2号）已将建设用地批准书并入建设用地规划许可证）",
+        "remedy": "补办情况 / 已由其他手续替代的说明 / 确实无法补办的情况",
+        "authority_opinion": {
+          "authority": "出具处理意见的负责部门全称",
+          "doc_name": "文件名称（如《关于……相关事宜的复函》）",
+          "doc_number": "文号",
+          "date": "出具日期",
+          "key_text": "函复**原文**（200字以上，须含「无需再行办理」「不影响合法清晰权属及合法建设运营」「不存在应受处罚或承担其他责任的情形」一类关键结论）"
+        },
+        "attachment_no": "材料编号（如 13-3-2、13-8-1-2）",
+        "_note": "住建/资规/投促等部门出具的「不构成重大违法违规」「关于节能验收的证明」等函件都属本类，是第（二）节4小节的核心论据，一份都不能漏"
+      }
+    ],
+    "corridor_mezzanine_commitment": {
+      "issuer": "出具主体（发起人/原始权益人全称）",
+      "doc_name": "承诺函名称",
+      "date": "出具日期",
+      "key_text": "承诺原文",
+      "required_wording_included": "true/false：是否逐字包含「发行基础设施REITs的底层资产及底层资产不可分割的建筑物中，不存在未办理投资管理、规划、用地、施工许可和产权登记手续的连廊、夹层等建筑」",
+      "special_structures": "项目实际存在的连廊/夹层/进线工程等情况说明（数据中心常见机房连廊、进线井）",
+      "attachment_no": "材料编号（如 14-1）"
+    },
+    "land_use": [
+      {
+        "$description": "表17 土地使用情况（10列），按不动产权证/土地使用权证证载信息逐证一行；合计行的土地面积需求和",
+        "seq": "序号",
+        "land_type": "国有土地 / 集体土地",
+        "cert_no": "产权证书编号（如 冀（2024）廊坊开发区不动产权第0005176号；旧证如 廊开国用（2010）第024号）",
+        "cert_type": "不动产权证书 / 国有土地使用证 / 集体土地使用协议",
+        "owner": "权利人名称（证载全称，注意是项目公司还是原始权益人）",
+        "location": "坐落位置（证载）",
+        "land_purpose": "宗地用途（证载，如 科研用地；用途分类变更过的需注明依据，如GB/T21010-2017将科教用地细分为教育用地和科研用地）",
+        "land_area": "土地面积（㎡，证载）",
+        "use_term": "使用年限（至YYYY年M月D日止）",
+        "acquisition_method": "土地取得方式：划拨 / 协议出让 / 招拍挂出让 / 二级市场交易 / 租赁等其他方式",
+        "transferor": "土地出让（转让）方全称",
+        "no_cert_explanation": "如无产权证书：产权人、土地使用关系等具体情况（模版注硬要求）",
+        "attachment_no": "材料编号（如 15-2-2）"
+      }
+    ],
+    "building_ownership": [
+      {
+        "$description": "表18 房屋所有权情况（7列），资产名称指具有独立产权证书的具体楼宇/楼栋/楼层；合计行建筑面积需求和",
+        "seq": "序号",
+        "asset_name": "资产名称（独立产权证书对应的楼宇/楼栋/楼层）",
+        "cert_no": "产权证书编号",
+        "owner": "权利人名称（证载）",
+        "building_location": "房屋坐落（证载）",
+        "building_purpose": "房屋用途（证载，如 科研）",
+        "building_area": "建筑面积（㎡，证载）",
+        "attachment_no": "材料编号"
+      }
+    ],
+    "land_procedure_summary": [
+      {
+        "$description": "表19 土地使用权有关手续办理情况汇总表（7列），按子项目一行",
+        "sub_project": "子项目名称",
+        "project_company": "项目公司全称",
+        "region": "所在地区（省市县，写全称）",
+        "acquisition_method": "土地取得方式",
+        "municipal_gov_letter": "市（县）人民政府出具无异议函情况；无需出具时须写明原因及依据（模版注硬要求）",
+        "natural_resources_letter": "自然资源部门出具无异议函情况（出具机构+时间+主要内容）",
+        "original_contract_signer_letter": "原土地使用合同签署机构（或按现行规定承担相应职责的机构）出具无异议函情况"
+      }
+    ],
+    "land_contracts": [
+      {
+        "$description": "国有建设用地使用权出让合同（含补充条款），逐份提取；正文第（三）节3小节需按签署时间顺序完整叙述取地过程",
+        "contract_no": "合同编号（如 C13000120100004）",
+        "electronic_supervision_no": "电子监管号（如 1310002010B00156）",
+        "transferor": "出让方（如 自然资源和规划局/原国土资源分局，注意机构更名）",
+        "transferee": "受让方全称",
+        "sign_date": "签署日期",
+        "parcel_no": "宗地编号（可多个，如 09-30-001、09-30-002）",
+        "location": "宗地位置",
+        "use": "宗地用途",
+        "area": "宗地总面积（㎡）",
+        "included_area": "其中计入本项目底层资产的面积（㎡）——多宗地拼合供地时必提，标准范例即为14,273.46㎡+1,000.59㎡拼成15,274.05㎡",
+        "term_years": "出让年限",
+        "expiry": "到期日",
+        "acquisition_method": "取得方式",
+        "price": "出让价款（万元）",
+        "transfer_restriction_clause": "合同中关于转让/处置限制的条款号与原文（第（四）节转让限制的直接依据）",
+        "supplementary_agreements": [
+          {"contract_no": "补充条款合同编号（含后缀如 -3/-4）", "sign_date": "签署日期", "content": "补充约定内容"}
+        ],
+        "attachment_no": "材料编号（如 15-1-1）"
+      }
+    ],
+    "asset_transfer_chain": [
+      {
+        "$description": "资产划转/权属变更链条（正文第（三）节3小节必须按时间线叙述：出让合同→补充条款→原始权益人取证→划转协议→项目公司取证）",
+        "date": "日期",
+        "action": "事项（如 签署《划转协议》、取得《不动产权证书》）",
+        "parties": "涉及主体",
+        "doc_name": "文件名称",
+        "doc_number": "文件/证书编号",
+        "attachment_no": "材料编号"
+      }
+    ],
+    "transferability": {
+      "$description": "第五章（四）可转让性有关情况",
+      "summary": [
+        {
+          "$description": "表20 项目可转让性有关情况汇总表（7列）；每一份无异议函/同意函各占一行（标准范例3行：资规局、管委会、融资租赁方）",
+          "sub_project": "子项目名称",
+          "project_company": "项目公司全称",
+          "region": "所在地区（省市县）",
+          "restriction_desc": "转让限制条件——简要说明相关规定或协议中关于转让限定条件的**原文**",
+          "letter_issuer": "无异议函出具机构",
+          "letter_date": "无异议函出具时间（年/月/日）",
+          "remark": "备注"
+        }
+      ],
+      "restrictions": [
+        {
+          "type": "限制来源类型：国家/地方法规政策 / 项目审批核准备案手续 / 土地出让合同（或租赁协议） / 特许经营协议或PPP合同 / 园区入园协议 / 抵押担保（融资租赁·质押·抵押·保证） / 行业许可 / 其他",
+          "basis_doc": "依据文件名称+文号（如《廊坊开发区关于支持科技产业发展促进科研用地活化利用的实施意见（试行）》（廊开改革发〔2021〕1号））",
+          "clause": "具体条款编号",
+          "original_text": "限定条件的准确表述**原文**（模版硬要求「具体条款和准确表述」）",
+          "restricted_object": "所限定的具体内容和对象（土地使用权/项目公司股权/经营收益权/建筑物及构筑物/资产处置）",
+          "release_method": "转让限制解除的方式",
+          "release_status": "已解除 / 具备解除条件 / 待解除（附条件）",
+          "attachment_no": "材料编号"
+        }
+      ],
+      "encumbrances": [
+        {
+          "$description": "抵押/质押/融资租赁等权利限制及其解除安排（第（四）节2小节独立成段）",
+          "type": "融资租赁 / 应收账款质押 / 不动产抵押 / 保证 / 账户监管",
+          "counterparty": "相对方全称（如 招银金融租赁有限公司）",
+          "contract_name": "合同名称",
+          "contract_no": "合同编号",
+          "sign_date": "签署日期",
+          "amount": "金额（万元，如租赁物转让价款）",
+          "secured_asset": "担保标的（设备/应收账款/不动产）",
+          "release_letter": {
+            "issuer": "出具解除/同意函的机构",
+            "doc_name": "文件名称（如《同意函》）",
+            "date": "出具日期",
+            "key_text": "同意解除的条件与范围**原文**（含「提前偿还全部债务后担保即告解除」「出具租赁物所有权转移证书」一类表述）"
+          },
+          "attachment_no": "材料编号（如 16-3、16-4、16-5）"
+        }
+      ],
+      "no_objection_letters": [
+        {
+          "$description": "有权部门/协议签署机构出具的无异议函（第（三）（四）节共用）",
+          "issuer": "出具机构全称（注意原机构与更名后机构的对应关系）",
+          "issuer_role": "市（县）人民政府 / 自然资源部门 / 原土地出让合同签署机构 / 园区管委会 / 行业主管部门 / 债权人",
+          "doc_name": "文件名称",
+          "doc_number": "文号（如有）",
+          "date": "出具日期",
+          "addressee": "致送对象（原始权益人/项目公司）",
+          "required_wording_included": "true/false：是否含「对该项目以100%股权转让方式发行基础设施REITs无异议」有关表述",
+          "key_text": "函件主要内容**原文**（200字以上）",
+          "process": "无异议函办理过程说明（模版硬要求）",
+          "attachment_no": "材料编号（如 15-3、15-4、16-2、16-6）"
+        }
+      ]
+    },
+    "commitment_letters": [
+      {
+        "$description": "各类承诺函统一结构（第14/17/18/21项，第4项运营承诺函亦可登记于此）",
+        "topic": "连廊夹层等建筑情况 / 可转让性 / 税收处理 / 自身运营情况 / 其他",
+        "issuer": "出具主体全称",
+        "issuer_role": "发起人（原始权益人） / 基金管理人 / 项目公司 / 运营管理机构",
+        "doc_name": "承诺函名称",
+        "date": "出具日期",
+        "key_text": "承诺关键表述**原文**（须与模版规定的必备表述逐字比对）",
+        "required_wording_included": "true/false",
+        "missing_wording": "如未逐字包含，列出缺失/差异的表述（供第三步核查报告提示，不擅自改写材料）",
+        "attachment_no": "材料编号（如 14-1、17-1、18-1、21-1）"
+      }
+    ],
+    "legal_opinions": [
+      {
+        "$description": "律师事务所法律意见书（第19项为转让行为合法性专项；第8项为权属专项）",
+        "firm": "律师事务所全称",
+        "lead_lawyers": ["主办律师1", "主办律师2"],
+        "doc_name": "文件名称",
+        "date": "出具日期",
+        "scope": "意见范围（转让行为合法性 / 权属情况 / 土地使用 / 投资管理手续）",
+        "conclusion": "结论性意见**原文**（第（四）节3小节直接引用）",
+        "annex2_items_covered": "true/false：是否覆盖格式文本附件2要求的全部必备内容（逐项核对，缺项在核查报告提示）",
+        "annex2_missing_items": ["缺失的附件2条目"],
+        "attachment_no": "材料编号（如 19-1）",
+        "_full_text": "全文文字层文本（重要文件建议存全文）"
+      }
+    ],
+    "ppp": {
+      "applicable": "true/false（数据中心等非PPP项目填 false）",
+      "not_applicable_reason": "不涉及的理由（false 时填，正文写「不涉及」）",
+      "implementing_agency": "项目实施机构",
+      "gov_investor_rep": "政府出资人代表（政府资本金注入项目填）",
+      "concessionaire": "特许经营者/社会资本方（联合体须全部填写）",
+      "scheme_approval": {"doc_name": "特许经营方案（2023年2月以后）或实施方案", "authority": "审核部门", "date": "审核时间", "opinion": "审核意见"},
+      "investor_selection_method": "社会资本选择方式（如公开招标）",
+      "agreement": {"parties": "签署主体名称", "date": "签署时间", "name": "协议名称"},
+      "return_mechanism": "回报机制（使用者付费/可行性缺口补助等）",
+      "subsidy": "政府补贴情况",
+      "other_items": "表21其余行（按模版15行逐项填）",
+      "attachment_no": "材料编号（如 20-x）"
+    },
+    "tax": {
+      "$description": "第五章（六）税收处理情况",
+      "$important": "【表22 不是提取所得，而是税务测算结果】标准答案表22 达 50行×8列，按「交易环节」分组：每个环节一个跨列合并的小标题行 + 环节内各税种行，每阶段末一个「阶段小计」行，全表末一个「合计」行。测算依赖交易方案、汇率、公允价值/账面价值假设，证明材料里没有。因此：①承诺函与已纳税额由提取阶段负责；②transaction_steps 与 assumptions 优先取自初稿或税务顾问提供的测算表，材料与初稿均无时整表用占位符并在核查报告中提示「表22待税务顾问提供」，不得自行编造税额。",
+      "commitment": {
+        "issuer": "发起人（原始权益人）全称",
+        "doc_name": "承诺函名称",
+        "date": "出具日期",
+        "key_text": "承诺原文",
+        "required_wording_included": "true/false：是否含「如税务机关要求补充缴纳……将按要求缴纳（或全额补偿……）相应税金（含滞纳金和罚金）并承担所有相关经济和法律责任」",
+        "attachment_no": "材料编号（如 21-1）"
+      },
+      "assumptions": [
+        {
+          "item": "测算假设项（如 美元兑人民币汇率 / 资产公允价值口径 / 股权转让对价 / 测算截止日）",
+          "value": "取值（如 7.0074 / 公允价值=交割当月账面价值 / 207,494.37万元 / 截至2024年6月30日）",
+          "basis": "依据说明（如 2024年6月30日中间价，所得税申报时将按即期汇率计算）"
+        }
+      ],
+      "measure_base_date": "已纳税额的统计截止日（如「截至2024年6月30日已缴纳税额」）",
+      "transaction_steps": [
+        {
+          "$description": "一个交易环节 = 表22 中的一个跨列合并小标题行 + 其下各税种行。标准答案共 8 个环节（示例：转让进线工程固定资产→向股东分配股息→转让100%股权→新设公司并实缴出资→转让机柜资产→专项计划收购股权并搭建股+债→受让方收购股权→吸收合并）",
+          "step_no": "环节序号（1,2,3…，写入小标题行前缀）",
+          "stage": "所属阶段：资产重组 / 股权转让（决定表22第1列，也决定阶段小计归属）",
+          "name": "环节名称（小标题行文字，如「昆山国金转让进线工程固定资产」）",
+          "tax_items": [
+            {
+              "tax_type": "税种（增值税/土地增值税/企业所得税/印花税/契税/其他（增值税附加税费）等；须覆盖模版列举的全部税种，不涉及的也要成行填「否」）",
+              "involved": "是 / 否",
+              "basis": "计税依据和公式（不涉及时填「/」；涉及时须写清政策依据+公式+代入数值，标准答案单格常达 200~400 字）",
+              "payable_amount": "应纳税额（万元）；不涉及填「/」",
+              "paid_amount": "已纳税额（万元）；未缴填「-」或 0.00",
+              "tax_location": "纳税地点（税务机关或行政区，可多个）",
+              "taxpayer": "纳税人（可多个主体，含代扣代缴说明）"
+            }
+          ]
+        }
+      ],
+      "stage_subtotals": {
+        "$description": "各阶段小计（表22 中「资产重组阶段小计」「股权转让阶段小计」行）。键为阶段名，值为应纳税额合计（万元）",
+        "资产重组": "阶段小计应纳税额（万元）",
+        "股权转让": "阶段小计应纳税额（万元）"
+      },
+      "total_payable": "全表合计应纳税额（万元）——净回收资金测算「（拟）缴纳税费情况」的取数依据，须与第七章 fund_usage 口径一致",
+      "total_paid": "全表合计已纳税额（万元）",
+      "sub_project_tables": [
+        {"sub_project": "子项目名称", "note": "多子项目时除总体表外还需各子项目单独一张表22（模版硬要求），结构同上"}
+      ]
+    },
+    "supporting_technical_docs": {
+      "$description": "第13-11项「其他重要手续」中既支撑第五章表15「其他重要手续」行、又支撑第四章运营/技术指标的文件，务必提取数值",
+      "fire_design_review": {"doc_name": "建设工程消防设计审核意见书", "doc_number": "文号", "date": "日期", "authority": "机构", "attachment_no": "编号"},
+      "single_building_design_approval": {"doc_name": "单体设计批复", "doc_number": "文号", "date": "日期", "authority": "机构", "attachment_no": "编号"},
+      "lightning_protection_test": {"doc_name": "防雷防静电装置检测报告", "doc_number": "报告编号", "date": "检测日期", "institution": "检测机构", "conclusion": "检测结论", "attachment_no": "编号"},
+      "civil_air_defense_fee": {"doc_name": "防空地下室易地建设费缴纳凭证", "receipt_no": "票号", "amount": "缴纳金额（万元）", "date": "缴纳日期", "attachment_no": "编号"},
+      "pue_test_report": {"pue_value": "PUE实测值（与 sub_projects[*].pue 交叉校验）", "test_scope": "测试范围", "institution": "测试机构", "report_date": "报告日期", "attachment_no": "编号"},
+      "power_supply": {
+        "scheme_approval": {"doc_name": "供电方案及批复", "capacity": "批复容量（kVA/MW）", "date": "日期", "authority": "供电公司", "attachment_no": "编号"},
+        "contracts": [
+          {"contract_name": "高压供用电合同", "contract_no": "合同编号", "counterparty": "供电方全称", "sign_date": "签署日期", "capacity": "合同容量", "term": "合同期限", "price_terms": "电价/结算条款（支撑第四章成本分析）", "attachment_no": "编号"}
+        ]
+      },
+      "energy_acceptance": {"doc_name": "节能验收报告/证明", "authority": "机构", "date": "日期", "conclusion": "结论", "attachment_no": "编号"},
+      "environmental_acceptance": {"doc_name": "竣工环境保护验收意见/报告", "date": "日期", "scope": "覆盖的数据中心范围（常为多栋合并验收，须说明与底层资产范围的对应关系）", "publicity": "公示情况", "attachment_no": "编号"}
+    }
+  }
+}

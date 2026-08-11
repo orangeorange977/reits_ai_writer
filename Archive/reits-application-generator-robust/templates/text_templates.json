@@ -1,0 +1,203 @@
+{
+  "$citation": "本文件的句式/段落模板产出的内容同样必须标明来源（见 templates/citation_rules.json）。约定：①模板里凡出现 {attachment_ref}/{attachment_no} 的位置，都要填**真实**材料编号，并在对应 paragraphs 条目的 citations 里写 material 类来源；②纯论述性段落（如 competition_risk_none、customer_stability_analysis 这类由模板句构成、未引用具体数据的段落），在段末标 knowledge 类来源（如「（参考自行业公开资料与本项目运营数据）」）或对其引用的实测指标标 material 类；③macro_policy_* 系列的政策段一律标 knowledge 类（政策名称+文号取自 industry_knowledge.json 的 macro_policies）；④取不到来源时写 placeholders.citation_missing，严禁编造附件编号或页码。",
+
+  "commitment_letter_reference": "{date}，{issuer}出具《{title}》，就{subject}承诺：\"{content}\"。相关情况详见附件{attachment_ref}。",
+
+  "credit_record_reference": "截至{query_date}，经查询信用中国网站、国家企业信用信息公示系统网站、中国执行信息公开网等官方网站，基于以上查询结果，{entity_name}不存在因严重违法失信行为，被有权部门认定为失信被执行人、重大税收违法案件当事人或涉金融严重失信人的记录，详见附件{attachment_ref}。",
+
+  "violation_record_none": "{entity_name}近3年在投资建设、生产运营、市场监管、税务等方面无重大违法违规记录，未发生重大安全生产事故。",
+
+  "violation_record_with_commitment": "{date}，{entity_name}出具《{commitment_title}》，就自身运营情况承诺：\"本公司近3年在投资建设、生产运营、市场监管、税务等方面无重大违法违规记录，未发生重大安全生产事故。\"相关情况详见附件{attachment_ref}。",
+
+  "fund_manager_qualification": "基金管理人、资产支持证券管理人均符合《证券投资基金法》《公开募集基础设施证券投资基金指引（试行）》等法律法规要求及中国证监会的相关规定，未被中国证监会禁止开展相关业务。",
+
+  "intermediary_qualification": "截至{report_date}，{intermediary_name}申报时不在严重失信主体名单内，不在被行业主管部门要求暂停执业期间，不在被有关监管机构要求暂停开展证券业务或基础设施REITs业务期间。具体详见附件{attachment_ref}。",
+
+  "intermediary_commitment": "{date}，{intermediary_name}出具《{commitment_title}》，就自身执业资格承诺：\"{commitment_content}\"。相关情况详见附件{attachment_ref}。",
+
+  "property_ownership": "发起人（原始权益人）{originator_name}依法合规直接拥有项目所有权，项目公司{project_company_name}在基金份额公开发售前依法合规完全持有拟发行基础设施REITs的底层资产。项目近3年未出现安全、质量、环保等方面的重大问题或影响项目稳定运营的重大合同纠纷。",
+
+  "asset_completeness": "本项目已将实现资产功能作用所必需的、不可分割的各组成部分完整纳入底层资产范围。",
+
+  "no_government_subsidy": "项目最近3个会计年度及一期收入来源和未来收入预测中均不包含直接或间接形式的各类政府补贴资金。",
+
+  "corridor_commitment": "发行基础设施REITs的底层资产及底层资产不可分割的建筑物中，不存在未办理投资管理、规划、用地、施工许可和产权登记手续的连廊、夹层等建筑。",
+
+  "tax_commitment": "基础设施REITs发行或存续期间，如税务机关要求补充缴纳发行基础设施REITs中资产重组和股权转让（截至完成股权交割）过程可能涉及的相关税费，{originator_name}将按要求缴纳（或全额补偿基础设施REITs持有的其他相关缴税主体）相应税金（含滞纳金和罚金）并承担所有相关经济和法律责任。",
+
+  "fund_raising_commitment": "回收资金拟投资或收购的固定资产投资项目情况真实；使用过程中将严格遵守房地产调控政策要求，不将回收资金变相用于商品住宅开发项目；回收资金将严格按照进度要求使用，即基础设施REITs购入项目完成之日起2年内，净回收资金使用率不低于75%，3年内全部使用完毕。",
+
+  "transferability_originator_commitment": "对法律法规、政策规定、投资管理等方面的转让限定条件不存在任何缺失、遗漏或虚假陈述，已如实办理法律法规、政策规定、投资管理等方面所有与资产转让相关事项。",
+
+  "transferability_fund_manager_commitment": "{fund_manager_name}已了解法律法规、政策规定、投资管理等方面项目转让存在的所有限制，认可项目转让限制处理方式，如基金份额公开发售后出现任何项目转让限制有关风险，我们将依据法律法规、政策规定和监管部门的要求及时进行处理。",
+
+  "stable_operation_commitment": "对于可能对未来长期稳定运营产生重大影响的风险因素，本项目申报材料已进行全面报告和充分分析，未来将按有关要求充分披露。同时，项目发行后3年内将不开展显著影响正常运营的重大改扩建、设备更新等活动。",
+
+  "placeholders": {
+    "$description": "占位符分两类：needs_human（需人工填写，如基金总额等决策数据）和 data_missing（数据缺失，应从材料提取但失败）",
+
+    "needs_human": {
+      "fund_total": "【需人工填写：拟发售基金总额（万元），由产品定价确定】",
+      "subscription_ratio": "【需人工填写：原始权益人及相关方认购基金比例，由战略配售方案确定】",
+      "net_proceeds": "【需人工填写：净回收资金（万元），= 发售总额-债务-税费-认购额】",
+      "fund_term": "【需人工填写：基金期限（年），由产品方案确定】",
+      "investment_project": "【需人工填写：拟投资项目信息，需原始权益人提供】",
+      "legal_relationship_diagram": "【需人工填写：项目主要法律关系图，需完整反映发起人（原始权益人）、项目公司、基础设施项目（底层资产）、运营管理机构、实际控制人等相互之间股权或协议控制关系现状，并附必要文字说明】",
+      "product_structure_diagram": "【需人工填写：产品架构图，说明发起人（原始权益人）、基金投资人、基金及其管理人、资产支持证券及其管理人、托管人、项目公司、运营管理机构等主要参与主体之间的权利义务关系】",
+      "fund_flow_diagram": "【需人工填写：资金流向图，完整反映在产品设立、募集资金使用等环节中，资金在投资人、基金、资产支持证券、项目公司、原始权益人等主体以及拟投资或收购项目之间的完整流向和金额】",
+      "implementation_steps": "【需人工填写：说明资产当前状态、资产重组、项目公司股权转让等实施步骤，含未纳入拟发行基础设施REITs底层资产的其他资产和负债的处理方式（如有）】",
+      "current_progress": "【需人工填写：说明目前总体进展，包括尽职调查、资产评估、审计、资产重组（如有）、项目公司股权转让等情况及（预计）完成时间】",
+      "other_major_matters": "【需人工填写：披露其他对项目设立有重大影响的事项，如无则填写\"无\"】",
+      "operating_arrangement": "【已停用，不要使用】第六章「运营管理安排」**禁止**整节占位。它属于可模板化章节（90%跨项目复用），即使 operation_management 数据为空，也必须按 chapter_guides/ch6_guide.md 的要点清单 + paragraph_templates.operating_arrangement 的段落级模板写足 ≥30段/2,600字（校验器会硬查段数、8个必备要素与编号要点数）。仅个别数据点缺失时用【待填写：具体说明】，不得用本占位符替代整章。",
+      "fund_raising_structure": "【需人工填写：填报基金发售总额、对外借款、偿债安排、税费缴纳、股东分配、战略认购、净回收资金、拟投项目金额等全口径资金结构】",
+      "investment_projects": "【需人工填写：说明净回收资金拟投资的所有项目情况以及拟投资项目符合国家宏观政策与规划情况】",
+      "acquisition_assets": "【需人工填写：说明净回收资金拟收购的存量资产情况，如不涉及则填写\"不涉及\"】",
+      "fund_usage_progress": "【需人工填写：说明发起人（原始权益人）等回收资金使用方的回收资金预计使用进度】"
+    },
+
+    "data_missing": {
+      "citation_missing": "【待填写：来源】",
+
+      "construction_cost": "【数据缺失：决算总投资，来源：评估报告/投资备案文件】",
+      "ebitda": "【数据缺失：EBITDA，来源：备考财务报表/审计报告附注】",
+      "operating_cost": "【数据缺失：营业成本，来源：备考财务报表】",
+      "tax_detail": "【数据缺失：税收测算明细，来源：税务咨询报告】",
+      "contact_info": "【数据缺失：联系人/联系方式，来源：各主体提供】",
+      "macro_policy": "【数据缺失：列出项目所涉及的国家重大战略、宏观调控政策，国民经济和社会发展总体规划、有关专项规划和区域规划等名称，并说明项目是否符合相关政策，来源：行业知识库/行业政策文件】",
+      "operating_experience": "【数据缺失：说明运营管理机构的同类项目运营管理经验，来源：运营情况承诺函/营业执照】",
+      "revenue_analysis": "【数据缺失：对经营情况和财务情况的明显大幅波动，以及净利润、EBITDA或经营性净现金流为负的情况，详细说明原因，来源：审计报告/备考财务报表】",
+      "revenue_concentration": "【数据缺失：说明直接或穿透情况下的收入分散度情况，如存在收入占比超过10%的现金流提供方，应详细说明，来源：评估报告/运营情况承诺函】",
+      "related_party_revenue": "【数据缺失：说明项目收入中是否存在来自关联方的收入，如存在应说明关联关系、收入占比、交易必要性与定价公允性，来源：评估报告/法律意见书】",
+      "competition_risk": "【数据缺失：说明项目是否存在竞争性项目等重大风险因素、影响及应对措施，来源：评估报告/行业知识库】",
+      "valuation_rationale": "【数据缺失：说明估值方法、主要估值参数和参数选取的合理性，来源：评估报告】",
+      "land_transfer_specifics": "【数据缺失：根据项目公司获得土地使用权的不同方式，说明相关手续办理情况，来源：不动产权证/法律意见书】",
+      "transfer_restriction_specifics": "【数据缺失：说明转让限制的具体事项、具体条款和准确表述、所限定的具体内容和对象，来源：法律意见书】",
+      "tax_calculation": "【数据缺失：自主测算项目发行基础设施REITs过程中资产重组环节和股权转让环节需缴纳的所有税种、税额，来源：税务咨询报告/法律意见书】"
+    }
+  },
+
+  "paragraph_templates": {
+    "operating_experience_datacenter": "{originator_name}作为数据中心行业的重要参与者，具备丰富的数据中心项目运营管理经验。截至{report_date}，{originator_name}已建成运营数据中心项目{project_count}个，累计机柜规模约{total_racks}个，服务客户覆盖电信运营商、互联网企业、金融机构等领域。{originator_name}在数据中心规划设计、建设施工、运营维护、安全管理等方面建立了完善的管理体系，拥有专业技术团队{team_size}人，具备从基础设施到IT设备的全栈运维能力。",
+
+    "operating_experience_industrial_park": "{originator_name}作为产业园区开发和运营企业，在园区规划、建设、招商、运营等方面具备丰富经验。截至{report_date}，{originator_name}已开发运营产业园区项目{project_count}个，累计建筑面积约{total_area}万平方米，入驻企业{tenant_count}家。{originator_name}建立了成熟的园区运营管理体系，涵盖物业服务、企业服务、产业孵化等全链条服务能力。",
+
+    "customer_stability_analysis": "本项目主要客户为{customer_type}，合同期限通常为{contract_years}年，客户粘性较强。主要客户{top_customer}的收入占比为{revenue_ratio}%，客户集中度{concentration_level}。数据中心行业具有客户粘性高、切换成本大的特点：终端客户一旦入驻数据中心，迁移至其他数据中心的成本高、周期长，因此客户稳定性较高。同时，{originator_name}与主要客户建立了长期战略合作关系，合同到期后续约可能性较大。",
+
+    "intermediary_credit_query": "截至{query_date}，经查询信用中国网站、国家企业信用信息公示系统网站、中国执行信息公开网等官方网站，{intermediary_name}不存在因严重违法失信行为被有权部门认定为失信被执行人、重大税收违法案件当事人或涉金融严重失信人的记录。同时，{intermediary_name}未被中国证监会采取暂停业务等监管措施，具备从事证券期货相关业务的资格。具体查询结果详见附件{attachment_ref}。",
+
+    "valuation_rationale_income": "本项目采用收益法进行评估，评估值为{total_value}万元。收益法是通过将未来预期收益折算为现值来确定资产价值的方法，适用于具有持续稳定现金流的经营性资产。本项目作为数据中心基础设施项目，具有稳定的运营历史和可预测的现金流，符合收益法适用条件。主要评估参数包括：折现率{discount_rate}、收益年限{income_years}年、评估基准日{base_date}。收入预测基于历史运营数据、合同情况及行业发展趋势，成本预测考虑了运营成本、资本性支出等因素。",
+
+    "valuation_rationale_market": "本项目同时采用市场法进行评估，作为收益法结果的交叉验证。市场法选取了{comparable_count}个可比交易案例，从区位条件、建设规模、运营情况、交易时间等维度进行修正后，得出市场法评估值为{market_value}万元。两种评估方法结果差异率为{variance}%，在合理范围内。最终选取收益法结果作为评估结论，主要理由：本项目具有独立的运营历史和可预测的现金流，收益法更能反映资产的内在价值。",
+
+    "competition_risk_none": "本项目所处区域{region}内，同类数据中心基础设施项目供应有限，不存在与本项目构成直接竞争的重大项目。数据中心行业具有区域性强、客户粘性高的特点，不同区域的数据中心项目之间通常不构成直接竞争。同时，本项目主要客户{top_customer}已签署{contract_years}年期的长期合同，未来面临竞争性项目的风险较小。",
+
+    "related_party_revenue_none": "本项目收入主要来源于{revenue_source}，客户结构以{customer_type}为主，不存在来自关联方的收入。项目公司与运营管理机构之间的关联交易严格按照市场公允价格执行，不存在利益输送或损害基金份额持有人利益的情形。",
+
+    "revenue_concentration_analysis": "穿透情况下，本项目主要现金流提供方为{top_customer}，收入占比为{revenue_ratio}%，超过10%。{top_customer}作为{customer_description}，具有较强的经营稳定性和支付能力。合同期限为{contract_years}年，到期后存在续约预期。同时，项目正在积极拓展{new_customer_direction}等新客户，预计未来客户集中度将逐步下降。",
+
+    "macro_policy_datacenter": {
+      "$usage": "第五章（一）符合宏观管理政策要求情况（数据中心类）。这是一整节的骨架，不是一段话——标准答案实测 25段/3,700字，分5个编号小节。每个小节 = 逐份政策段（每段一份政策，写出「YYYY年M月，{发布机关}发布《{名称}》，{key_text}」）+ 1个符合性论证段（用项目实测指标逐条对标政策目标）。政策原文取 industry_knowledge.json 的 datacenter.macro_policies.<小节键>，项目指标取 extracted_data 的 compliance.macro_policies.conformity_metrics。",
+      "$scale": "整节不少于 20 段 / 3,000 字；单个小节的政策段不少于 3 段（第2小节省级规划不少于 4 段）",
+      "section_1_title": "1.项目符合国家重大战略、国家宏观调控政策、国民经济和社会发展总体规划情况",
+      "policy_paragraph": "{issue_date}，{issuer}发布《{name}》，{key_text}",
+      "policy_paragraph_first": "国家“十四五”规划（2021-2025年）指出，{key_text}",
+      "section_1_conclusion": "{project_short_name}主要服务于{customer_type}客户，是传统数据中心向具备高技术、高算力、高能效、高安全特征的新型数据中心的演进，符合国家“十四五”规划，满足国家重大战略和国家宏观调控政策要求。",
+      "section_2_title": "2.项目符合有关专项规划和区域规划（实施方案）情况",
+      "section_2_conclusion": "{project_short_name}{years}年平均上电率约为{rack_utilization}，高于平均利用率{plan_utilization_target}的要求；{pue_year}年平均PUE为{pue_actual}，满足PUE降低到{plan_pue_target}的要求；项目所在的{park_name}是{park_qualifications}。{project_short_name}积极融入{cluster_name}区域数据中心集群，作为对接{hub_name}的“桥头堡”，通过聚焦国家及地区各级网络关键环节，着重推进跨网、跨地区数据交互，完善数据中心网络需求和供给有效对接。综上，{project_short_name}符合专项和区域规划。",
+      "section_3_title": "3.项目符合《产业结构调整指导目录》和相关行业政策规定的情况",
+      "section_3_conclusion": "{project_short_name}严格遵循{efficiency_standard_date}发布的国家强制性能效标准{efficiency_standard}，符合强制性能效准入要求，满足行业政策规定。同时，根据国家发改委修订发布的《产业结构调整指导目录（2024年本）》，项目属于{catalog_category}产业。",
+      "section_4_title": "4.项目符合外资准入规定",
+      "section_4_vie": "现状下，{offshore_listed_entity}作为境外上市主体通过VIE架构全面控制{onshore_operating_entity}，以其作为境内经营实体持有增值电信业务经营许可证并与客户签订服务地点为{project_short_name}的业务合同。截至目前并无外部法律法规明确VIE架构属于外商投资情形，且{offshore_listed_entity}VIE结构项下签署的系列协议表明协议双方不存在股权出资关系。因此，无论从法律角度或实操角度（结合商务部的相关问答、工信部〔2015〕196号通告以及公开市场的相关实操案例分析），{onshore_operating_entity}不属于外商投资企业，不适用《外商投资电信企业管理规定》《外商投资准入特别管理措施（负面清单）（2024年版）》等相关规定。",
+      "section_4_post_structure": "本项目发行之后将由项目公司直接持有增值电信业务经营许可证。项目公司登记股东为专项计划管理人{abs_manager_name}，基础设施REIT核心架构为项目公司、计划管理人{abs_manager_name}、基金管理人{fund_manager_name}，不再涉及VIE架构。",
+      "section_4_conclusion": "综上，本项目符合外资准入比例要求，满足申请增值电信业务经营许可证的相关要求，符合发行基础设施REIT的条件。相关问题的详细说明请见本申报材料“三、REITs设立方案”之“（五）其他需要说明的重大情况”。",
+      "section_4_not_applicable": "本项目发起人（原始权益人）{originator_name}及项目公司{project_company_name}均无外资股东，不属于外商投资企业，不涉及外商投资准入相关规定。",
+      "section_5_title": "5.项目符合国家绿电相关政策情况",
+      "section_5_conclusion": "目前，尽管{province}暂未出台消费端绿电交易相关强制性或鼓励性政策，但{project_short_name}自主自愿前瞻布局绿电交易。{green_cert_date}，{purchase_entity}已购入可再生能源证书{green_certificate_volume}，{coverage_period}，实现可再生能源使用比例{renewable_ratio}。未来，{project_short_name}也计划持续采购绿电和绿证，保持{renewable_ratio}的可再生能源使用比例，并逐步拓展绿电直购渠道，扩大绿电直购的比例。因此，项目符合国家绿电相关政策。相关证明材料详见附件{attachment_no}。"
+    },
+
+    "macro_policy_industrial_park": "本项目属于园区基础设施类项目，符合以下国家重大战略和政策要求：1.《\"十四五\"规划纲要》提出推动产业园区转型升级；2.国家发改委等部门关于产业园区发展的相关指导意见；3.{local_policy}。本项目作为产业园区基础设施项目，符合国家产业政策导向。",
+
+    "operating_arrangement": {
+      "$usage": "第六章「运营管理安排」整章骨架（不是一段话）。替代原 operating_arrangement_standard —— 那个键把4个小节压成约350字的一个字符串、还写死了「本次扩募新购入」口径，子agent「能套就套」直接套完就只有4段350字，是历史上第六章写太少的直接诱因。本对象按**段落级**拆开：一个键 = 正文一段，按下面的顺序全部落地即得 30+ 段。取不到数据的用【待填写：具体说明】，**但段落不许省略**（（一）职责、（三）1/2/3/6、（四）9项属行业通用制度安排，无材料也要写）。",
+      "$var_sources": {
+        "$desc": "每个 {占位变量} 的取值来源。base_vars = base_vars.json 同名键（由 gen_phase_fill_plan.py --base-vars-out 生成）；ed = extracted_data.json 路径；write = 无现成数据，子agent按项目情况自行撰写（不得留 {} 原样）。",
+        "operation_manager_names": "base_vars.operation_manager_names（多家用「、」连接）",
+        "operation_manager_short": "base_vars.operation_manager_short",
+        "originator_name": "base_vars.originators[0]",
+        "originator_subscription_ratio": "base_vars.originator_subscription_ratio ← ed.project_info.originator_subscription_ratio。**取不到时严禁用监管下限「不低于20%」顶替**（实测事故：实际为34%却写成20%，且标成 knowledge 类来源，成了「看起来有出处的错数据」）——为空就写「不低于【待填写：原始权益人及其关联方战略配售比例】」并标 pending",
+        "service_agreement_name": "base_vars.service_agreement_name（默认「运营管理服务协议」）",
+        "fee_kpi_metric": "base_vars.fee_kpi_metric ← ed.operation_management.fee_structure.kpi_metric（如 NOI）",
+        "conflict_commitment_doc_name": "base_vars.conflict_commitment_doc_name ← ed.operation_management.conflict_commitments.doc_name",
+        "conflict_commitment_attachment_no": "base_vars.conflict_commitment_attachment_no ← ed.operation_management.conflict_commitments.attachment_no（取不到则不要写「详见附件」，改写 pending 括注）",
+        "tier1_name / tier2_name / tier3_name": "ed.operation_management.fee_structure.tiers[0|1|2].name",
+        "tier1_base / tier2_base": "ed.operation_management.fee_structure.tiers[0|1].base",
+        "tier1_covers": "ed.operation_management.fee_structure.tiers[0].covers",
+        "actual_value_source / target_value_source": "ed.operation_management.fee_structure.{actual_value_source,target_value_source}（惯例：每年审计报告 / 资产评估报告的相关预测数据）",
+        "issuer / issue_date": "ed.operation_management.conflict_commitments.{issuer,issue_date}",
+        "committed_subjects": "ed.operation_management.conflict_commitments.committed_subjects（如「{原始权益人简称}及其控制企业」）",
+        "anti_competition_quote": "承诺函关于避免同业竞争的**关键表述原文**，取 ed.operation_management.conflict_commitments.key_text，截取 150~300 字（用于 safeguard_5_issued）。全章**只在这一处**引原文，（四）引导段改写为要点即可——两处都贴同一段 500 字原文属注水",
+        "anti_competition_summary": "由 ed.operation_management.conflict_commitments.anti_competition_items 概括成一句要点（用于 safeguard_5_pending 与（四）各项，**不要整段照抄 key_text**）",
+        "project_short_name": "write —— 项目简称，与全文口径一致（base_vars.project_name 的简称）",
+        "asset_type": "write —— 资产类型词，按 ed.project_info.industry 填（如 数据中心 / 产业园区 / 高速公路）",
+        "industry_word": "write —— 行业词，同 asset_type（用于「……的{industry_word}服务标准」）",
+        "service_standard": "write —— 服务标准表述，取 ed.operation_management.safeguards.strategic_positioning（如「高电力、高效率、高稳定性、中立、严谨」）",
+        "assessment_tiers_desc": "write —— 指代（二）中带考核的收费层（两层写「激励收费部分」；三层写「达标及激励收费部分」）",
+        "incentive_tier_name": "write —— 激励层名称，取 fee_structure 中最后一层的 name（两层=激励收费；三层=激励管理费）"
+      },
+      "$scale": "整章不少于 30 段 / 2,600 净字（两份过审标答实测 36段/约3,700字、38段/3,286字）；（三）保障措施的编号要点不少于 5 个",
+      "$fee_tier_rule": "（二）按 ed.operation_management.fee_structure.tier_count 选 fee_two_tier(=2) / fee_three_tier(=3) / **fee_unknown(为空)**，**不按首发/扩募推定**——两份标答均为首发项目，一份两层、一份三层。⚠️ tier_count 为空时**必须走 fee_unknown**：套 fee_two_tier 会写出「基本收费/激励收费/实际NOI与目标NOI差额」这种看起来确定、实则编造的层级（实测事故：协议实为三层「基础管理费+达标管理费+激励管理费」，生成结果写成两层）。第三步「第六章数据可信度[费用层级]」会拿 tier_count 与正文层级名对撞，编造直接 FAIL",
+      "$heading_level_rule": "四个 section_*_title 是**小节标题**，必须在最终文档里落成 Heading 2 样式。本章模版锚点段是 Normal，靠 `\\n` 新建的标题不会自己升级 → fill_plan 条目保持 fill_docx.py 的 auto_heading 默认值 \"h2\" 即可自动升级；**不要写 auto_heading: \"off\"**，否则 Word 导航窗格与自动目录里第六章下面一个子节都没有（实测事故；第三步「第六章层级」按样式硬查）",
+      "$tense_rule": "承诺函相关段落（safeguard_5 / conflict_lead）的时态按 ed.operation_management.conflict_commitments.issue_date 判断：**有落款日期 → 用 safeguard_5_issued（已出具）**；确无日期 → 用 safeguard_5_pending（将出具）。实测事故：承诺函 2024年12月31日已出具，正文却写「将根据监管要求出具」，属事实性错误（第三步「第六章数据可信度[承诺函时态]」会抓）",
+      "$citation": "（一）（二）及（三）6 属机制/制度设计描述，适用 citation_rules.json 的 exemptions.scheme_design（每小节只标一次 material 指向《运营管理服务协议》/基金合同）；引《基金指引》条款标 knowledge；承诺函内容标 material（attachment_no 如 4-1）",
+
+      "section_1_title": "（一）运营管理机构与基金管理人之间的运营管理权责利关系",
+      "duties": "根据《公开募集基础设施证券投资基金指引（试行）》第三十八条和第三十九条，基金管理人将委托给运营管理机构的职责主要包括（1）为基础设施项目购买足够的财产保险和公众责任保险；（2）制定及落实基础设施项目运营策略；（3）签署并执行基础设施项目运营的相关协议；（4）收取基础设施项目租赁、运营等产生的收益，追收欠缴款项等；（5）执行日常运营服务，如安保、消防、通讯及紧急事故管理等；（6）实施基础设施项目维修、改造等。",
+      "assist_matters": "除委托的职责外，基金管理人还将根据具体运营管理需要，约定由运营管理机构协助完成的事项。",
+      "manager_obligations": "运营管理机构应确保其自身业务依法合规经营、资质持续合规、妥善履行运营管理义务，提供与基础设施项目相适应的相关服务，保障基础设施项目正常运转。基于运营管理机构提供的相关服务，其有权按照《{service_agreement_name}》收取相应的运营管理费；根据运营管理需要，运营管理机构有权获取基础设施项目相关信息。",
+      "supervision": "基金管理人将根据法律法规及相关监管规定向项目公司委派相关管理人员及财务负责人，对运营管理机构的履职情况进行监督并做定期或不定期检查。基金管理人发现运营管理机构在运营管理方面存在问题的，可以要求运营管理机构限期整改；若存在违反《{service_agreement_name}》相关规定的，基金管理人有权追究运营管理机构的违约责任；若发生运营管理机构解聘情形的，基金管理人将根据法律法规、基金合同及《{service_agreement_name}》约定的程序解聘运营管理机构。",
+
+      "section_2_title": "（二）运营管理机构与基金管理人之间的激励约束机制",
+      "incentive_framework": "运营管理机构将会与基金管理人通过遵守《公开募集基础设施证券投资基金指引（试行）》等法律法规的要求、签订《{service_agreement_name}》、修订项目公司各项管理制度等多种方式约定各方权利义务、职责范围、奖惩标准等激励约束机制，对各方形成有效的激励与约束。",
+      "fee_two_tier": "运营管理机构为基础设施基金提供运营管理服务，因此有权收取运营管理费。运营管理费分为“{tier1_name}”和“{tier2_name}”两个部分，其中{tier1_name}基于{tier1_base}计提，主要覆盖了运营管理过程中运营管理机构发生的{tier1_covers}，计提比例将根据上述相关成本占营业收入比例情况确定；{tier2_name}基于{tier2_base}计提。其中，实际{fee_kpi_metric}根据{actual_value_source}确定，目标{fee_kpi_metric}根据{target_value_source}确定。",
+      "fee_three_tier": "运营管理机构为基础设施基金提供运营管理服务，因此有权收取运营管理服务费。运营管理服务费分为“{tier1_name}”、“{tier2_name}”和“{tier3_name}”三个部分，其中“{tier1_name}”主要覆盖了运营管理过程中运营管理机构发生的{tier1_covers}；“{tier2_name}”主要承担管理、营销等费用，并将根据负面清单进行考核核算，达标则足额支付，未达标相应扣减以便一定程度上弥补业绩减损，从机制上调动运营管理机构提高管理效率；“{tier3_name}”基于设置相应业绩指标实现对于运营管理机构的奖惩，实际业绩指标根据{actual_value_source}确定，目标业绩指标根据{target_value_source}确定。",
+      "$fee_unknown_usage": "tier_count 为空（《运营管理服务协议》未读到或未签署）时**必须用这一段**，不得改用 fee_two_tier/fee_three_tier 顶替。要点：如实交代层级与计提基数以协议为准 + 用占位符标出待补项 + 仍写清考核取数惯例（这部分是行业通例，可写实），既不编造也不整段省略。来源标 pending。",
+      "fee_unknown": "运营管理机构为基础设施基金提供运营管理服务，因此有权按照《{service_agreement_name}》的约定收取运营管理费。运营管理费的具体层级划分、各层计提基数与计提比例，以最终签署的《{service_agreement_name}》约定为准：【待填写：运营管理费层级、各层计提基数与计提比例（取自《运营管理服务协议》收费条款）】。按行业通例，带考核性质的收费部分将设置明确的考核指标，实际值以每年审计报告确定、目标值以资产评估报告的相关预测数据确定，并据此实现对运营管理机构的奖励或扣减。",
+      "fee_conclusion": "综合分析上述运营管理费用收取标准，该方案能够有效激励运营管理机构，一方面维持运营所需的基本成本；另一方面，若运营业绩超过目标值，则实施奖励。",
+
+      "section_3_title": "（三）促进项目持续健康平稳运营的保障措施",
+      "safeguard_lead": "为保障项目后续的稳定运营，拟采取的具体方案如下：",
+      "safeguard_1_title": "1.项目战略定位和品牌效应延续",
+      "safeguard_1": "本项目发行后，{project_short_name}不会因为发行本项目而影响资产的安全、稳定、高效运行。{operation_manager_names}将在原有的服务基础上，坚持积极落实{service_standard}的{industry_word}服务标准，保障底层资产持续健康平稳运营。",
+      "safeguard_2_title": "2.项目运营管理模式不变",
+      "safeguard_2": "在基础设施REITs申报、发行及存续期间，继续由原运营管理机构{operation_manager_short}负责项目运营管理的实际实施工作及职责；本基础设施项目原有的运营管理安排、客户相关协议条款保持不变；核心运营团队保持不变，保障项目管理机制及管理团队稳定，减少运营管理变动成本。为了促使运营管理机构积极履行职责，基础设施REITs相关法律文件中将明确约定运营管理机构履职的奖惩机制。",
+      "safeguard_3_title": "3.设置合理且具有奖惩效果的运营管理服务费",
+      "safeguard_3": "根据初步拟定的激励及约束机制，{assessment_tiers_desc}充分考虑了对运营管理机构的奖惩作用：在实际实现的{fee_kpi_metric}超过目标值的情况下，运营管理机构可收取超额部分的一定比例作为{incentive_tier_name}；通过负面清单以及绩效指标的考核实现对运营管理机构运营管理服务费的扣减或奖励，有利于提升运营管理机构的工作积极性。",
+      "safeguard_4_title": "4.原始权益人继续持有一定比例的基础设施REITs基金份额",
+      "$safeguard_4_rule": "{originator_subscription_ratio} 必须取本项目实际比例（ed.project_info.originator_subscription_ratio，如「不低于34%」）。**严禁用《基础设施基金指引》的监管下限 20% 顶替**——那是法定最低要求，不是本项目的实际配售比例；顶替后还会被标成 knowledge 类来源，变成「看起来有出处的错数据」（实测事故：实际34%写成20%）。取不到就写「不低于【待填写：原始权益人及其关联方战略配售比例】」并标 pending，段落照写。第三步「第六章数据可信度[战略配售比例]」会与 extracted_data 对撞。",
+      "safeguard_4": "基础设施基金发行后，原始权益人及其关联方拟持有{originator_subscription_ratio}的基础设施REITs基金份额，同时原始权益人在项目层面继续以运营管理机构的角色负责底层基础设施项目的日常运营管理。因此，原始权益人及其关联方也将具有保障项目运营健康稳定、获得长期收益的内生动力。",
+      "safeguard_5_title": "5.承诺采取有效措施降低同业竞争风险",
+      "$safeguard_5_rule": "按 ed.operation_management.conflict_commitments.issue_date 二选一：**有落款日期用 safeguard_5_issued**（已出具，须写明日期与出具主体，并引述关键承诺表述原文 150~300 字，用中文引号包住）；确无日期才用 safeguard_5_pending。旧键 safeguard_5 已停用（它把「将出具」和「已出具」两种时态混在一段，实测导致正文写成「将根据监管要求出具」而承诺函其实早已出具）。",
+      "safeguard_5_issued": "{issue_date}，{issuer}已出具《{conflict_commitment_doc_name}》，承诺平等对待本基础设施项目和旗下的其他项目，并就避免同业竞争承诺：“{anti_competition_quote}”。具体内容详见附件{conflict_commitment_attachment_no}。",
+      "safeguard_5_pending": "基础设施基金发行前，原始权益人和运营管理机构将根据监管要求出具《{conflict_commitment_doc_name}》，承诺平等对待本基础设施项目和旗下的其他项目，承诺要点包括：{anti_competition_summary}。【待填写：承诺函落款日期与附件编号（承诺函出具后补）】",
+      "safeguard_5": "（已停用，改用 safeguard_5_issued / safeguard_5_pending，见 $safeguard_5_rule）",
+      "safeguard_6_title": "6.基础设施基金层面建立适当的项目管理机制",
+      "safeguard_6a": "就基础设施运营管理机构提供的运营管理服务，妥善处理基金管理人与运营管理机构在权责利方面的区分与衔接，设置明确的治理机制，将敏感与非敏感的管理职能分离。对项目公司具有重大影响的事项由基金管理人在基础设施基金层面进行决策，如项目公司的年度预算、经营计划审批以及项目公司的年度财务决算方案审批等。而运营管理机构主要负责项目公司日常运营事项的执行，如编制项目公司年度经营计划及预算等。",
+      "safeguard_6b": "基础设施基金将拟定审核关联交易、避免竞争和冲突的机制、条款，如：基金存续期间拟购入基础设施项目的机制安排、基金份额持有人大会对关联交易的审议、基金份额持有人大会表决机制中的关联方回避表决安排（中国证监会另有规定的除外）等。",
+
+      "section_4_title": "（四）防范关联交易和利益冲突的主要安排",
+      "conflict_lead": "为保证基础设施基金之基金份额持有人的合法权益，规范{committed_subjects}与基础设施基金的关联交易，本项目发起人及原始权益人{originator_name}就避免在本次发行完成后与基础设施基金的关联交易以及同业竞争事宜作了如下安排，并将督促{operation_manager_names}作为基础设施运营管理机构防范关联交易和利益冲突（详见附件{conflict_commitment_attachment_no}）：",
+      "related_party_title": "1.防范关联交易的主要安排",
+      "related_party_1": "（1）在不对基础设施基金及其基金份额持有人的利益构成不利影响的前提下，{committed_subjects}将采取措施规范并尽量减少与基础设施基金之间的关联交易。",
+      "related_party_2": "（2）对于正常经营范围内无法避免或有合理理由存在的关联交易，将本着公开、公平、公正的原则确定交易价格，依法与基础设施基金项下相关载体签订规范的关联交易合同，保证关联交易价格的公允性。",
+      "related_party_3": "（3）严格按照有关法律、法规、中国证券监督管理委员会的规定和相关主体的内部管理规定履行关联交易审批程序，包括但不限于必要的关联方回避表决等义务，并为基础设施基金制定相关关联交易管理制度，履行关联交易的信息披露义务。",
+      "related_party_4": "（4）保证不通过关联交易非法转移基础设施基金的资金、利润，不利用关联交易损害基础设施基金及其基金份额持有人的合法权益。",
+      "anti_competition_title": "2.避免同业竞争的主要安排",
+      "anti_competition_1": "（1）本次发行完成后，{committed_subjects}如发现任何与基础设施基金主营业务构成或可能构成直接或间接竞争关系的业务机会，将促使该业务机会按合理和公平的条款及条件首先提供给基础设施基金。",
+      "anti_competition_2": "（2）平等对待{committed_subjects}所投资或管理的各{asset_type}项目，不会故意降低基础设施基金项下基础设施项目的市场竞争能力；对于可能构成实质竞争的{asset_type}领域业务机会，基础设施基金项下的基础设施项目在同等条件下享有优先获得该业务机会的权利。",
+      "anti_competition_3": "（3）{committed_subjects}持有的其他同类{asset_type}资产，若在本次发行后具备注入基础设施基金的条件时，履行各级监管单位审批程序后，将在同等条件下通过合理的价格将相关资产注入基础设施基金，以避免与基础设施基金可能产生的同业竞争。",
+      "anti_competition_4": "（4）本次发行完成后，{committed_subjects}如出售或转让与基础设施基金投资范围相符的{asset_type}资产，在该等资产依据相关法律法规和监管部门规定可以被基础设施基金项下相关载体收购的前提下，基础设施基金项下相关载体均享有同等条件下的优先购买权；且运营管理机构保证在出售或转让相关资产时给予基础设施基金项下相关载体的条件与其向任何独立第三方提供的条件相当。",
+      "anti_competition_5": "（5）在基础设施基金的存续期间内，如因基础设施基金项下的基础设施项目与竞争性项目之间的同业竞争发生争议，且基金管理人认为可能严重影响基础设施基金的基金份额持有人利益的，{committed_subjects}承诺将与基金管理人积极协商解决措施。",
+      "conflict_conclusion": "若运营管理机构违反上述承诺给基础设施基金及其基金份额持有人造成损失，一切损失将由运营管理机构承担。"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+interface:
+  display_name: "REITs申报材料稳健生成"
+  short_description: "基于已验收数据稳健生成表格、正文与规范Word"
+  default_prompt: "使用 $reits-application-generator-robust 基于已验收数据生成REITs申报材料Word；缺失格统一为标黄【待填写】，并执行内容、表格、溯源和版式门禁。"
+policy:
+  allow_implicit_invocation: true
