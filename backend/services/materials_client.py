@@ -242,18 +242,25 @@ def pdf_page_count(fp: Path) -> int:
     return n
 
 
-def ocr_page_highlight_box(fp: Path, page_idx: int, nums: list):
-    """在指定页的 OCR 词级坐标里找含特征词（数字或中文片段）的行，返回高亮框 [x0,y0,x1,y1]（dpi=100 坐标）。
-    上下各扩约一行，框住摘录所在段落。找不到返回 None。"""
+def ocr_page_highlight_box(fp: Path, page_idx: int, toks: list):
+    """在指定页的 OCR 词级坐标里框出摘录位置，返回 [x0,y0,x1,y1]（dpi=100 坐标）。
+    toks：特征词（数字/中文片段/模糊关键词）。
+    多级兜底保证“页级投票命中就一定能画框”：①单行滑窗命中；②相邻 2~3 行合并命中
+    （特征词被 OCR 行切断时，整页文本能中、单行永远不中，合并行可中）；
+    ③命中区间按相邻归簇、取得分最高的簇（摘录所在段落），上下各扩一行。全不中才返回 None。"""
     import io
-    import re as _re
     import fitz
     import pytesseract
     from PIL import Image
 
-    def _norm_tok(s):
-        return _re.sub(r"[\s\-—–]", "", s or "")
-    if not nums:
+    if not toks:
+        return None
+    wins = []
+    for t in toks:
+        for w in _tok_windows(t):
+            if w not in wins:
+                wins.append(w)
+    if not wins:
         return None
     doc = fitz.open(str(fp))
     try:
@@ -273,16 +280,45 @@ def ocr_page_highlight_box(fp: Path, page_idx: int, nums: list):
         b = e["box"]
         e["box"] = [x, y, x + w, y + h] if b is None else [min(b[0], x), min(b[1], y), max(b[2], x + w), max(b[3], y + h)]
         e["text"] += txt
-    hit_boxes = [v["box"] for v in lines.values()
-                 if v["box"] and any(w in norm_q(v["text"]) for num in nums for w in _tok_windows(num))]
-    if not hit_boxes:
+    lst = [{"nt": norm_q(v["text"]), "box": v["box"]} for v in lines.values() if v["box"]]
+
+    def score(nt):
+        return sum(1 for w in wins if w in nt)
+
+    # ①单行；②相邻 2~3 行合并（同一起始行取最小能中的合并宽度）
+    spans = []  # (起, 止, 得分)
+    for i in range(len(lst)):
+        for j in range(3):
+            if i + j >= len(lst):
+                break
+            s = score("".join(x["nt"] for x in lst[i:i + j + 1]))
+            if s:
+                spans.append((i, i + j, s))
+                break
+    if not spans:
         return None
-    x0 = min(b[0] for b in hit_boxes)
-    y0 = min(b[1] for b in hit_boxes)
-    x1 = max(b[2] for b in hit_boxes)
-    y1 = max(b[3] for b in hit_boxes)
+    # 相邻/重叠区间归簇，取得分最高的簇（即摘录所在段落）
+    spans.sort()
+    clusters = []
+    cur = list(spans[0])
+    for s0, s1, sc in spans[1:]:
+        if s0 <= cur[1] + 1:
+            cur[1] = max(cur[1], s1)
+            cur[2] += sc
+        else:
+            clusters.append(cur)
+            cur = [s0, s1, sc]
+    clusters.append(cur)
+    best = max(clusters, key=lambda c: c[2])
+    lo = max(0, best[0] - 1)
+    hi = min(len(lst) - 1, best[1] + 1)
+    boxes = [lst[k]["box"] for k in range(lo, hi + 1)]
+    x0 = min(b[0] for b in boxes)
+    y0 = min(b[1] for b in boxes)
+    x1 = max(b[2] for b in boxes)
+    y1 = max(b[3] for b in boxes)
     W, H = img.size
-    return [max(0, x0 - 12), max(0, y0 - 55), min(W, x1 + 12), min(H, y1 + 65)]
+    return [max(0, x0 - 12), max(0, y0 - 12), min(W, x1 + 12), min(H, y1 + 12)]
 
 
 def pdf_has_text_layer(fp: Path) -> bool:

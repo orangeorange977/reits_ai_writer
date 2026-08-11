@@ -585,14 +585,26 @@ def _text_highlight_box(doc, page_idx: int, quote: str, toks: list = None):
     # 滑窗兜底：fuzzy 词经滑窗命中页面时，行级匹配也用同一套滑窗，保证能框出大致位置
     winset = {w for nf in nset for w in materials_client._tok_windows(nf)} if toks else set()
     hb = []
+    lns = []
     for blk in page.get_text("dict").get("blocks", []):
         for ln in blk.get("lines", []):
             txt = "".join(sp.get("text", "") for sp in ln.get("spans", []))
             nt = _norm_q(txt)
-            if len(nt) < 6:
-                continue
-            if any(nf in nt or nt in nf for nf in nset) or (winset and any(w in nt for w in winset)):
-                hb.append(ln["bbox"])
+            if len(nt) >= 6:
+                lns.append((ln["bbox"], nt))
+    for b, nt in lns:
+        if any(nf in nt or nt in nf for nf in nset) or (winset and any(w in nt for w in winset)):
+            hb.append(b)
+    if not hb:
+        # 特征词被 PDF 行切断：单行永远不中、页级却能中→相邻 2~3 行合并再匹配，框出大致位置
+        for i in range(len(lns)):
+            for j in (1, 2):
+                if i + j >= len(lns):
+                    break
+                nt = "".join(t for _, t in lns[i:i + j + 1])
+                if any(nf in nt for nf in nset) or (winset and any(w in nt for w in winset)):
+                    hb += [lns[k][0] for k in range(i, i + j + 1)]
+                    break
     hb = hb[:8]
     if hb:
         k = 120 / 72
@@ -651,7 +663,7 @@ def _run_quote_search(key: str, fp: Path, quote: str):
                 continue
             if (nums and any(num in t for num in nums)) or (frags and any(_norm_q(f) in t for f in frags)) or (head and head in t):
                 hit = i + 1
-                b = materials_client.ocr_page_highlight_box(fp, i, nums or frags)
+                b = materials_client.ocr_page_highlight_box(fp, i, (nums or []) + (frags or []) or ftoks)
                 box = [v * 1.2 for v in b] if b else None  # 100dpi→120dpi，与文字层约定一致
                 break
             m = materials_client.fuzzy_match_tokens(t, ftoks)

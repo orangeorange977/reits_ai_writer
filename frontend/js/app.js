@@ -569,7 +569,7 @@ function _onQuoteHit(hit, box, fuzzy) {
     const tip = document.getElementById('quoteSearchTip');
     if (tip) tip.innerHTML = fuzzy
         ? `📍 摘录与识别文字略有出入，已为您跳到最相近的第 ${hit} 页${box ? '并框出大致位置' : ''}，请核对。`
-        : `✅ 摘录位于原文第 ${hit} 页，已为您跳转到该页并红框标出摘录位置。`;
+        : `✅ 摘录位于原文第 ${hit} 页，已为您跳转到该页${box ? '并红框标出摘录位置' : '，请上下滚动核对摘录位置'}。`;
     const st = _matState && _matState.pagesState;
     if (!st) return;
     st.start = hit; st.end = hit - 1; st.hit = hit; st.hit_box = box || null;
