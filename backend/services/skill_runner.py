@@ -162,9 +162,10 @@ def _grid_rows_html(headers, rows):
 
 
 def _is_untraceable_src(item: str) -> bool:
-    """固定表述/待核实/网络公开信息无材料原文可回查：渲染为纯文本、不做可点链接（点击是死胡同）。"""
-    t = re.sub(r"^〈\d{1,2}〉", "", (item or "").strip())
-    return t.startswith(("固定表述", "待核实", "网络公开信息"))
+    """固定表述/待核实/网络公开信息无材料原文可回查：整条不展示（渲染过滤+自检从数据里真删）。
+    兼容裸条目（如单独一个“网络公开信息”没写冒号内容）。"""
+    t = re.sub(r"^〈\d{1,2}〉", "", (item or "").strip()).rstrip("；;。，, ")
+    return t in ("固定表述", "待核实", "网络公开信息") or t.startswith(("固定表述（", "待核实：", "待核实:", "网络公开信息：", "网络公开信息:"))
 
 
 def _block_to_html(blk, fn_counter):
@@ -192,21 +193,18 @@ def _block_to_html(blk, fn_counter):
         html = f'<table class="doc-grid-table">{cap_html}{thead}<tbody>{body}</tbody></table>'
     # 溯源：块级来源标注渲染为块下方的“依据”行（仅编辑区可见，不进 Word）；
     # contenteditable=false：点击它跳转原文核对出处，不参与正文编辑；
-    # 逐句引注格式（每条以〈n〉开头）拆成多条可点引注项，与正文句尾的〈n〉一一对应
+    # 逐句引注格式（每条以〈n〉开头）拆成多条可点引注项，与正文句尾的〈n〉一一对应；
+    # 固定表述/待核实/网络信息无原文可查：整条不展示（真条目边界拆分，摘录内分号不会切碎）
     src = str(blk.get("src") or "").strip()
     if html and src:
-        notes = [s.strip() for s in re.split(r"[；;]", src) if s.strip()]
-        if len(notes) > 1 and any(re.match(r"〈\d{1,2}〉", nt) for nt in notes):
+        notes = [(num, it) for num, it in _split_src_items(src) if not _is_untraceable_src(it)]
+        if len(notes) > 1 or (notes and notes[0][0]):
             inner = "；".join(
-                f'<span class="src-item-plain">{_esc_html(nt)}</span>' if _is_untraceable_src(nt)
-                else f'<span class="src-item" title="点击查看原文出处">{_esc_html(nt)}</span>'
-                for nt in notes)
+                f'<span class="src-item" title="点击查看原文出处">{_esc_html((f"〈{num}〉" if num else "") + it)}</span>'
+                for num, it in notes)
             html += f'<div class="doc-src src-notes" contenteditable="false">📎 依据：{inner}</div>'
-        elif _is_untraceable_src(src):
-            # 固定表述/待核实/网络信息无原文可回查：纯文本展示，不做可点链接（点了也是死胡同）
-            html += f'<div class="doc-src doc-src-plain" contenteditable="false">📎 依据：{_esc_html(src)}</div>'
-        else:
-            html += f'<div class="doc-src" contenteditable="false" title="点击查看原文出处">📎 依据：{_esc_html(src)}</div>'
+        elif notes:
+            html += f'<div class="doc-src" contenteditable="false" title="点击查看原文出处">📎 依据：{_esc_html(notes[0][1])}</div>'
     return html
 
 
@@ -495,9 +493,11 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
     ① 路径归一到磁盘真实文件（AI 写的文件名常有出入）；
     ② 摘录定位：文字层 PDF 逐字→片段投票搜页；扫描件只用已缓存 OCR 页（避免拖慢生成）；
     ③ AI 摘录是改写/缺失时，替换/补上命中处的**原文原句**——点击时前端逐字匹配必中；
-    ④ 不涉及表述（“不涉及。”等）不挂依据：清空 src、去掉正文引注号。
+    ④ 不涉及表述（“不涉及。”等）不挂依据：清空 src、去掉正文引注号；
+    ⑤ 固定表述/待核实/网络信息无原文可查：整条删除，正文对应引注号摘除、剩余引注重编号。
     全程 try/except 容错：自检失败不阻断生成，保留原依据。返回统计。"""
-    stats = {"total": 0, "fixed_path": 0, "verbatim": 0, "replaced": 0, "added": 0, "failed": 0, "removed_inapplicable": 0}
+    stats = {"total": 0, "fixed_path": 0, "verbatim": 0, "replaced": 0, "added": 0, "failed": 0,
+             "removed_inapplicable": 0, "removed_untraceable": 0}
     if not mat_root or not Path(mat_root).is_dir():
         return stats
     for sec in sections or []:
@@ -519,10 +519,16 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
             src = (blk.get("src") or "").strip()
             if not src:
                 continue
-            new_items, changed = [], False
+            new_items, changed, removed_nums = [], False, []
             for num, item in _split_src_items(src):
                 stats["total"] += 1
-                prefix = f"〈{num}〉" if num else ""
+                # 固定表述/待核实/网络信息无原文可回查：整条删除（正文引注号同步摘除、剩余重编号）
+                if _is_untraceable_src(item):
+                    if num:
+                        removed_nums.append(num)
+                    stats["removed_untraceable"] += 1
+                    changed = True
+                    continue
                 m = re.match(r"^申报材料[：:](.+)$", item)
                 body = m.group(1).strip() if m else None
                 # 省略前缀的续行材料条目（“；2-2-4 xxx.pdf 〈…〉”）：带文件扩展名且能解析到磁盘文件才当材料依据，
@@ -536,7 +542,7 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                     if rel0:
                         body = cand
                 if body is None:
-                    new_items.append(prefix + item)  # 天眼查/摘要等非文件依据原样保留
+                    new_items.append((num, item))  # 天眼查/摘要等非文件依据原样保留
                     continue
                 pm = body.split("〈原文摘录〉")
                 if len(pm) > 1:
@@ -563,7 +569,7 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                     rel = None
                 if rel is None:
                     stats["failed"] += 1
-                    new_items.append(prefix + item)
+                    new_items.append((num, item))
                     continue
                 if rel != path or not m:
                     stats["fixed_path"] += 1
@@ -595,10 +601,29 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                 # 材料条目统一规范成 “申报材料：真实路径 〈原文摘录〉原文原句（第X页）”，点击时逐字匹配/页码直达必中
                 q_full = quote + ((" " + page_cite) if page_cite else "")
                 norm = f"申报材料：{rel} 〈原文摘录〉{q_full}" if q_full else f"申报材料：{rel}"
-                new_items.append(prefix + norm)
+                new_items.append((num, norm))
                 changed = True
-            if changed:
-                blk["src"] = "；".join(new_items)
+            if removed_nums:
+                # 删条后引注重编号：保留条目按出现顺序从〈1〉起重排，避免出现断号
+                order = []
+                for num, _t in new_items:
+                    if num and num not in order:
+                        order.append(num)
+                remap = {old: str(i + 1) for i, old in enumerate(order)}
+                # 条目尾部可能拖着旧分隔分号（failed 分支原样保留），写回前剥掉避免“；；”
+                blk["src"] = "；".join(((f"〈{remap[num]}〉" if num else "") + txt).rstrip("；; ")
+                                       for num, txt in new_items)
+                # 正文引注号同步：删掉已删条目的号，保留的换成新号（先替占位再还原，避免连锁误换）
+                if blk.get("type") == "p" and blk.get("text"):
+                    t2 = blk["text"]
+                    for rn in removed_nums:
+                        t2 = re.sub(rf"\s*〈{rn}〉", "", t2)
+                    for old, new in remap.items():
+                        t2 = t2.replace(f"〈{old}〉", f"〈#{new}#〉")
+                    blk["text"] = re.sub(r"〈#(\d+)#〉", r"〈\1〉", t2)
+            elif changed:
+                blk["src"] = "；".join(((f"〈{num}〉" if num else "") + txt).rstrip("；; ")
+                                      for num, txt in new_items)
     return stats
 
 
@@ -796,7 +821,8 @@ def _output_contract(chapter_title: str) -> str:
         "   · 来自天眼查查询：写“天眼查查询：<企业名>”；\n"
         "   · 来自联网搜索：写“网络公开信息：<来源/时点>”；\n"
         "   · 来自 planning.md：写“planning.md”，或写“planning.md：<planning.md 原文逐字摘录>”（摘录须从 planning.md 逐字复制，供系统定位高亮；不要改写概括）；\n"
-        "   · 模板固定表述/无具体依据：写“固定表述（无具体依据）”；拿不准的写“待核实”。\n"
+        "   · 模板固定表述/套话等无具体依据的内容：**不标引注号、src 里也不要写这类条目**（同“不涉及”的处理）；"
+        "拿不准的内容在正文里用【注：…】标明缺什么、去哪核实，不要写“待核实”条目。\n"
         "   **绝不允许编造不存在的来源**——src 必须真实对应你实际参考过的材料；正文里的每个引注号都必须在 src 里有对应条目。\n"
         "9. 【不涉及不挂依据】块的内容是“不涉及。”“不涉及”“无此类情形”“不适用”这类短不涉及表述时，\n"
         "   不要标引注号〈n〉、src 字段留空——“不涉及”本身就是结论，无需任何依据（不要写“固定表述”凑依据）。\n"
@@ -1101,7 +1127,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
             st = verify_fix_refs(data["sections"], mat_root)
             logger.info(f"ch{n} 依据自检：共{st['total']}条，路径修正{st['fixed_path']}，"
                         f"原文直中{st['verbatim']}，摘录改原文{st['replaced']}，补摘录{st['added']}，未定位{st['failed']}，"
-                        f"不涉及去依据{st['removed_inapplicable']}")
+                        f"不涉及去依据{st['removed_inapplicable']}，删无源依据{st['removed_untraceable']}")
         except Exception as e:
             logger.warning(f"ch{n} 依据自检失败（不影响生成）：{e}")
     try:
