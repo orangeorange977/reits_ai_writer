@@ -495,11 +495,11 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
     ③ AI 摘录是改写/缺失时，替换/补上命中处的**原文原句**——点击时前端逐字匹配必中；
     ④ 不涉及表述（“不涉及。”等）不挂依据：清空 src、去掉正文引注号；
     ⑤ 固定表述/待核实/网络信息无原文可查：整条删除，正文对应引注号摘除、剩余引注重编号。
-    全程 try/except 容错：自检失败不阻断生成，保留原依据。返回统计。"""
+    全程 try/except 容错：自检失败不阻断生成，保留原依据。返回统计。
+    注：④⑤清理规则与材料目录无关，任何项目都生效；无材料目录时仅跳过①②③的路径/摘录定位。"""
     stats = {"total": 0, "fixed_path": 0, "verbatim": 0, "replaced": 0, "added": 0, "failed": 0,
              "removed_inapplicable": 0, "removed_untraceable": 0}
-    if not mat_root or not Path(mat_root).is_dir():
-        return stats
+    has_mat = bool(mat_root) and Path(mat_root).is_dir()
     for sec in sections or []:
         for blk in sec.get("blocks", []) or []:
             # 不涉及块不挂依据：“不涉及。〈1〉”→“不涉及。”并清空 src（仅当 src 无真实材料依据时）
@@ -533,7 +533,7 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                 body = m.group(1).strip() if m else None
                 # 省略前缀的续行材料条目（“；2-2-4 xxx.pdf 〈…〉”）：带文件扩展名且能解析到磁盘文件才当材料依据，
                 # 避免把“天眼查查询：…”这类文字误判成文件
-                if body is None and re.search(r"\.(pdf|docx?|xlsx?|pptx?|png|jpe?g|zip|txt)\b", item, re.I):
+                if body is None and has_mat and re.search(r"\.(pdf|docx?|xlsx?|pptx?|png|jpe?g|zip|txt)\b", item, re.I):
                     cand = item.strip()
                     try:
                         rel0 = materials_client.resolve_material_ref(cand, mat_root)
@@ -543,6 +543,10 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                         body = cand
                 if body is None:
                     new_items.append((num, item))  # 天眼查/摘要等非文件依据原样保留
+                    continue
+                if not has_mat:
+                    # 项目没建材料目录：无法做路径归一/摘录定位，材料条目原样保留（不计未定位）
+                    new_items.append((num, item))
                     continue
                 pm = body.split("〈原文摘录〉")
                 if len(pm) > 1:
