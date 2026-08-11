@@ -512,35 +512,41 @@ async function _appendPages() {
     const st = _matState && _matState.pagesState;
     if (!st || st.loading || st.end >= st.total) return;
     st.loading = true;
+    const mySeq = st.seq = (st.seq || 0) + 1;
     const more = document.getElementById('pdfLoadMore');
     if (more) more.textContent = '正在加载…';
+    const alive = () => (_matState && _matState.pagesState) === st && st.seq === mySeq;
     try {
         const withHl = st.hit && st.hit_box && st.hit >= st.end + 1 && st.hit <= st.end + 3;
         const d = await API.previewMaterialPages(_matState.path, st.end + 1, 3, '',
             withHl ? st.hit : 0, withHl ? st.hit_box.join(',') : '');
+        if (!alive()) return;  // 视图已切换/搜页已跳转：过期响应丢弃，避免无红框图覆盖红框图
         const wrap = document.getElementById('pdfPagesWrap');
         for (const p of d.pages) wrap.insertAdjacentHTML('beforeend', _pdfPageHtml(p, st.total));
         st.end = Math.min(st.total, st.end + d.pages.length);
         if (more) more.textContent = st.end >= st.total ? '— 已到最后 —' : '↓ 向下滚动加载更多页';
     } catch (e) {
-        if (more) more.textContent = '加载失败，滚动重试';
-    } finally { st.loading = false; }
+        if (alive() && more) more.textContent = '加载失败，滚动重试';
+    } finally { if (alive()) st.loading = false; }
 }
 
 async function _prependPages() {
     const st = _matState && _matState.pagesState;
     if (!st || st.loading || st.start <= 1) return;
     st.loading = true;
+    const mySeq = st.seq = (st.seq || 0) + 1;
+    const alive = () => (_matState && _matState.pagesState) === st && st.seq === mySeq;
     try {
         const s = Math.max(1, st.start - 3);
         const withHl = st.hit && st.hit_box && st.hit >= s && st.hit < st.start;
         const d = await API.previewMaterialPages(_matState.path, s, st.start - s, '',
             withHl ? st.hit : 0, withHl ? st.hit_box.join(',') : '');
+        if (!alive()) return;
         const wrap = document.getElementById('pdfPagesWrap');
         wrap.insertAdjacentHTML('afterbegin', d.pages.map(p => _pdfPageHtml(p, st.total)).join(''));
         st.start = s;
         _renderPrevBtn();
-    } finally { st.loading = false; }
+    } finally { if (alive()) st.loading = false; }
 }
 
 /** 扫描件后台搜页：轮询任务结果，命中后自动跳到该页 */
@@ -572,6 +578,9 @@ function _onQuoteHit(hit, box, fuzzy) {
         : `✅ 摘录位于原文第 ${hit} 页，已为您跳转到该页${box ? '并红框标出摘录位置' : '，请上下滚动核对摘录位置'}。`;
     const st = _matState && _matState.pagesState;
     if (!st) return;
+    // 作废在途的无红框渲染并释放加载锁，确保下面的带红框请求一定发出
+    st.seq = (st.seq || 0) + 1;
+    st.loading = false;
     st.start = hit; st.end = hit - 1; st.hit = hit; st.hit_box = box || null;
     const wrap = document.getElementById('pdfPagesWrap');
     if (wrap) wrap.innerHTML = '';
