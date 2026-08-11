@@ -531,17 +531,26 @@ def _find_quote_home(quote: str, mat_root: Path, exclude_rel: str, cache: dict):
             allf = []
         cache["files"] = [p for p in allf if p.is_file()][:1200]
     nums, frags = materials_client.quote_tokens(q)
-    if len(frags) < 2 and not nums:
+    # 准入：至少两个片段，或单个≥8字长片段，或带数字（短摘录/单片段无特征易误中）
+    if not frags and not nums:
+        return None
+    if not nums and len(frags) == 1 and len(frags[0]) < 8:
         return None
     need = 3 if len(frags) >= 4 else 2
     qn = materials_client.norm_q(q)
+    long_nums = [x for x in nums if len(x) >= 6]
 
     def hit_in(t):
         if not t or len(t) < 20:
             return False
         if qn in t:
             return True
-        return sum(1 for f in frags if materials_client.norm_q(f) in t) >= need
+        if any(x in t for x in long_nums):  # ≥6位长数字（金额/证书号）是强证据
+            return True
+        frag_hits = sum(1 for f in frags if materials_client.norm_q(f) in t)
+        num_hits = sum(1 for x in nums if len(x) >= 4 and x in t)
+        # 数字参与投票，但必须至少有一个片段命中，防“2024年”这类短数字误中他文
+        return frag_hits + num_hits >= need and frag_hits >= 1
 
     pdfs, docs = [], []
     for p in cache["files"]:
@@ -583,24 +592,31 @@ def _find_quote_home(quote: str, mat_root: Path, exclude_rel: str, cache: dict):
         t = materials_client.norm_q(text or "")
         if hit_in(t):
             return rel, _snippet_around(t, q)
-    # ③ 扫描件 PDF：只用已缓存 OCR 页，不主动整篇识别
+    # ③ 扫描件 PDF：小文档（≤12页，承诺函/证明类）允许主动 OCR（结果落磁盘缓存复用），
+    # 长文档只用已缓存页，避免整篇识别拖慢自检
     for p, rel in pdfs:
         try:
             doc = fitz.open(str(p))
             n = doc.page_count
+            has_text = any(doc[i].get_text().strip() for i in range(min(n, 6)))
         except Exception:
             continue
         doc.close()
-        if n > 400:
+        if n > 400 or has_text:
             continue
+        allow_full = n <= 12
         st = p.stat()
         key = hashlib.md5(f"{p}|{st.st_size}|{st.st_mtime}".encode()).hexdigest()
         cdir = materials_client.DATA_SOURCE_BASE / ".ocr_cache" / key
         for i in range(n):
             cf = cdir / f"p{i}.txt"
-            if not cf.exists():
+            if not cf.exists() and not allow_full:
                 continue
-            t = materials_client.norm_q(cf.read_text(encoding="utf-8", errors="ignore"))
+            try:
+                t = materials_client.norm_q(materials_client.ocr_page_text(p, i) if allow_full
+                                            else cf.read_text(encoding="utf-8", errors="ignore"))
+            except Exception:
+                continue
             if hit_in(t):
                 return rel, _snippet_around(t, q)
     return None
