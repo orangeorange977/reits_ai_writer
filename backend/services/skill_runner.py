@@ -161,6 +161,12 @@ def _grid_rows_html(headers, rows):
     return thead, body
 
 
+def _is_untraceable_src(item: str) -> bool:
+    """固定表述/待核实/网络公开信息无材料原文可回查：渲染为纯文本、不做可点链接（点击是死胡同）。"""
+    t = re.sub(r"^〈\d{1,2}〉", "", (item or "").strip())
+    return t.startswith(("固定表述", "待核实", "网络公开信息"))
+
+
 def _block_to_html(blk, fn_counter):
     t = blk.get("type")
     html = ""
@@ -192,9 +198,13 @@ def _block_to_html(blk, fn_counter):
         notes = [s.strip() for s in re.split(r"[；;]", src) if s.strip()]
         if len(notes) > 1 and any(re.match(r"〈\d{1,2}〉", nt) for nt in notes):
             inner = "；".join(
-                f'<span class="src-item" title="点击查看原文出处">{_esc_html(nt)}</span>'
+                f'<span class="src-item-plain">{_esc_html(nt)}</span>' if _is_untraceable_src(nt)
+                else f'<span class="src-item" title="点击查看原文出处">{_esc_html(nt)}</span>'
                 for nt in notes)
             html += f'<div class="doc-src src-notes" contenteditable="false">📎 依据：{inner}</div>'
+        elif _is_untraceable_src(src):
+            # 固定表述/待核实/网络信息无原文可回查：纯文本展示，不做可点链接（点了也是死胡同）
+            html += f'<div class="doc-src doc-src-plain" contenteditable="false">📎 依据：{_esc_html(src)}</div>'
         else:
             html += f'<div class="doc-src" contenteditable="false" title="点击查看原文出处">📎 依据：{_esc_html(src)}</div>'
     return html

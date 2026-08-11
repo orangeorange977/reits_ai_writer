@@ -2980,6 +2980,18 @@ body {
     text-decoration: underline;
 }
 
+/* 不可溯源依据（固定表述/待核实/网络信息）：纯文本展示，不可点 */
+.doc-editor .doc-src.doc-src-plain { cursor: default; }
+.doc-editor .doc-src.doc-src-plain:hover { background: #f0faf4; text-decoration: none; }
+.doc-editor .src-item-plain {
+    display: inline-block;
+    padding: 1px 6px;
+    margin: 1px 2px;
+    color: #93a89c;
+    cursor: default;
+    word-break: break-all;
+}
+
 .mat-preview-overlay {
     position: fixed;
     inset: 0;

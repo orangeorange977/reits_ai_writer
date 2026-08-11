@@ -333,7 +333,7 @@ function _splitPathQuote(body) {
     if (pg) { page = parseInt(pg[1], 10) || 0; quote = quote.slice(0, pg.index).trim(); }
     return { path, quote, page };
 }
-function openSrcLink(rawText, ctx) {
+async function openSrcLink(rawText, ctx) {
     const text = String(rawText || '').replace(/^📎\s*依据[：:]/, '').trim();
     if (!text) return;
     const ctxText = String(ctx || '').replace(/\s+/g, ' ').trim();
@@ -365,6 +365,12 @@ function openSrcLink(rawText, ctx) {
         if ((m = seg.match(/^planning\.md[：:](.+)$/)) || seg === 'planning.md') {
             // 依据来自写作总纲：打开 planning.md 原文并高亮摘录（冒号后是摘录内容）
             openMaterialPreview('planning.md', m ? m[1].trim() : '');
+            return;
+        }
+        if (seg === '释义' || seg === '其他基本信息') {
+            // 依据来自已保存的摘要数据：跳到摘要页查看
+            await selectSummary();
+            showToast(`该依据来自您已核对保存的“${seg}”，请在摘要页查看`);
             return;
         }
     }
@@ -671,10 +677,14 @@ function _srcContext(el) {
     return cands.map(x => (x.textContent || '')).join(' ').replace(/\s+/g, ' ').trim().slice(0, 400);
 }
 document.addEventListener('click', (e) => {
+    if (e.target.closest && e.target.closest('.src-item-plain')) return;  // 不可溯源依据（固定表述等）不可点
     const item = e.target.closest && e.target.closest('.src-item');
     if (item) { openSrcLink(item.textContent, _srcContext(item)); return; }   // 逐句引注：点哪条跳哪条
     const srcEl = e.target.closest && e.target.closest('.doc-src');
-    if (srcEl) { openSrcLink(srcEl.textContent, _srcContext(srcEl)); return; }
+    if (srcEl) {
+        if (srcEl.classList.contains('doc-src-plain')) return;  // 整行不可溯源依据不可点
+        openSrcLink(srcEl.textContent, _srcContext(srcEl)); return;
+    }
     const refEl = e.target.closest && e.target.closest('.ref-item');
     if (refEl) { openRefByName(refEl.textContent); return; }
 });
