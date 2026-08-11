@@ -26,6 +26,8 @@ ch5.json
 ch6.json
 ch7.json
 cover_assets/
+# 预览/导出的临时 Word（每次生成会变，服务器上会自动重建）
+*_output.docx
 _cover_preview.docx
 # 数据库与输出
 *.db
