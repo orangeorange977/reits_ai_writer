@@ -319,6 +319,55 @@ def quote_tokens(quote: str):
     return nums, frags[:8]
 
 
+def fuzzy_quote_tokens(quote: str) -> list:
+    """模糊定位用的关键词级特征词（3~12字）：中文串按标点+虚词切出核心专名/术语，另加≥2位数字。
+    逐字/片段投票不中时（AI 摘录是改写/概括），用“关键词重叠度”搜页+框大致位置。"""
+    q = re.sub(r"[（(]\s*第\s*\d+\s*页\s*[）)]", "", quote or "")
+    toks = []
+    for t in re.findall(r"\d+(?:\.\d+)?", q):
+        if len(t) >= 2 and t not in toks:
+            toks.append(t)
+    for seg in re.split(r"[，。；：、！？…〈〉《》()（）\"“”‘’\s]+", q):
+        seg = seg.strip()
+        if len(seg) < 3:
+            continue
+        # 虚词切开保留核心专名（“经查询信用中国网站”→“信用中国网站”；“无重大违法违规记录”→“重大违法违规记录”）
+        for sub in re.split(r"[以与其及作为系指在为或是经近年在等无未不的了之于对查询出具]+", seg):
+            sub = sub.strip()
+            if 3 <= len(sub) <= 12 and sub not in toks:
+                toks.append(sub)
+        if 3 <= len(seg) <= 12 and seg not in toks:
+            toks.append(seg)
+    return toks[:14]
+
+
+def fuzzy_match_tokens(text_norm: str, toks: list) -> list:
+    """归一化文本里命中的特征词子集（toks 需已来自 fuzzy_quote_tokens）。"""
+    return [t for t in toks if norm_q(t) and norm_q(t) in (text_norm or "")]
+
+
+def fuzzy_hit_threshold(toks: list) -> int:
+    """模糊命中阈值：特征词越多要求命中越多，少时至少 2 个（防单关键词误中他页）。"""
+    return 3 if len(toks) >= 6 else 2
+
+
+def fuzzy_quote_page_hit(doc, n: int, quote: str):
+    """文字层模糊搜页：按关键词重叠数取最优页，返回 (页码从1起, 命中特征词列表)；不达阈值返回 None。"""
+    toks = fuzzy_quote_tokens(quote)
+    if len(toks) < 2:
+        return None
+    need = fuzzy_hit_threshold(toks)
+    best = None
+    for i in range(n):
+        tn = norm_q(doc[i].get_text())
+        if len(tn) < 8:
+            continue
+        m = fuzzy_match_tokens(tn, toks)
+        if len(m) >= need and (best is None or len(m) > len(best[1])):
+            best = (i + 1, m)
+    return best
+
+
 def quote_page_hit(doc, n: int, quote: str):
     """文字层搜页：逐字 / 去空白 / 片段投票（命中≥2 或单片段≥10字）。AI 摘录常是改写，逐字匹配太严。"""
     q = (quote or "").strip()

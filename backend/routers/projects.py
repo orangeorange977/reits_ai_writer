@@ -535,12 +535,20 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
             buf = io.BytesIO()
             img.save(buf, "JPEG", quality=82)
             pages.append({"page": i + 1, "img": base64.b64encode(buf.getvalue()).decode()})
-        # 摘录定位页：仅文字层搜索（便宜）；扫描件不搜（避免整篇 OCR）
+        # 摘录定位页：先逐字/片段投票；不中再模糊（关键词重叠度）框大致位置；扫描件不在此搜（避免整篇 OCR）
         has_text = any(doc[i].get_text().strip() for i in range(min(n, 6)))
+        fuzzy = False
+        ftoks = None
         hit = _quote_page_hit(doc, n, quote) if (quote or "").strip() and has_text else None
-        hit_box = _text_highlight_box(doc, hit - 1, quote) if hit else None
+        if not hit and (quote or "").strip() and has_text:
+            fr = materials_client.fuzzy_quote_page_hit(doc, n, quote)
+            if fr:
+                hit, ftoks = fr
+                fuzzy = True
+        hit_box = _text_highlight_box(doc, hit - 1, quote, ftoks) if hit else None
         doc.close()
-        return {"total": n, "pages": pages, "hit_page": hit, "has_text": has_text, "hit_box": hit_box}
+        return {"total": n, "pages": pages, "hit_page": hit, "has_text": has_text,
+                "hit_box": hit_box, "fuzzy": fuzzy}
 
     try:
         return await asyncio.to_thread(_render)
@@ -565,12 +573,14 @@ def _quote_page_hit(doc, n: int, quote: str):
     return materials_client.quote_page_hit(doc, n, quote)
 
 
-def _text_highlight_box(doc, page_idx: int, quote: str):
-    """文字层高亮框：优先行级整行 bbox（框住整句更可读），不中再退 search_for 精确坐标。返回 120dpi 坐标。"""
+def _text_highlight_box(doc, page_idx: int, quote: str, toks: list = None):
+    """文字层高亮框：优先行级整行 bbox（框住整句更可读），不中再退 search_for 精确坐标。返回 120dpi 坐标。
+    toks：模糊定位命中的特征词（逐字不中时由 fuzzy_quote_page_hit 给出），并入候选一起框。"""
     nums, frags = _quote_tokens(quote)
     page = doc[page_idx]
     cands = [f for f in frags if len(f) >= 6] + nums
     cands.append((quote or "").strip()[:16])
+    cands += [t for t in (toks or []) if len(t) >= 3]
     nset = {_norm_q(f) for f in cands if len(f) >= 4}
     hb = []
     for blk in page.get_text("dict").get("blocks", []):
@@ -619,15 +629,20 @@ def _resolve_material_fp(project_id: int, path: str) -> Path:
 
 
 def _run_quote_search(key: str, fp: Path, quote: str):
-    """后台逐页搜索摘录：数字特征词（如 42076.98）命中即停；无数字时用摘录前 12 字。"""
+    """后台逐页搜索摘录：先严格（数字/片段/前12字）命中即停；
+    全文扫完无严格命中时，按模糊关键词重叠度取最优页框大致位置（fuzzy=True）。"""
     import re as _re
     try:
         nums, frags = _quote_tokens(quote)
+        ftoks = materials_client.fuzzy_quote_tokens(quote)
+        need = materials_client.fuzzy_hit_threshold(ftoks)
         qn = _re.sub(r"\s+", "", quote)
         head = qn[:12]
         n = materials_client.pdf_page_count(fp)
         hit = None
         box = None
+        fuzzy = False
+        best_fuzzy = None  # (页索引, 命中词列表)
         for i in range(n):
             t = _norm_q(materials_client.ocr_page_text(fp, i))
             if not t:
@@ -637,9 +652,17 @@ def _run_quote_search(key: str, fp: Path, quote: str):
                 b = materials_client.ocr_page_highlight_box(fp, i, nums or frags)
                 box = [v * 1.2 for v in b] if b else None  # 100dpi→120dpi，与文字层约定一致
                 break
+            m = materials_client.fuzzy_match_tokens(t, ftoks)
+            if len(m) >= need and (best_fuzzy is None or len(m) > len(best_fuzzy[1])):
+                best_fuzzy = (i, m)
             _quote_search_tasks[key] = {"status": "running", "hit": None, "scanned": i + 1}
+        if hit is None and best_fuzzy:
+            hit = best_fuzzy[0] + 1
+            fuzzy = True
+            b = materials_client.ocr_page_highlight_box(fp, best_fuzzy[0], best_fuzzy[1])
+            box = [v * 1.2 for v in b] if b else None
         _quote_search_tasks[key] = {"status": "done", "hit": hit, "scanned": n,
-                                    "box": box if hit else None}
+                                    "box": box if hit else None, "fuzzy": fuzzy if hit else False}
     except Exception as e:
         logger.error(f"摘录搜页失败 {fp}: {e}", exc_info=True)
         _quote_search_tasks[key] = {"status": "done", "hit": None, "scanned": -1}

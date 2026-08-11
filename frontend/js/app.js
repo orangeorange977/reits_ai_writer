@@ -459,7 +459,7 @@ async function _renderPagesPreview() {
         _matState.mode = 'text'; _updateMatToggleBtn();
         return _renderTextPreview();
     }
-    const st = _matState.pagesState = { total: d.total, start: 1, end: 0, loading: false, hit: d.hit_page };
+    const st = _matState.pagesState = { total: d.total, start: 1, end: 0, loading: false, hit: d.hit_page, fuzzy: !!d.fuzzy };
     document.getElementById('matPreviewTitle').textContent = `📄 《${String(path).split('/').pop()}》原版（共 ${d.total} 页）`;
     body.innerHTML = '';
     const citedPage = Math.min(_matState.page || 0, d.total);
@@ -471,9 +471,13 @@ async function _renderPagesPreview() {
     if (quote && citedPage <= 1) {
         if (st.hit && d.hit_box) {
             st.hit_box = d.hit_box;
-            body.insertAdjacentHTML('beforeend', `<div class="src-tip ok">✅ 摘录位于原文第 ${st.hit} 页，已为您跳转到该页并红框标出摘录位置。</div>`);
+            body.insertAdjacentHTML('beforeend', st.fuzzy
+                ? `<div class="src-tip ok">📍 摘录与原文文字略有出入，已为您跳到最相近的第 ${st.hit} 页并框出大致位置，请核对。</div>`
+                : `<div class="src-tip ok">✅ 摘录位于原文第 ${st.hit} 页，已为您跳转到该页并红框标出摘录位置。</div>`);
         } else if (st.hit) {
-            body.insertAdjacentHTML('beforeend', `<div class="src-tip ok">✅ 摘录位于原文第 ${st.hit} 页，已为您翻到该页附近，上下滚动可查看其他页。</div>`);
+            body.insertAdjacentHTML('beforeend', st.fuzzy
+                ? `<div class="src-tip ok">📍 摘录与原文文字略有出入，已为您翻到最相近的第 ${st.hit} 页，上下滚动核对。</div>`
+                : `<div class="src-tip ok">✅ 摘录位于原文第 ${st.hit} 页，已为您翻到该页附近，上下滚动可查看其他页。</div>`);
         } else if (d.has_text) {
             body.insertAdjacentHTML('beforeend', `<div class="src-tip warn">⚠️ 摘录未能在本文档中逐字定位（可能略有出入），摘录内容：“${_escHtmlAttr(quote)}”，请翻页核对。</div>`);
         } else {
@@ -544,14 +548,14 @@ async function _startQuoteSearch() {
     const { path, quote } = _matState;
     try {
         const r0 = await API.quoteSearch(path, quote);
-        if (r0.status === 'done' && r0.hit) return _onQuoteHit(r0.hit, r0.box);
+        if (r0.status === 'done' && r0.hit) return _onQuoteHit(r0.hit, r0.box, r0.fuzzy);
         for (let i = 0; i < 90; i++) {
             await new Promise(r => setTimeout(r, 2000));
             if (!_matState || _matState.mode !== 'pages') return;  // 弹窗已关/已切文本版
             const r = await API.quoteSearchResult(r0.task);
             const tip = document.getElementById('quoteSearchTip');
             if (r.status === 'done') {
-                if (r.hit) return _onQuoteHit(r.hit, r.box);
+                if (r.hit) return _onQuoteHit(r.hit, r.box, r.fuzzy);
                 if (tip) tip.className = 'src-tip warn';
                 if (tip) tip.innerHTML = `⚠️ 已逐页识别全文但未找到摘录所在页（识别文字可能出入较大），摘录内容：“${_escHtmlAttr(quote)}”，请翻页核对。`;
                 return;
@@ -561,9 +565,11 @@ async function _startQuoteSearch() {
     } catch (e) { /* 搜页失败不影响翻页浏览 */ }
 }
 
-function _onQuoteHit(hit, box) {
+function _onQuoteHit(hit, box, fuzzy) {
     const tip = document.getElementById('quoteSearchTip');
-    if (tip) tip.innerHTML = `✅ 摘录位于原文第 ${hit} 页，已为您跳转到该页并红框标出摘录位置。`;
+    if (tip) tip.innerHTML = fuzzy
+        ? `📍 摘录与识别文字略有出入，已为您跳到最相近的第 ${hit} 页${box ? '并框出大致位置' : ''}，请核对。`
+        : `✅ 摘录位于原文第 ${hit} 页，已为您跳转到该页并红框标出摘录位置。`;
     const st = _matState && _matState.pagesState;
     if (!st) return;
     st.start = hit; st.end = hit - 1; st.hit = hit; st.hit_box = box || null;
