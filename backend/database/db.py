@@ -333,11 +333,11 @@ async def load_preset_projects():
             if await cursor.fetchone():
                 continue  # 已存在，跳过
 
-            # 读取预置数据
+            # 读取预置数据（编码/解析异常只跳过该文件，不能拖崩启动）
             try:
                 with open(json_file, "r", encoding="utf-8") as f:
                     preset_data = json.load(f)
-            except (json.JSONDecodeError, IOError) as e:
+            except Exception as e:
                 logger.warning(f"加载预置项目文件失败 {json_file}: {e}")
                 continue
 
