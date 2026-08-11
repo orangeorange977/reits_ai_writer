@@ -488,6 +488,56 @@ def _src_has_material(src: str) -> bool:
     return bool(re.search(r"申报材料[：:]|\.(?:pdf|docx?|xlsx?|pptx?|png|jpe?g)\b", src or "", re.I))
 
 
+def _find_quote_home(quote: str, mat_root: Path, exclude_rel: str, cache: dict):
+    """摘录不在所挂文件里（AI 挂错文件）时的通用兼底：全项目文字层 PDF 里找真实出处。
+    片段投票命中才采信，找到就返回 (真实相对路径, 该页原文原句)；只扫文字层不触发整篇 OCR。"""
+    import fitz
+    q = (quote or "").strip()
+    if len(q) < 12:
+        return None
+    pdfs = cache.get("pdfs")
+    if pdfs is None:
+        try:
+            pdfs = sorted(mat_root.rglob("*.pdf"))[:500]
+        except Exception:
+            pdfs = []
+        cache["pdfs"] = pdfs
+    nums, frags = materials_client.quote_tokens(q)
+    if len(frags) < 2 and not nums:
+        return None
+    need = 3 if len(frags) >= 4 else 2
+    for p in pdfs:
+        try:
+            rel = p.relative_to(mat_root).as_posix()
+        except Exception:
+            continue
+        if rel == exclude_rel:
+            continue
+        try:
+            doc = fitz.open(str(p))
+        except Exception:
+            continue
+        try:
+            n = doc.page_count
+            if n > 400 or not any(doc[i].get_text().strip() for i in range(min(n, 6))):
+                continue  # 只扫文字层 PDF；扫描件不主动 OCR，避免自检拖慢
+            qn = materials_client.norm_q(q)
+            for i in range(n):
+                t = materials_client.norm_q(doc[i].get_text())
+                if len(t) < 20:
+                    continue
+                if qn in t:  # 逐字命中：铁证
+                    return rel, materials_client.page_original_snippet(doc, i, q)
+                hit_n = sum(1 for f in frags if materials_client.norm_q(f) in t)
+                if hit_n >= need:
+                    return rel, materials_client.page_original_snippet(doc, i, q)
+        except Exception:
+            continue
+        finally:
+            doc.close()
+    return None
+
+
 def verify_fix_refs(sections: list, mat_root: Path) -> dict:
     """依据自检纠偏（生成后/手工修复都可调）：逐条 src 里的“申报材料”依据——
     ① 路径归一到磁盘真实文件（AI 写的文件名常有出入）；
@@ -498,8 +548,9 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
     全程 try/except 容错：自检失败不阻断生成，保留原依据。返回统计。
     注：④⑤清理规则与材料目录无关，任何项目都生效；无材料目录时仅跳过①②③的路径/摘录定位。"""
     stats = {"total": 0, "fixed_path": 0, "verbatim": 0, "replaced": 0, "added": 0, "failed": 0,
-             "removed_inapplicable": 0, "removed_untraceable": 0}
+             "removed_inapplicable": 0, "removed_untraceable": 0, "rehomed": 0}
     has_mat = bool(mat_root) and Path(mat_root).is_dir()
+    home_cache = {}  # “摘录换家”的文件清单缓存（一次自检只建一次）
     for sec in sections or []:
         for blk in sec.get("blocks", []) or []:
             # 不涉及块不挂依据：“不涉及。〈1〉”→“不涉及。”并清空 src（仅当 src 无真实材料依据时）
@@ -589,6 +640,15 @@ def verify_fix_refs(sections: list, mat_root: Path) -> dict:
                         quote, page_cite = loc[1], ""   # 换成可逐字命中的原文片段，不再需要页码
                         stats["replaced"] += 1
                         changed = True
+                    else:
+                        # 摘录在所挂文件里找不到（AI 挂错文件，或用户手改摘录没改路径）：
+                        # 全项目找真实出处，找到就换路径+原文原句
+                        home = _find_quote_home(quote, mat_root, rel, home_cache)
+                        if home:
+                            rel, quote, page_cite = home[0], home[1] or quote, ""
+                            stats["rehomed"] += 1
+                            stats["fixed_path"] += 1
+                            changed = True
                     # 定位不到：保留原摘录+页码引注（有页码前端仍能直达该页）
                 elif not page_cite:
                     # 无摘录也无页码：用本块正文/表格值去原文里找，找到就补上原句
@@ -1130,7 +1190,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
         try:
             st = verify_fix_refs(data["sections"], mat_root)
             logger.info(f"ch{n} 依据自检：共{st['total']}条，路径修正{st['fixed_path']}，"
-                        f"原文直中{st['verbatim']}，摘录改原文{st['replaced']}，补摘录{st['added']}，未定位{st['failed']}，"
+                        f"原文直中{st['verbatim']}，摘录改原文{st['replaced']}，摘录换家{st['rehomed']}，补摘录{st['added']}，未定位{st['failed']}，"
                         f"不涉及去依据{st['removed_inapplicable']}，删无源依据{st['removed_untraceable']}")
         except Exception as e:
             logger.warning(f"ch{n} 依据自检失败（不影响生成）：{e}")

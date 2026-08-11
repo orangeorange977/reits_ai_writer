@@ -712,8 +712,8 @@ async def verify_chapter_refs(project_id: int, n: int, http_req: Request):
 
     st = await asyncio.to_thread(_run)
     return {"message": f"依据自检完成：共{st['total']}条，路径修正{st['fixed_path']}，"
-                       f"摘录改原文{st['replaced']}，补摘录{st['added']}，不涉及去依据{st['removed_inapplicable']}，"
-                       f"删无源依据{st['removed_untraceable']}", **st}
+                       f"摘录改原文{st['replaced']}，摘录换正确文件{st['rehomed']}，补摘录{st['added']}，"
+                       f"不涉及去依据{st['removed_inapplicable']}，删无源依据{st['removed_untraceable']}", **st}
 
 
 # 天眼查企业名→官网 URL 缓存（避免重复消耗 MCP 查询）

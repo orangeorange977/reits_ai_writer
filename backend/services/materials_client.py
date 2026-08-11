@@ -522,8 +522,15 @@ def resolve_material_ref(name: str, mat_root: Path):
     def stem(s):
         return re.sub(r"\.[^.]+$", "", s)
 
+    def squish(s):
+        # 空白无关归一：AI 写的路径常比真实文件名多/少空格（“建设 用地” vs “建设用地”）
+        return re.sub(r"\s+", "", s or "")
+
     for p in files:
         if base(p) == name:
+            return p
+    for p in files:
+        if squish(base(p)) == squish(name):
             return p
     for p in files:
         if name in base(p) or base(p) in name:
@@ -532,6 +539,11 @@ def resolve_material_ref(name: str, mat_root: Path):
     if len(s1) >= 4:
         for p in files:
             if s1 in stem(base(p)) or stem(base(p)) in s1:
+                return p
+        ns1 = squish(s1)
+        for p in files:
+            sp = squish(stem(base(p)))
+            if ns1 in sp or sp in ns1:
                 return p
     # 多文件混写（“法律意见书、不动产权证书、估价报告”）：拆开逐项递归；
     # 仅当各段都能解析时才采信，避免把文件名里的“及/和”（如 审计报告及财务报表）误拆
