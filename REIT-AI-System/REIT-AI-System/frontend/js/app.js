@@ -2593,7 +2593,8 @@ function _coverRenderPreview() {
 async function _coverSave() {
     try {
         await API.saveCoverDate((_coverState && _coverState.date_text) || '');
-        showToast('已保存');
+        closeCoverEditor();   // 保存成功后关闭弹窗
+        showToast('封面已保存');
     } catch (err) {
         showToast('保存失败：' + err.message, 'error');
     }
