@@ -1697,7 +1697,7 @@ async function renderChapterEditor(n) {
                 <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="insertDiagram()" title="把光标放到正文中要插图的位置，再点此画框图">🖼 画图</button>
                 <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="openAIAssist()" title="先在正文里选中一段文字，再点此让AI润色/改写/扩写等">✨ AI辅助</button>
                 <button class="btn btn-ghost btn-sm" id="btnChapterPreviewToggle" onclick="toggleChapterPreview()">📄 ${_previewOn ? '关闭Word预览' : '开启Word预览'}</button>
-                <button class="btn btn-ghost btn-sm" onclick="API.downloadChapterDocx(_editorChapter)" title="下载本章最新 Word（项目名_日期_第n章_vN）">⬇ 下载Word</button>
+                <button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(_editorChapter)" title="自动保存后导出本章最新 Word（项目名_日期_第n章_vN）">⬇ 下载Word</button>
                     <button class="btn btn-ghost btn-sm" onclick="generateChapterDoc(_editorChapter)" title="把当前保存内容生成为新版本 Word，不触发下载">📄 生成该文档</button>
                 <button class="btn btn-primary btn-sm" onclick="saveChapter()">💾 保存</button>
             </div>
@@ -1758,7 +1758,7 @@ async function renderChapterEditor(n) {
             <div class="ch1-preview-head">
                 <span>📄 Word 实时预览</span>
                 <span class="flex gap-8">
-                    <button class="btn btn-ghost btn-sm" onclick="API.downloadChapterDocx(${n})">⬇ 下载Word</button>
+                    <button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(${n})">⬇ 下载Word</button>
                 </span>
             </div>
             <div id="ch1PreviewBody" class="ch1-preview-body">
@@ -1881,9 +1881,9 @@ function _pollChapterGeneration(n) {
 /**
  * 保存当前章：收集每个子标题的 Word 编辑区内容，回传给 reading skill（持久化）
  */
-async function saveChapter() {
+async function saveChapter(silent) {
     const editors = document.querySelectorAll('#chapterDetail .doc-editor');
-    if (!editors.length) { showToast('没有可保存的内容，请先生成', 'warning'); return; }
+    if (!editors.length) { if (!silent) showToast('没有可保存的内容，请先生成', 'warning'); return false; }
     const sections = Array.from(editors).map(ed => ({
         id: ed.dataset.secid || '',
         title: ed.dataset.title || '',
@@ -1892,12 +1892,27 @@ async function saveChapter() {
     try {
         await API.saveChapterContent(_editorChapter, sections);
         delete _previewCache[_editorChapter];   // 内容已改，缓存作废
-        showToast('已保存，并返回给 reading skill');
+        if (!silent) showToast('已保存，并返回给 reading skill');
         // 预览开启时，保存后自动让 writing skill 写入 Word 并刷新预览（强制重生成）
         if (_previewOn) refreshChapterPreview(true);
+        return true;
     } catch (e) {
+        if (silent) throw e;
         showToast('保存失败: ' + e.message, 'error');
+        return false;
     }
+}
+
+/** 工具栏/预览面板“⬇ 下载Word”：先静默自动保存编辑区，再导出新版本下载，保证所见即所得 */
+async function downloadChapterWord(n) {
+    try {
+        const ok = await saveChapter(true);
+        if (!ok) return;
+    } catch (e) {
+        showToast('保存失败，已取消下载: ' + e.message, 'error');
+        return;
+    }
+    await API.downloadChapterDocx(n);
 }
 
 // ===== 脚注 =====
@@ -2616,13 +2631,15 @@ async function loadDocuments() {
     }
 }
 
-/** 工具栏“生成该文档”：渲染当前保存内容为新版本 Word，不触发下载 */
+/** 工具栏“生成该文档”：先静默自动保存编辑区，再渲染当前内容为新版本 Word，不触发下载 */
 async function generateChapterDoc(n) {
     try {
+        const ok = await saveChapter(true);
+        if (!ok) return;
         const r = await API.generateDocument(n);
         showToast(`已生成新版本：${r.filename}`);
     } catch (e) {
-        showToast(e.message || '生成失败');
+        showToast(e.message || '生成失败', 'error');
     }
 }
 
