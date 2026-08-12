@@ -1697,6 +1697,7 @@ async function renderChapterEditor(n) {
                 <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="insertDiagram()" title="把光标放到正文中要插图的位置，再点此画框图">🖼 画图</button>
                 <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="openAIAssist()" title="先在正文里选中一段文字，再点此让AI润色/改写/扩写等">✨ AI辅助</button>
                 <button class="btn btn-ghost btn-sm" id="btnChapterPreviewToggle" onclick="toggleChapterPreview()">📄 ${_previewOn ? '关闭Word预览' : '开启Word预览'}</button>
+                <button class="btn btn-ghost btn-sm" onclick="API.downloadChapterDocx(_editorChapter)" title="下载本章最新 Word（项目名_日期_第n章_vN）">⬇ 下载Word</button>
                 <button class="btn btn-primary btn-sm" onclick="saveChapter()">💾 保存</button>
             </div>
         </div>
@@ -2601,11 +2602,11 @@ async function loadDocuments() {
         }
         tbody.innerHTML = docs.map(doc => `
             <tr>
-                <td><strong>${_escHtmlAttr(doc.title)}</strong> <span class="badge badge-primary">v${doc.version}</span><br><span class="text-muted text-sm">${_escHtmlAttr(doc.filename)}</span></td>
+                <td><strong>${_escHtmlAttr(doc.title)}</strong><br><span class="text-muted text-sm">${_escHtmlAttr(doc.filename)}</span></td>
                 <td>${_escHtmlAttr(_fmtTime(doc.updated_at))}</td>
                 <td>${_escHtmlAttr(doc.size_formatted)}</td>
                 <td><span class="badge badge-success">已完成</span></td>
-                <td><button class="btn btn-primary btn-sm" onclick="API.downloadChapterDocx(${doc.chapter}, ${doc.version})">下载</button></td>
+                <td><button class="btn btn-primary btn-sm" onclick="API.downloadChapterDocx(${doc.chapter})">下载</button></td>
             </tr>
         `).join('');
     } catch (error) {

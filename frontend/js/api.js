@@ -363,22 +363,15 @@ const API = {
     },
 
     /**
-     * 下载第 n 章 Word 文件（fetch blob 方式，才能携带登录 token）；
-     * version 可选，不传取最新版本；文件名以后端 Content-Disposition 为准
-     * （项目名_日期_第n章_vN）。
+     * 下载第 n 章 Word 文件（fetch blob 方式，才能携带登录 token）
      */
-    async downloadChapterDocx(n, version) {
+    async downloadChapterDocx(n) {
         const pid = encodeURIComponent(this._currentProjectId());
-        const vq = version ? `&version=${version}` : '';
-        const resp = await this.request(`/skills/chapter/${n}/download?project_id=${pid}${vq}`, { _download: true });
+        const resp = await this.request(`/skills/chapter/${n}/download?project_id=${pid}`, { _download: true });
         const blob = await resp.blob();
-        let fname = `ch${n}_output.docx`;
-        const cd = resp.headers.get('content-disposition') || '';
-        const m = cd.match(/filename\*=UTF-8''([^;]+)/i);
-        if (m) { try { fname = decodeURIComponent(m[1]); } catch (e) { /* 保持默认名 */ } }
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = fname;
+        link.download = `ch${n}_output.docx`;
         link.style.display = 'none';
         document.body.appendChild(link);
         link.click();

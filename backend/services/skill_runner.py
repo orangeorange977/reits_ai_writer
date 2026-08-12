@@ -8,7 +8,6 @@ Skill 执行器 - 让 Kimi 按 reits-reading 各章 SKILL.md 的要求生成章�
 import json
 import logging
 import re
-import shutil
 import time
 from pathlib import Path
 from html.parser import HTMLParser
@@ -45,119 +44,10 @@ def chapter_json_path(n: int, project_id: str = None) -> Path:
 
 def chapter_docx_path(n: int, project_id: str = None) -> Path:
     """某章生成的 Word 输出路径（按项目隔离）；目录不存在时自动创建，
-    避免新项目首次预览/生成时因 output/ 缺失而写文件失败。
-    注：此文件只是渲染中间产物（工作文件），对外交付的正式文档见
-    versioned_docx_files/snapshot_docx（项目名_日期_第n章_v版本号）。"""
+    避免新项目首次预览/生成时因 output/ 缺失而写文件失败。"""
     path = _project_dir(project_id) / "output" / f"ch{n}_output.docx"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
-
-
-# ===== 正式文档版本化（友好命名）=====
-# 对外交付的 Word 统一命名为：{项目名}_{YYYYMMDD}_第{n}章_v{k}.docx。
-# 每次内容变化重新渲染时新增一个版本（v1、v2…），历史版本全部保留。
-
-
-def _project_name_sync(project_id: str = None) -> str:
-    """项目名称（用于友好文件名）；同步查询，失败时兜底为“项目{id}”。"""
-    pid = safe_project_id(project_id)
-    try:
-        import sqlite3
-        from backend.config import DATABASE_PATH
-        conn = sqlite3.connect(str(DATABASE_PATH))
-        try:
-            row = conn.execute(
-                "SELECT name FROM projects WHERE id = ?", (pid,)).fetchone()
-        finally:
-            conn.close()
-        if row and row[0]:
-            return str(row[0])
-    except Exception:
-        pass
-    return f"项目{pid}"
-
-
-def _safe_filename(s) -> str:
-    """文件名非法字符换下划线（Windows/macOS 兼容），限长 60 字。"""
-    s = re.sub(r'[\\/:*?"<>|]+', "_", str(s or "")).strip()
-    return s[:60] or "未命名项目"
-
-
-def versioned_docx_files(n: int, project_id: str = None) -> list:
-    """该项目第 n 章的全部正式文档版本，按版本号升序。"""
-    out_dir = _project_dir(project_id) / "output"
-    if not out_dir.exists():
-        return []
-    name = _safe_filename(_project_name_sync(project_id))
-    pat = re.compile(rf"^{re.escape(name)}_(\d{{8}})_第{n}章_v(\d+)\.docx$")
-    files = []
-    for f in out_dir.iterdir():
-        m = pat.match(f.name)
-        if m:
-            files.append((int(m.group(2)), f))
-    return [f for _, f in sorted(files)]
-
-
-def _make_version(n: int, project_id: str, src: Path, date_str: str) -> Path:
-    """把 src 固化为一个新版本（版本号 = 现有最大 + 1），返回新文件。"""
-    files = versioned_docx_files(n, project_id)
-    k = 0
-    if files:
-        m = re.search(r"_v(\d+)\.docx$", files[-1].name)
-        if m:
-            k = int(m.group(1))
-    name = _safe_filename(_project_name_sync(project_id))
-    dest = src.parent / f"{name}_{date_str}_第{n}章_v{k + 1}.docx"
-    shutil.copyfile(src, dest)
-    return dest
-
-
-def _docx_body_hash(path: Path):
-    """docx 正文内容哈希（只看 word/document.xml，忽略文件元数据里的时间戳）；
-    读不了返回 None。用于判断两次渲染的正文是否相同。"""
-    try:
-        import zipfile
-        import hashlib
-        with zipfile.ZipFile(str(path)) as z:
-            return hashlib.md5(z.read("word/document.xml")).hexdigest()
-    except Exception:
-        return None
-
-
-def snapshot_docx(n: int, project_id: str = None, src: Path = None):
-    """渲染成功后把工作文件固化为新的正式版本（历史保留）；
-    正文与最新版完全相同时不重复出版本（避免重启后重复渲染产生重复文件）；
-    失败返回已有最新版或 None、不阻断预览主链路。"""
-    try:
-        src = src or chapter_docx_path(n, project_id)
-        if not src.exists():
-            return None
-        files = versioned_docx_files(n, project_id)
-        if files:
-            new_h = _docx_body_hash(src)
-            if new_h and new_h == _docx_body_hash(files[-1]):
-                return files[-1]  # 正文未变，沿用最新版
-        return _make_version(n, project_id, src, time.strftime("%Y%m%d"))
-    except Exception as e:
-        logger.warning(f"ch{n} 固化正式文档版本失败（不影响预览）：{e}")
-        return None
-
-
-def ensure_versioned(n: int, project_id: str = None):
-    """老数据迁移：只有工作文件、还没有正式版本时，把它固化为 v1
-    （日期取文件的修改日）；已有版本则直接返回最新版。"""
-    files = versioned_docx_files(n, project_id)
-    if files:
-        return files[-1]
-    work = chapter_docx_path(n, project_id)
-    if not work.exists():
-        return None
-    try:
-        date_str = time.strftime("%Y%m%d", time.localtime(work.stat().st_mtime))
-        return _make_version(n, project_id, work, date_str)
-    except Exception as e:
-        logger.warning(f"ch{n} 老文档迁移 v1 失败：{e}")
-        return None
 
 # 网页上选择的大模型（DeepSeek/Kimi，全局设置，持久化在 workspace 根；各章生成都用它，
 # 缺省用 DeepSeek 主力模型 deepseek-chat）
