@@ -6,7 +6,8 @@ reits-writing skill · 网页流程渲染器
 列表 + table 键值表），写入 Word（docx），并生成 Word 风格的预览 HTML 供网页渲染。
 docx 与预览 HTML 都从同一份结构化 JSON 生成，保证网页预览与实际 Word 一致。
 
-字体字号按 planning.md 的写作要求：仿宋；正文小四(12pt)；表格五号(10.5pt)。
+字体字号行距一律沿用官方模板内置样式：正文继承模板 Normal（方正仿宋_GBK 小三 15pt、
+固定行距 29.4pt、首行缩进 2 字符），标题沿用模板标题样式，表题仿宋四号居中，表格文字五号(10.5pt)。
 
 section 结构：{"id":..., "title":..., "paragraphs":[str,...], "table":[{"label","value"},...]}
 """
@@ -30,7 +31,6 @@ from docx.table import Table, _Cell
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 _FONT = "仿宋"
-_BODY_PT = 12.0    # 小四
 _TABLE_PT = 10.5   # 五号
 _FOOTNOTE_PT = 9.0  # 小五（脚注）
 _CHAPTER_TITLE = "一、项目基本情况"
@@ -40,7 +40,6 @@ _NEXT_CHAPTER_TITLE = "二、参与主体情况"
 # 这些值默认 = 上面写死的缺省；若 reits-writing/write_config.json 存在则按其覆盖。
 # write_config.json 由后台"大模型读 planning.md + 写作SKILL.md 的自然语言要求"生成，
 # 本模块只负责读取并执行（本模块每次请求会被重载，因此总是读到最新配置）。
-_BODY_LINE_SPACING = None   # 正文行距倍数（如 1.3）；None=不显式设置，沿用模板
 _TABLE_LINE_SPACING = None  # 表格文字行距倍数（如 1.0）
 _TABLE_ALIGN = None         # 表格单元格文字水平对齐（WD_ALIGN_PARAGRAPH 值）；None=沿用模板
 _INSERT_UNKNOWN_HEADINGS = True   # reading 里"模板没有的新标题"是否按 JSON 顺序插入模板（否则丢弃）
@@ -84,8 +83,8 @@ def _apply_write_config():
     """读取排版配置 write_config.json，覆盖本模块的格式变量。
     优先用引擎注入的环境变量 WRITE_CONFIG_PATH（运行期数据在 workspace 下）；
     单独调试时回退到本目录同级的 write_config.json。"""
-    global _FONT, _BODY_PT, _TABLE_PT, _FOOTNOTE_PT
-    global _BODY_LINE_SPACING, _TABLE_LINE_SPACING, _TABLE_ALIGN, _INSERT_UNKNOWN_HEADINGS
+    global _FONT, _TABLE_PT, _FOOTNOTE_PT
+    global _TABLE_LINE_SPACING, _TABLE_ALIGN, _INSERT_UNKNOWN_HEADINGS
     env_path = os.environ.get("WRITE_CONFIG_PATH", "").strip()
     cfg_path = Path(env_path) if env_path else Path(__file__).resolve().parent / "write_config.json"
     if not cfg_path.exists():
@@ -97,10 +96,8 @@ def _apply_write_config():
     if not isinstance(cfg, dict):
         return
     _FONT = (cfg.get("font") or "").strip() or _FONT
-    _BODY_PT = _coerce_pt(cfg.get("body_pt"), _BODY_PT)
     _TABLE_PT = _coerce_pt(cfg.get("table_pt"), _TABLE_PT)
     _FOOTNOTE_PT = _coerce_pt(cfg.get("footnote_pt"), _FOOTNOTE_PT)
-    _BODY_LINE_SPACING = _coerce_spacing(cfg.get("body_line_spacing"))
     _TABLE_LINE_SPACING = _coerce_spacing(cfg.get("table_line_spacing"))
     ta = cfg.get("table_align")
     if ta:
@@ -111,12 +108,6 @@ def _apply_write_config():
 
 
 _apply_write_config()
-
-
-def _apply_body_spacing(para):
-    """给正文段落套用配置里的行距（若配置了）。"""
-    if _BODY_LINE_SPACING:
-        para.paragraph_format.line_spacing = _BODY_LINE_SPACING
 
 
 def _apply_cell_format(cell):
@@ -231,15 +222,15 @@ def _para_images_html(para, doc):
     return '<p class="doc-prev-img" style="text-align:center">' + "".join(imgs) + "</p>"
 
 
-def _set_font(run, size_pt):
-    run.font.name = _FONT
+def _set_font(run, size_pt, font=None):
+    run.font.name = font or _FONT
     run.font.size = Pt(size_pt)
     rpr = run._element.get_or_add_rPr()
     rfonts = rpr.find(qn("w:rFonts"))
     if rfonts is None:
         rfonts = rpr.makeelement(qn("w:rFonts"), {})
         rpr.append(rfonts)
-    rfonts.set(qn("w:eastAsia"), _FONT)
+    rfonts.set(qn("w:eastAsia"), font or _FONT)
 
 
 def _esc(s):
@@ -247,20 +238,53 @@ def _esc(s):
             .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+def _apply_template_normal(doc):
+    """把兜底独立文档的 Normal 设成官方模板的正文格式（方正仿宋_GBK 小三 15pt、
+    固定行距 29.4pt=588twips、首行缩进 2 字符、两端对齐），无模板时观感也与模板一致。"""
+    el = doc.styles["Normal"].element
+    ppr = el.get_or_add_pPr()
+    for tag in ("spacing", "ind", "jc"):
+        old = ppr.find(qn("w:" + tag))
+        if old is not None:
+            ppr.remove(old)
+    ppr.append(ppr.makeelement(qn("w:spacing"), {qn("w:line"): "588", qn("w:lineRule"): "exact"}))
+    ppr.append(ppr.makeelement(qn("w:ind"), {qn("w:firstLineChars"): "200", qn("w:firstLine"): "600"}))
+    ppr.append(ppr.makeelement(qn("w:jc"), {qn("w:val"): "both"}))
+    rpr = el.get_or_add_rPr()
+    for tag in ("rFonts", "sz", "szCs"):
+        old = rpr.find(qn("w:" + tag))
+        if old is not None:
+            rpr.remove(old)
+    rpr.append(rpr.makeelement(qn("w:rFonts"), {
+        qn("w:ascii"): "Times New Roman", qn("w:hAnsi"): "Times New Roman",
+        qn("w:eastAsia"): "方正仿宋_GBK"}))
+    rpr.append(rpr.makeelement(qn("w:sz"), {qn("w:val"): "30"}))
+    rpr.append(rpr.makeelement(qn("w:szCs"), {qn("w:val"): "30"}))
+
+
+def _apply_heading_style(doc, para, title):
+    """新插入的标题套用模板同级标题样式（（X）…→二级楷体；N.…→三级仿宋），
+    字号/行距/缩进与模板既有标题完全一致。"""
+    name = "Heading 3" if re.match(r"^\d+\s*[\.、．]", title or "") else "Heading 2"
+    for cand in (name, name.lower(), name.capitalize()):
+        try:
+            para.style = doc.styles[cand]
+            return
+        except KeyError:
+            continue
+
+
 def render_docx(sections, out_path):
-    """结构化 sections -> 写入 Word 文件。"""
+    """结构化 sections -> 写入 Word 文件（无模板兜底；正文继承与官方模板一致的 Normal）。"""
     doc = Document()
+    _apply_template_normal(doc)
 
     h = doc.add_paragraph()
-    hr = h.add_run(_CHAPTER_TITLE)
-    _set_font(hr, _BODY_PT)
-    hr.bold = True
+    _set_font(h.add_run(_CHAPTER_TITLE), 15.0, "方正黑体_GBK")
 
     for sec in sections:
         st = doc.add_paragraph()
-        sr = st.add_run(sec.get("title", ""))
-        _set_font(sr, _BODY_PT)
-        sr.bold = True
+        _set_font(st.add_run(sec.get("title", "")), 15.0, "方正楷体_GBK")
 
         for para in sec.get("paragraphs", []) or []:
             if _DIAGRAM_RE.fullmatch(para or ""):
@@ -269,9 +293,8 @@ def render_docx(sections, out_path):
                     _add_diagram_picture(doc.add_paragraph(), png)
                 continue
             p = doc.add_paragraph()
-            # 兜底文档无脚注部件，脚注降级为文内括注
-            _set_font(p.add_run(_fn_to_inline(para)), _BODY_PT)
-            _apply_body_spacing(p)
+            # 兜底文档无脚注部件，脚注降级为文内括注；正文 run 不显式设字体，继承 Normal
+            p.add_run(_fn_to_inline(para))
 
         table = sec.get("table", []) or []
         if table:
@@ -538,7 +561,7 @@ def _add_para_runs(paragraph, text, fn_state, collected):
             # 逐句引注的〈n〉标记仅供网页端溯源核对，正式 Word 里剔除
             seg = _CITE_RE.sub("", seg)
             if seg:
-                _set_font(paragraph.add_run(seg), _BODY_PT)
+                paragraph.add_run(seg)  # 正文 run 不显式设字体/字号，继承模板 Normal 样式
 
 
 def _footnote_xml(fid, text):
@@ -587,7 +610,6 @@ def _insert_section_paragraphs(anchor_blk, paragraphs, fn_state, collected_fn):
             continue
         new_p = anchor_blk.insert_paragraph_before()
         _add_para_runs(new_p, para, fn_state, collected_fn)
-        _apply_body_spacing(new_p)
 
 
 def _insert_section_after(heading_para, paragraphs, fn_state, collected_fn):
@@ -605,7 +627,6 @@ def _insert_section_after(heading_para, paragraphs, fn_state, collected_fn):
                 _add_diagram_picture(new_p, png)
             continue
         _add_para_runs(new_p, para, fn_state, collected_fn)
-        _apply_body_spacing(new_p)
 
 
 def _flush_pending_section(current_heading, current_sec, inserted_titles, fn_state, collected_fn):
@@ -742,7 +763,8 @@ def _add_caption_para_after(anchor_el, parent, cap):
     anchor_el.addnext(cap_el)
     cp = Paragraph(cap_el, parent)
     cp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _set_font(cp.add_run(cap), _BODY_PT)
+    cp.paragraph_format.first_line_indent = Inches(0)  # 模板表题无首行缩进
+    _set_font(cp.add_run(cap), 14.0)  # 模板表题：仿宋四号居中
     return cap_el
 
 
@@ -764,7 +786,6 @@ def _insert_section_blocks_after(heading_para, blocks, fn_state, collected, doc)
                     _add_diagram_picture(p, png)
             else:
                 _add_para_runs(p, text, fn_state, collected)
-                _apply_body_spacing(p)
         elif t == "kv":
             if b.get("caption"):
                 anchor_el = _add_caption_para_after(anchor_el, parent, b["caption"])
@@ -785,8 +806,8 @@ def _insert_orphan_before(doc, anchor_blk, sec, fn_state, collected):
     hp = anchor_blk.insert_paragraph_before()
     title = sec.get("title", "").strip()
     if title:
-        _set_font(hp.add_run(title), _BODY_PT)
-        _apply_body_spacing(hp)
+        _apply_heading_style(doc, hp, title)
+        hp.add_run(title)
     _insert_section_blocks_after(hp, _section_blocks(sec), fn_state, collected, doc)
 
 
@@ -795,8 +816,8 @@ def _append_orphan(doc, sec, fn_state, collected):
     hp = doc.add_paragraph()
     title = sec.get("title", "").strip()
     if title:
-        _set_font(hp.add_run(title), _BODY_PT)
-        _apply_body_spacing(hp)
+        _apply_heading_style(doc, hp, title)
+        hp.add_run(title)
     _insert_section_blocks_after(hp, _section_blocks(sec), fn_state, collected, doc)
 
 
@@ -1023,7 +1044,9 @@ def _read_rpr(rpr):
     ea = None
     rfonts = rpr.find(qn("w:rFonts"))
     if rfonts is not None:
-        ea = rfonts.get(qn("w:eastAsia")) or rfonts.get(qn("w:ascii"))
+        # 中文字体只认 eastAsia：run 级 ascii（如模板标题的 Times New Roman）
+        # 只作用于西文字符，不能遮蔽样式链上的中文 eastAsia 字体
+        ea = rfonts.get(qn("w:eastAsia"))
     bold = None
     b = rpr.find(qn("w:b"))
     if b is not None:

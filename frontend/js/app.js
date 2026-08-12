@@ -503,7 +503,10 @@ async function _renderPagesPreview() {
     }
     if (quote && citedPage <= 1) {
         if (st.hit && st.weak) {
-            body.insertAdjacentHTML('beforeend', `<div class="src-tip ok">📖 摘录为概括性表述，该文件中无逐字对应原文，已为您跳到最相关的第 ${st.hit} 页，请核对。</div>`);
+            if (d.hit_box) st.hit_box = d.hit_box;
+            body.insertAdjacentHTML('beforeend', d.hit_box
+                ? `<div class="src-tip ok">📖 摘录为概括性表述，该文件中无逐字对应原文，已为您跳到最相关的第 ${st.hit} 页并框出最相关段落，请核对。</div>`
+                : `<div class="src-tip ok">📖 摘录为概括性表述，该文件中无逐字对应原文，已为您跳到最相关的第 ${st.hit} 页，请核对。</div>`);
         } else if (st.hit && d.hit_box) {
             st.hit_box = d.hit_box;
             body.insertAdjacentHTML('beforeend', st.fuzzy
@@ -609,7 +612,7 @@ async function _startQuoteSearch() {
 function _onQuoteHit(hit, box, fuzzy, weak) {
     const tip = document.getElementById('quoteSearchTip');
     if (tip) tip.innerHTML = weak
-        ? `📖 摘录为概括性表述，该文件中无逐字对应原文，已为您跳到最相关的第 ${hit} 页，请核对。`
+        ? `📖 摘录为概括性表述，该文件中无逐字对应原文，已为您跳到最相关的第 ${hit} 页${box ? '并框出最相关段落' : ''}，请核对。`
         : fuzzy
             ? `📍 摘录与识别文字略有出入，已为您跳到最相近的第 ${hit} 页${box ? '并框出大致位置' : ''}，请核对。`
             : `✅ 摘录位于原文第 ${hit} 页，已为您跳转到该页${box ? '并红框标出摘录位置' : '，请上下滚动核对摘录位置'}。`;

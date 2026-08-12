@@ -548,6 +548,7 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
         fuzzy = False
         weak = False
         ftoks = None
+        wtoks = None
         hit = _quote_page_hit(doc, n, quote) if (quote or "").strip() and has_text else None
         if not hit and (quote or "").strip() and has_text:
             fr = materials_client.fuzzy_quote_page_hit(doc, n, quote)
@@ -555,7 +556,8 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
                 hit, ftoks = fr
                 fuzzy = True
         if not hit and (quote or "").strip() and has_text:
-            # 概括性摘录兜底：AI 改写概括无逐字原文时，按主题词重叠取最相关页（不画框）
+            # 概括性摘录兜底：AI 改写概括无逐字原文时，按主题词重叠取最相关页，
+            # 并记住命中的主题词，供下面画框（弱命中也尽量框出最相关段落）
             wt = materials_client.weak_topic_tokens(quote)
             best_w = None
             for i in range(n):
@@ -564,7 +566,13 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
                     best_w = (i + 1, m)
             if best_w:
                 hit, fuzzy, weak = best_w[0], True, True
-        hit_box = _text_highlight_box(doc, hit - 1, quote, ftoks) if (hit and not weak) else None
+                wtoks = best_w[1]
+        if hit and weak:
+            hit_box = _text_highlight_box(doc, hit - 1, quote, wtoks)
+        elif hit:
+            hit_box = _text_highlight_box(doc, hit - 1, quote, ftoks)
+        else:
+            hit_box = None
         doc.close()
         return {"total": n, "pages": pages, "hit_page": hit, "has_text": has_text,
                 "hit_box": hit_box, "fuzzy": fuzzy, "weak": weak}
@@ -700,7 +708,8 @@ def _run_quote_search(key: str, fp: Path, quote: str):
             b = materials_client.ocr_page_highlight_box(fp, best_fuzzy[0], best_fuzzy[1])
             box = [v * 1.2 for v in b] if b else None
         if hit is None:
-            # 概括性摘录兜底：AI 改写概括无逐字原文时，按主题词重叠取最相关页（不画框）
+            # 概括性摘录兜底：AI 改写概括无逐字原文时，按主题词重叠取最相关页，
+            # 并用命中的主题词框出最相关段落（OCR 词级坐标）
             wt = materials_client.weak_topic_tokens(quote)
             best_w = None
             for i, t in enumerate(page_texts):
@@ -710,8 +719,10 @@ def _run_quote_search(key: str, fp: Path, quote: str):
             if best_w:
                 hit = best_w[0] + 1
                 fuzzy, weak = True, True
+                b = materials_client.ocr_page_highlight_box(fp, best_w[0], best_w[1])
+                box = [v * 1.2 for v in b] if b else None  # 100dpi→120dpi，与文字层约定一致
         _quote_search_tasks[key] = {"status": "done", "hit": hit, "scanned": n,
-                                    "box": box if hit and not weak else None,
+                                    "box": box,
                                     "fuzzy": fuzzy if hit else False,
                                     "weak": weak if hit else False}
     except Exception as e:

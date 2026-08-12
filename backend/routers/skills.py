@@ -482,12 +482,16 @@ async def chapter_save(n: int, body: ChapterSaveBody, http_req: Request, project
 _PREVIEW_CACHE: dict = {}
 
 
-def _preview_signature(n: int, template_path: str, project_id: str = "") -> str:
+def _preview_signature(n: int, template_path: str, project_id: str = "", pack_id=None) -> str:
     tpl = (template_path or "").strip()
     parts = [tpl]
     srcs = [skill_runner.chapter_json_path(n, project_id or None), skill_runner.WRITE_CONFIG_PATH]
     if tpl:
         srcs.append(Path(tpl))
+    try:
+        srcs.append(Path(str(pack_service.writing_script_dir(pack_id))) / "web_render.py")
+    except Exception:
+        pass
     for p in srcs:
         try:
             parts.append(str(p.stat().st_mtime))
@@ -516,7 +520,7 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
 
     tpl_resolved = _resolve_template_path(template_path, pack_id)
     # 签名含模板包：同一项目换绑包后预览要重算
-    sig = (pack_id or "") + "|" + _preview_signature(n, tpl_resolved, project_id)
+    sig = (pack_id or "") + "|" + _preview_signature(n, tpl_resolved, project_id, pack_id)
     cached = _PREVIEW_CACHE.get(key)
     if cached and cached[0] == sig:
         return {"status": "ok", "cached": True, **cached[1]}
