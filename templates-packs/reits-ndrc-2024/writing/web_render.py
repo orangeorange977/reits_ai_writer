@@ -28,10 +28,10 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 from docx.table import Table, _Cell
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 
 _FONT = "仿宋"
-_TABLE_PT = 10.5   # 五号
+_TABLE_PT = 12.0   # 小四（官方模板表格单元格实测值）
 _FOOTNOTE_PT = 9.0  # 小五（脚注）
 _CHAPTER_TITLE = "一、项目基本情况"
 _NEXT_CHAPTER_TITLE = "二、参与主体情况"
@@ -40,20 +40,12 @@ _NEXT_CHAPTER_TITLE = "二、参与主体情况"
 # 这些值默认 = 上面写死的缺省；若 reits-writing/write_config.json 存在则按其覆盖。
 # write_config.json 由后台"大模型读 planning.md + 写作SKILL.md 的自然语言要求"生成，
 # 本模块只负责读取并执行（本模块每次请求会被重载，因此总是读到最新配置）。
-_TABLE_LINE_SPACING = None  # 表格文字行距倍数（如 1.0）
-_TABLE_ALIGN = None         # 表格单元格文字水平对齐（WD_ALIGN_PARAGRAPH 值）；None=沿用模板
 _INSERT_UNKNOWN_HEADINGS = True   # reading 里"模板没有的新标题"是否按 JSON 顺序插入模板（否则丢弃）
 
 # 中文字号 -> 磅值
 _CH_SIZE_PT = {"初号": 42.0, "小初": 36.0, "一号": 26.0, "小一": 24.0, "二号": 22.0,
                "小二": 18.0, "三号": 16.0, "小三": 15.0, "四号": 14.0, "小四": 12.0,
                "五号": 10.5, "小五": 9.0, "六号": 7.5, "小六": 6.5, "七号": 5.5, "八号": 5.0}
-_ALIGN_MAP = {"center": WD_ALIGN_PARAGRAPH.CENTER, "居中": WD_ALIGN_PARAGRAPH.CENTER,
-              "left": WD_ALIGN_PARAGRAPH.LEFT, "左对齐": WD_ALIGN_PARAGRAPH.LEFT,
-              "左": WD_ALIGN_PARAGRAPH.LEFT, "right": WD_ALIGN_PARAGRAPH.RIGHT,
-              "右对齐": WD_ALIGN_PARAGRAPH.RIGHT, "右": WD_ALIGN_PARAGRAPH.RIGHT,
-              "justify": WD_ALIGN_PARAGRAPH.JUSTIFY, "两端对齐": WD_ALIGN_PARAGRAPH.JUSTIFY}
-
 
 def _coerce_pt(v, default):
     """把字号（数字磅值，或"小四/五号"等中文字号）归一化成磅值 float。"""
@@ -70,21 +62,11 @@ def _coerce_pt(v, default):
         return default
 
 
-def _coerce_spacing(v):
-    if v in (None, ""):
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
 def _apply_write_config():
     """读取排版配置 write_config.json，覆盖本模块的格式变量。
     优先用引擎注入的环境变量 WRITE_CONFIG_PATH（运行期数据在 workspace 下）；
     单独调试时回退到本目录同级的 write_config.json。"""
-    global _FONT, _TABLE_PT, _FOOTNOTE_PT
-    global _TABLE_LINE_SPACING, _TABLE_ALIGN, _INSERT_UNKNOWN_HEADINGS
+    global _FONT, _TABLE_PT, _FOOTNOTE_PT, _INSERT_UNKNOWN_HEADINGS
     env_path = os.environ.get("WRITE_CONFIG_PATH", "").strip()
     cfg_path = Path(env_path) if env_path else Path(__file__).resolve().parent / "write_config.json"
     if not cfg_path.exists():
@@ -98,11 +80,6 @@ def _apply_write_config():
     _FONT = (cfg.get("font") or "").strip() or _FONT
     _TABLE_PT = _coerce_pt(cfg.get("table_pt"), _TABLE_PT)
     _FOOTNOTE_PT = _coerce_pt(cfg.get("footnote_pt"), _FOOTNOTE_PT)
-    _TABLE_LINE_SPACING = _coerce_spacing(cfg.get("table_line_spacing"))
-    ta = cfg.get("table_align")
-    if ta:
-        key = str(ta).strip()
-        _TABLE_ALIGN = _ALIGN_MAP.get(key) or _ALIGN_MAP.get(key.lower())
     if "insert_unknown_headings" in cfg:
         _INSERT_UNKNOWN_HEADINGS = bool(cfg.get("insert_unknown_headings"))
 
@@ -110,15 +87,28 @@ def _apply_write_config():
 _apply_write_config()
 
 
-def _apply_cell_format(cell):
-    """给表格单元格文字套用配置里的对齐/行距（若配置了）。"""
-    if _TABLE_ALIGN is None and _TABLE_LINE_SPACING is None:
-        return
+def _apply_cell_format(cell, align=WD_ALIGN_PARAGRAPH.LEFT):
+    """表格单元格按官方模板实测规格排版：水平左对齐（分节行传居中）、垂直居中、
+    无首行缩进、固定行距 20 磅（模板单元格 w:line=400 exact）。"""
     for p in cell.paragraphs:
-        if _TABLE_ALIGN is not None:
-            p.alignment = _TABLE_ALIGN
-        if _TABLE_LINE_SPACING:
-            p.paragraph_format.line_spacing = _TABLE_LINE_SPACING
+        p.alignment = align
+        pf = p.paragraph_format
+        pf.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        pf.line_spacing = Pt(20)
+        ppr = p._element.get_or_add_pPr()
+        ind = ppr.find(qn("w:ind"))
+        if ind is None:
+            ind = ppr.makeelement(qn("w:ind"), {})
+            ppr.append(ind)
+        # 清掉从 Normal 继承的首行缩进（firstLineChars 与 firstLine 都要归零）
+        ind.set(qn("w:firstLineChars"), "0")
+        ind.set(qn("w:firstLine"), "0")
+    tcPr = cell._tc.get_or_add_tcPr()
+    va = tcPr.find(qn("w:vAlign"))
+    if va is None:
+        va = tcPr.makeelement(qn("w:vAlign"), {})
+        tcPr.append(va)
+    va.set(qn("w:val"), "center")
 
 # 段落字符串里用私用区字符夹住脚注文本：正文…脚注内容…后续正文
 # （这样段落仍是自包含字符串，编号按出现顺序自动算，无需另存脚注列表）
@@ -301,11 +291,19 @@ def render_docx(sections, out_path):
             t = doc.add_table(rows=len(table), cols=2)
             t.style = "Table Grid"
             for ri, row in enumerate(table):
-                for ci, key in enumerate(("label", "value")):
-                    cell = t.cell(ri, ci)
-                    cell.text = ""
-                    _set_font(cell.paragraphs[0].add_run(str(row.get(key, ""))), _TABLE_PT)
-                    _apply_cell_format(cell)
+                label = str(row.get("label", ""))
+                value = str(row.get("value", ""))
+                if not value.strip():
+                    m = t.cell(ri, 0).merge(t.cell(ri, 1))
+                    m.text = ""
+                    _set_font(m.paragraphs[0].add_run(label), _TABLE_PT)
+                    _apply_cell_format(m, WD_ALIGN_PARAGRAPH.CENTER)
+                else:
+                    for ci, txt in enumerate((label, value)):
+                        cell = t.cell(ri, ci)
+                        cell.text = ""
+                        _set_font(cell.paragraphs[0].add_run(txt), _TABLE_PT)
+                        _apply_cell_format(cell)
 
     doc.save(str(out_path))
     return out_path
@@ -351,10 +349,12 @@ def render_preview_html(sections):
             parts.append(f'<p class="doc-prev-p">{inner}</p>')
         table = sec.get("table", []) or []
         if table:
-            rows_html = "".join(
-                f'<tr><td>{_esc(r.get("label",""))}</td><td>{_esc(r.get("value",""))}</td></tr>'
-                for r in table
-            )
+            rows_html = ""
+            for r in table:
+                if not str(r.get("value", "")).strip():
+                    rows_html += f'<tr><td colspan="2" style="text-align:center">{_esc(r.get("label",""))}</td></tr>'
+                else:
+                    rows_html += f'<tr><td>{_esc(r.get("label",""))}</td><td>{_esc(r.get("value",""))}</td></tr>'
             parts.append(f'<table class="doc-prev-table"><tbody>{rows_html}</tbody></table>')
     parts.append(_footnote_list_html(collected_fn))
     parts.append("</div>")
@@ -723,15 +723,24 @@ def _replace_table(doc, old_table, new_table):
 
 
 def _create_kv_table(doc, kv_rows):
-    """新建一张两列（字段:值）表并填好，返回 table。"""
+    """新建一张两列（字段:值）表并填好，返回 table。
+    值为空的行为分节行（如"项目总体情况""子项目1"）：两列合并占一整行、居中，与定稿版式一致。"""
     t = doc.add_table(rows=len(kv_rows), cols=2)
     t.style = "Table Grid"
     for ri, r in enumerate(kv_rows):
-        for ci, key in enumerate(("label", "value")):
-            c = t.cell(ri, ci)
-            c.text = ""
-            _set_font(c.paragraphs[0].add_run(str(r.get(key, ""))), _TABLE_PT)
-            _apply_cell_format(c)
+        label = str(r.get("label", ""))
+        value = str(r.get("value", ""))
+        if not value.strip():
+            m = t.cell(ri, 0).merge(t.cell(ri, 1))
+            m.text = ""
+            _set_font(m.paragraphs[0].add_run(label), _TABLE_PT)
+            _apply_cell_format(m, WD_ALIGN_PARAGRAPH.CENTER)
+        else:
+            for ci, txt in enumerate((label, value)):
+                c = t.cell(ri, ci)
+                c.text = ""
+                _set_font(c.paragraphs[0].add_run(txt), _TABLE_PT)
+                _apply_cell_format(c)
     return t
 
 
