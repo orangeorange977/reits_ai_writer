@@ -98,14 +98,19 @@ try:
     check("列表字段齐全", all(k in d0 for k in ("chapter", "version", "version_date", "filename", "size_formatted", "updated_at")))
     check("列表日期格式", re.match(r"^\d{4}-\d{2}-\d{2}$", d0.get("version_date", "")), str(d0.get("version_date")))
 
-    # —— ④ 下载 ——
+    # —— ④ 下载（主动下载=导出事件，必出新版本）——
     r = client.get("/api/skills/chapter/1/download", headers=H, params={"project_id": PID})
     cd = unquote(r.headers.get("content-disposition", ""))
-    check("下载-缺省最新版200", r.status_code == 200, str(r.status_code))
-    check("下载-文件名即新命名", "_v2.docx" in cd and SAFE in cd, cd)
+    check("下载-缺省导出200", r.status_code == 200, str(r.status_code))
+    check("下载-导出即新版本v3", "_v3.docx" in cd and SAFE in cd, cd)
+    r = client.get("/api/skills/chapter/1/download", headers=H, params={"project_id": PID})
+    cd = unquote(r.headers.get("content-disposition", ""))
+    check("下载-再导出v4", "_v4.docx" in cd, cd)
     r = client.get("/api/skills/chapter/1/download", headers=H, params={"project_id": PID, "version": 1})
     cd = unquote(r.headers.get("content-disposition", ""))
     check("下载-指定v1", r.status_code == 200 and "_v1.docx" in cd, cd)
+    check("下载-指定版本不产生新版本", len(skill_runner.versioned_docx_files(1, PID)) == 4,
+          str([f.name for f in skill_runner.versioned_docx_files(1, PID)]))
     r = client.get("/api/skills/chapter/1/download", headers=H, params={"project_id": PID, "version": 99})
     check("下载-不存在版本404", r.status_code == 404, str(r.status_code))
 
@@ -115,7 +120,8 @@ try:
     r = client.delete("/api/skills/chapter/1/document", headers=H, params={"project_id": PID, "version": 1})
     check("删除-v1成功", r.status_code == 200, str(r.status_code) + r.text[:200])
     vs = skill_runner.versioned_docx_files(1, PID)
-    check("删除后只剩v2", len(vs) == 1 and vs[0].name.endswith("_v2.docx"), str([f.name for f in vs]))
+    check("删除后v1消失其余保留", len(vs) == 3 and all(not f.name.endswith("_v1.docx") for f in vs),
+          str([f.name for f in vs]))
     r = client.delete("/api/skills/chapter/1/document", headers=H, params={"project_id": PID, "version": 1})
     check("删除-不存在版本404", r.status_code == 404, str(r.status_code))
 
@@ -145,7 +151,7 @@ r = client.get("/api/skills/documents", headers=H, params={"project_id": "1"})
 check("回归-文档列表200", r.status_code == 200, str(r.status_code))
 docs = r.json().get("documents", [])
 check("回归-列表含版本字段", all("version" in d for d in docs), str(len(docs)))
-r = client.get("/api/skills/chapter/1/download", headers=H, params={"project_id": "1"})
+r = client.get("/api/skills/chapter/1/download", headers=H, params={"project_id": "1", "version": 1})
 check("回归-下载200", r.status_code == 200, str(r.status_code) + r.text[:200])
 
 print("\n结论:", "全部通过" if not fails else f"失败项: {fails}")

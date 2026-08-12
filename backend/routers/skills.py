@@ -558,10 +558,30 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
         raise HTTPException(status_code=500, detail=f"生成预览失败：{e}")
 
 
+def _render_chapter_docx(n: int, pid, pack_id) -> bool:
+    """把本章当前保存内容渲染进 Word 工作文件（与预览同一管线，只写文件不返回 HTML）；
+    无有效内容返回 False。失败抛异常由调用方处理。"""
+    sections = skill_runner.get_chapter_structured(n, pid)
+    if not sections:
+        return False
+    sections, _warns = json_gate.check_and_clean(sections)
+    if not sections:
+        return False
+    cfg = skill_runner.chapters_for(pack_id)[n]
+    docx_path = str(skill_runner.chapter_docx_path(n, pid))
+    wr = _load_web_render(pack_id)
+    tpl_resolved = _resolve_template_path("", pack_id)
+    if tpl_resolved:
+        wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"])
+    else:
+        wr.render_docx(sections, docx_path)
+    return True
+
+
 @router.get("/chapter/{n}/download")
 async def chapter_download(n: int, http_req: Request, project_id: str = "", version: int = 0):
-    """下载该项目第 n 章的 Word 文件：缺省取最新正式版本（项目名_日期_第n章_vN），
-    传 version 可下载指定历史版本。"""
+    """下载该项目第 n 章的 Word 文件：缺省=一次导出事件——先按最新保存内容渲染、
+    强制固化一个新版本（v+1，历史保留）再下载；传 version 则下载指定历史版本（不产生新版本）。"""
     await _assert_project_access(project_id, _current_user_id(http_req))
     pack_id = await _project_pack_id(project_id)
     _valid_chapter(n, pack_id)
@@ -576,7 +596,9 @@ async def chapter_download(n: int, http_req: Request, project_id: str = "", vers
         if not path or not path.exists():
             raise HTTPException(status_code=404, detail=f"未找到第{n}章 v{version} 版本")
     else:
-        # 老数据只有工作文件时自动固化为 v1；都没有则提示先生成
+        # 主动下载=导出：先渲染当前保存内容，再强制出新版本（内容没变也出，代表一次导出）
+        if _render_chapter_docx(n, pid, pack_id):
+            skill_runner.snapshot_docx(n, pid, force=True)
         path = skill_runner.ensure_versioned(n, pid) or skill_runner.chapter_docx_path(n, pid)
         if not path.exists():
             raise HTTPException(status_code=404, detail="尚未生成 Word，请先在预览处生成")

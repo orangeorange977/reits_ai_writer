@@ -124,16 +124,18 @@ def _docx_body_hash(path: Path):
         return None
 
 
-def snapshot_docx(n: int, project_id: str = None, src: Path = None):
-    """渲染成功后把工作文件固化为新的正式版本（历史保留）；
-    正文与最新版完全相同时不重复出版本（避免重启后重复渲染产生重复文件）；
-    失败返回已有最新版或 None、不阻断预览主链路。"""
+def snapshot_docx(n: int, project_id: str = None, src: Path = None, force: bool = False):
+    """渲染成功后把工作文件固化为新的正式版本（历史保留）。
+    force=True（用户主动下载/导出）：每次都出新版本，哪怕正文相同；
+    force=False（预览自动渲染）：正文与最新版完全相同时不重复出版本
+    （避免重启后重复渲染产生重复文件）；
+    失败返回已有最新版或 None、不阻断主链路。"""
     try:
         src = src or chapter_docx_path(n, project_id)
         if not src.exists():
             return None
         files = versioned_docx_files(n, project_id)
-        if files:
+        if files and not force:
             new_h = _docx_body_hash(src)
             if new_h and new_h == _docx_body_hash(files[-1]):
                 return files[-1]  # 正文未变，沿用最新版
