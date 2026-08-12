@@ -125,6 +125,15 @@ try:
     r = client.delete("/api/skills/chapter/1/document", headers=H, params={"project_id": PID, "version": 1})
     check("删除-不存在版本404", r.status_code == 404, str(r.status_code))
 
+    # —— ④c 生成该文档（只生成不下载）——
+    before = len(skill_runner.versioned_docx_files(1, PID))
+    r = client.post("/api/skills/chapter/1/document", headers=H, params={"project_id": PID})
+    check("生成-200且返回文件名", r.status_code == 200 and r.json().get("filename", "").endswith(".docx"),
+          str(r.status_code) + r.text[:200])
+    check("生成-版本数+1", len(skill_runner.versioned_docx_files(1, PID)) == before + 1)
+    r = client.post("/api/skills/chapter/7/document", headers=H, params={"project_id": PID})
+    check("生成-无内容400", r.status_code == 400, str(r.status_code))
+
     # —— ⑤ 老数据迁移 ——
     write_ch(PID, 2, "老文档")
     work = skill_runner.chapter_docx_path(2, PID)

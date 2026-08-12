@@ -1698,6 +1698,7 @@ async function renderChapterEditor(n) {
                 <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="openAIAssist()" title="先在正文里选中一段文字，再点此让AI润色/改写/扩写等">✨ AI辅助</button>
                 <button class="btn btn-ghost btn-sm" id="btnChapterPreviewToggle" onclick="toggleChapterPreview()">📄 ${_previewOn ? '关闭Word预览' : '开启Word预览'}</button>
                 <button class="btn btn-ghost btn-sm" onclick="API.downloadChapterDocx(_editorChapter)" title="下载本章最新 Word（项目名_日期_第n章_vN）">⬇ 下载Word</button>
+                    <button class="btn btn-ghost btn-sm" onclick="generateChapterDoc(_editorChapter)" title="把当前保存内容生成为新版本 Word，不触发下载">📄 生成该文档</button>
                 <button class="btn btn-primary btn-sm" onclick="saveChapter()">💾 保存</button>
             </div>
         </div>
@@ -2612,6 +2613,16 @@ async function loadDocuments() {
         `).join('');
     } catch (error) {
         console.warn('[REIT-AI] 加载文档列表失败:', error.message);
+    }
+}
+
+/** 工具栏“生成该文档”：渲染当前保存内容为新版本 Word，不触发下载 */
+async function generateChapterDoc(n) {
+    try {
+        const r = await API.generateDocument(n);
+        showToast(`已生成新版本：${r.filename}`);
+    } catch (e) {
+        showToast(e.message || '生成失败');
     }
 }
 

@@ -610,6 +610,22 @@ async def chapter_download(n: int, http_req: Request, project_id: str = "", vers
     )
 
 
+@router.post("/chapter/{n}/document")
+async def generate_document(n: int, http_req: Request, project_id: str = ""):
+    """把第 n 章当前保存内容渲染成 Word 并固化一个新版本（不触发下载）；
+    与“下载Word”同一套渲染管线，只是不返回文件流。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    _valid_chapter(n, pack_id)
+    pid = project_id or None
+    if not _render_chapter_docx(n, pid, pack_id):
+        raise HTTPException(status_code=400, detail="本章还没有已保存的内容，请先生成或编辑内容")
+    path = skill_runner.snapshot_docx(n, pid, force=True)
+    if not path:
+        raise HTTPException(status_code=500, detail="生成版本失败")
+    return {"status": "ok", "filename": path.name}
+
+
 @router.delete("/chapter/{n}/document")
 async def delete_document(n: int, http_req: Request, project_id: str = "", version: int = 0):
     """删除第 n 章指定版本的正式文档（必须指明版本号；只删版本文件，

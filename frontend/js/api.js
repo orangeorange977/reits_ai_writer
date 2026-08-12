@@ -363,6 +363,15 @@ const API = {
     },
 
     /**
+     * 生成第 n 章新版本 Word（只生成不下载，工具栏“生成该文档”用）
+     * @returns {Promise<object>} {status, filename}
+     */
+    async generateDocument(n) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/chapter/${n}/document?project_id=${pid}`);
+    },
+
+    /**
      * 删除第 n 章指定版本的正式文档（文档管理页用）
      */
     async deleteDocument(n, version) {
