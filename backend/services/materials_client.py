@@ -402,6 +402,31 @@ def fuzzy_hit_threshold(toks: list) -> int:
     return 3 if len(toks) >= 6 else 2
 
 
+# 概括性摘录弱命中停词：机构名/结构词 4 字窗（无主题区分度，不参与弱命中投票）
+_WEAK_STOP_4 = {"有限公司", "有限责任", "法定代表", "统一社会", "社会信用", "基础设施",
+                "不动产投", "产投资信", "投资信托", "信托基金", "发展改革", "改革委员",
+                "监督管理", "项目公司", "原始权益"}
+
+
+def weak_topic_tokens(quote: str) -> list:
+    """概括性摘录的弱命中词表：特征词切 4 字窗（如“申报材料”），剔除机构/结构停词。
+    仅在逐字/关键词全不中时兜底启用：摘录若是 AI 改写概括、原文无逐字对应，
+    用主题词重叠找最相关页，避免“找不到”死胡同。"""
+    out = []
+    for t in fuzzy_quote_tokens(quote or ""):
+        nt = norm_q(t)
+        for i in range(len(nt) - 3):
+            w = nt[i:i + 4]
+            if w not in _WEAK_STOP_4 and w not in out:
+                out.append(w)
+    return out[:40]
+
+
+def weak_topic_match(text_norm: str, wtoks: list) -> list:
+    """页归一化文本命中的主题词子集（弱命中）。"""
+    return [w for w in (wtoks or []) if w in (text_norm or "")]
+
+
 def fuzzy_quote_page_hit(doc, n: int, quote: str):
     """文字层模糊搜页：按关键词重叠数取最优页，返回 (页码从1起, 命中特征词列表)。
     达阈值直接取最优页；都不达阈值时宽松兜底（重叠≥2，或≤6页小文档重叠≥1）取最高分页框大致位置。"""

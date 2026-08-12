@@ -546,6 +546,7 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
         # 摘录定位页：先逐字/片段投票；不中再模糊（关键词重叠度）框大致位置；扫描件不在此搜（避免整篇 OCR）
         has_text = any(doc[i].get_text().strip() for i in range(min(n, 6)))
         fuzzy = False
+        weak = False
         ftoks = None
         hit = _quote_page_hit(doc, n, quote) if (quote or "").strip() and has_text else None
         if not hit and (quote or "").strip() and has_text:
@@ -553,10 +554,20 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
             if fr:
                 hit, ftoks = fr
                 fuzzy = True
-        hit_box = _text_highlight_box(doc, hit - 1, quote, ftoks) if hit else None
+        if not hit and (quote or "").strip() and has_text:
+            # 概括性摘录兜底：AI 改写概括无逐字原文时，按主题词重叠取最相关页（不画框）
+            wt = materials_client.weak_topic_tokens(quote)
+            best_w = None
+            for i in range(n):
+                m = materials_client.weak_topic_match(materials_client.norm_q(doc[i].get_text()), wt)
+                if m and (best_w is None or len(m) > len(best_w[1])):
+                    best_w = (i + 1, m)
+            if best_w:
+                hit, fuzzy, weak = best_w[0], True, True
+        hit_box = _text_highlight_box(doc, hit - 1, quote, ftoks) if (hit and not weak) else None
         doc.close()
         return {"total": n, "pages": pages, "hit_page": hit, "has_text": has_text,
-                "hit_box": hit_box, "fuzzy": fuzzy}
+                "hit_box": hit_box, "fuzzy": fuzzy, "weak": weak}
 
     try:
         return await asyncio.to_thread(_render)
@@ -664,9 +675,12 @@ def _run_quote_search(key: str, fp: Path, quote: str):
         hit = None
         box = None
         fuzzy = False
+        weak = False
         best_fuzzy = None  # (页索引, 命中词列表)
+        page_texts = []  # 各页归一化 OCR 文本（弱命中兜底复用，避免重读缓存）
         for i in range(n):
             t = _norm_q(materials_client.ocr_page_text(fp, i))
+            page_texts.append(t)
             if not t:
                 continue
             if (nums and any(num in t for num in nums)) or (frags and any(_norm_q(f) in t for f in frags)) or (head and head in t):
@@ -685,8 +699,21 @@ def _run_quote_search(key: str, fp: Path, quote: str):
             fuzzy = True
             b = materials_client.ocr_page_highlight_box(fp, best_fuzzy[0], best_fuzzy[1])
             box = [v * 1.2 for v in b] if b else None
+        if hit is None:
+            # 概括性摘录兜底：AI 改写概括无逐字原文时，按主题词重叠取最相关页（不画框）
+            wt = materials_client.weak_topic_tokens(quote)
+            best_w = None
+            for i, t in enumerate(page_texts):
+                m = materials_client.weak_topic_match(t, wt)
+                if m and (best_w is None or len(m) > len(best_w[1])):
+                    best_w = (i, m)
+            if best_w:
+                hit = best_w[0] + 1
+                fuzzy, weak = True, True
         _quote_search_tasks[key] = {"status": "done", "hit": hit, "scanned": n,
-                                    "box": box if hit else None, "fuzzy": fuzzy if hit else False}
+                                    "box": box if hit and not weak else None,
+                                    "fuzzy": fuzzy if hit else False,
+                                    "weak": weak if hit else False}
     except Exception as e:
         logger.error(f"摘录搜页失败 {fp}: {e}", exc_info=True)
         _quote_search_tasks[key] = {"status": "done", "hit": None, "scanned": -1}
