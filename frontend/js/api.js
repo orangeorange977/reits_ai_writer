@@ -363,6 +363,14 @@ const API = {
     },
 
     /**
+     * 删除第 n 章指定版本的正式文档（文档管理页用）
+     */
+    async deleteDocument(n, version) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.delete(`/skills/chapter/${n}/document?project_id=${pid}&version=${version}`);
+    },
+
+    /**
      * 下载第 n 章 Word 文件（fetch blob 方式，才能携带登录 token）；
      * version 可选，不传取最新版本；文件名以后端 Content-Disposition 为准
      * （项目名_日期_第n章_vN）。

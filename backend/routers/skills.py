@@ -588,6 +588,30 @@ async def chapter_download(n: int, http_req: Request, project_id: str = "", vers
     )
 
 
+@router.delete("/chapter/{n}/document")
+async def delete_document(n: int, http_req: Request, project_id: str = "", version: int = 0):
+    """删除第 n 章指定版本的正式文档（必须指明版本号；只删版本文件，
+    不碰渲染工作文件，删除后其余版本不受影响）。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    _valid_chapter(n, pack_id)
+    if version <= 0:
+        raise HTTPException(status_code=400, detail="请指定要删除的版本号")
+    target = None
+    for f in skill_runner.versioned_docx_files(n, project_id or None):
+        m = re.search(r"_v(\d+)\.docx$", f.name)
+        if m and int(m.group(1)) == version:
+            target = f
+            break
+    if not target or not target.exists():
+        raise HTTPException(status_code=404, detail=f"未找到第{n}章 v{version} 版本")
+    try:
+        target.unlink()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除失败：{e}")
+    return {"status": "ok", "deleted": target.name}
+
+
 @router.get("/documents")
 async def list_documents(http_req: Request, project_id: str = ""):
     """列出该项目已生成的各章 Word 文档（文档管理页数据源）：

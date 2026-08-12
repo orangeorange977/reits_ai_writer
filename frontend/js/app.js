@@ -2606,11 +2606,24 @@ async function loadDocuments() {
                 <td>${_escHtmlAttr(_fmtTime(doc.updated_at))}</td>
                 <td>${_escHtmlAttr(doc.size_formatted)}</td>
                 <td><span class="badge badge-success">已完成</span></td>
-                <td><button class="btn btn-primary btn-sm" onclick="API.downloadChapterDocx(${doc.chapter}, ${doc.version})">下载</button></td>
+                <td><button class="btn btn-primary btn-sm" onclick="API.downloadChapterDocx(${doc.chapter}, ${doc.version})">下载</button>
+                    <button class="btn btn-ghost btn-sm" style="color:#cf1322" onclick="deleteDocument(${doc.chapter}, ${doc.version})">删除</button></td>
             </tr>
         `).join('');
     } catch (error) {
         console.warn('[REIT-AI] 加载文档列表失败:', error.message);
+    }
+}
+
+/** 删除某章指定版本的正式文档（二次确认，业务语言） */
+async function deleteDocument(chapter, version) {
+    if (!confirm(`确定删除第${chapter}章 v${version} 版本文档吗？\n删除后不可恢复，其余版本不受影响。`)) return;
+    try {
+        await API.deleteDocument(chapter, version);
+        showToast(`已删除第${chapter}章 v${version} 版本`);
+        loadDocuments();
+    } catch (e) {
+        showToast(e.message || '删除失败');
     }
 }
 

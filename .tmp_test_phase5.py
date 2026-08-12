@@ -109,6 +109,16 @@ try:
     r = client.get("/api/skills/chapter/1/download", headers=H, params={"project_id": PID, "version": 99})
     check("下载-不存在版本404", r.status_code == 404, str(r.status_code))
 
+    # —— ④b 删除 ——
+    r = client.delete("/api/skills/chapter/1/document", headers=H, params={"project_id": PID, "version": 0})
+    check("删除-未指定版本400", r.status_code == 400, str(r.status_code))
+    r = client.delete("/api/skills/chapter/1/document", headers=H, params={"project_id": PID, "version": 1})
+    check("删除-v1成功", r.status_code == 200, str(r.status_code) + r.text[:200])
+    vs = skill_runner.versioned_docx_files(1, PID)
+    check("删除后只剩v2", len(vs) == 1 and vs[0].name.endswith("_v2.docx"), str([f.name for f in vs]))
+    r = client.delete("/api/skills/chapter/1/document", headers=H, params={"project_id": PID, "version": 1})
+    check("删除-不存在版本404", r.status_code == 404, str(r.status_code))
+
     # —— ⑤ 老数据迁移 ——
     write_ch(PID, 2, "老文档")
     work = skill_runner.chapter_docx_path(2, PID)
