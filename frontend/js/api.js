@@ -391,7 +391,15 @@ const API = {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+        // 导出型下载（未指定版本）会产生新版本：若当前停在文档管理页，
+        // 立即刷新列表，保证页面显示的文件名与刚下载的一致
+        if (!version) {
+            const pg = document.getElementById('page-documents');
+            if (pg && pg.classList.contains('active') && typeof loadDocuments === 'function') {
+                loadDocuments();
+            }
+        }
     },
 
     /**
