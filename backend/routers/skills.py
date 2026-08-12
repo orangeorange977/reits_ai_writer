@@ -535,11 +535,14 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
         if tpl_resolved:
             wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"])
             html = wr.docx_to_preview_html(docx_path, cfg["title"], cfg["next"])
+            # 内容变化重新渲染后固化为新的正式文档版本（项目名_日期_第n章_vN，历史保留；失败不阻断）
+            skill_runner.snapshot_docx(n, pid)
             return {"has_content": True, "html": html, "used_template": True,
                     "gate_warnings": gate_warnings}
         # 回退：没有有效模板路径时，独立生成一份
         wr.render_docx(sections, docx_path)
         html = wr.render_preview_html(sections)
+        skill_runner.snapshot_docx(n, pid)
         return {"has_content": True, "html": html, "used_template": False,
                 "gate_warnings": gate_warnings}
 
@@ -556,17 +559,28 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
 
 
 @router.get("/chapter/{n}/download")
-async def chapter_download(n: int, http_req: Request, project_id: str = ""):
-    """下载该项目第 n 章生成的 Word 文件。"""
+async def chapter_download(n: int, http_req: Request, project_id: str = "", version: int = 0):
+    """下载该项目第 n 章的 Word 文件：缺省取最新正式版本（项目名_日期_第n章_vN），
+    传 version 可下载指定历史版本。"""
     await _assert_project_access(project_id, _current_user_id(http_req))
     pack_id = await _project_pack_id(project_id)
     _valid_chapter(n, pack_id)
-    path = skill_runner.chapter_docx_path(n, project_id or None)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="尚未生成 Word，请先在预览处生成")
-    title = skill_runner.chapters_for(pack_id)[n]["title"]
-    name_part = title.split("、", 1)[-1] if "、" in title else title
-    filename = f"第{n}章_{name_part}.docx"
+    pid = project_id or None
+    path = None
+    if version > 0:
+        for f in skill_runner.versioned_docx_files(n, pid):
+            m = re.search(r"_v(\d+)\.docx$", f.name)
+            if m and int(m.group(1)) == version:
+                path = f
+                break
+        if not path or not path.exists():
+            raise HTTPException(status_code=404, detail=f"未找到第{n}章 v{version} 版本")
+    else:
+        # 老数据只有工作文件时自动固化为 v1；都没有则提示先生成
+        path = skill_runner.ensure_versioned(n, pid) or skill_runner.chapter_docx_path(n, pid)
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="尚未生成 Word，请先在预览处生成")
+    filename = path.name
     return FileResponse(
         str(path),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -576,25 +590,33 @@ async def chapter_download(n: int, http_req: Request, project_id: str = ""):
 
 @router.get("/documents")
 async def list_documents(http_req: Request, project_id: str = ""):
-    """列出该项目已生成的各章 Word 文档（文档管理页数据源，替代旧管线 /projects/{id}/documents）。"""
+    """列出该项目已生成的各章 Word 文档（文档管理页数据源）：
+    正式文档统一为 项目名_日期_第n章_vN 命名，历史版本全部列出。"""
     await _assert_project_access(project_id, _current_user_id(http_req))
     pack_id = await _project_pack_id(project_id)
     chapters = skill_runner.chapters_for(pack_id)
-    out_dir = skill_runner.chapter_docx_path(1, project_id or None).parent
+    pid = project_id or None
     docs = []
-    for f in sorted(out_dir.glob("ch*_output.docx")):
-        m = re.match(r"ch(\d+)_output\.docx$", f.name)
-        if not m:
+    for n in sorted(chapters.keys()):
+        # 老数据迁移：只有工作文件时自动固化为 v1，历史文档不会丢
+        if not skill_runner.ensure_versioned(n, pid):
             continue
-        n = int(m.group(1))
-        st = f.stat()
-        docs.append({
-            "chapter": n,
-            "title": chapters.get(n, {}).get("title", f"第{n}章"),
-            "filename": f.name,
-            "size": st.st_size,
-            "size_formatted": f"{st.st_size / 1024:.1f} KB" if st.st_size < 1024 * 1024 else f"{st.st_size / 1024 / 1024:.1f} MB",
-            # 统一约定：后端返回 UTC 字符串，前端 _fmtTime 换算北京时间（容器本地是 CST，不能用 fromtimestamp）
-            "updated_at": datetime.utcfromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
-        })
+        for f in skill_runner.versioned_docx_files(n, pid):
+            m = re.match(r".+_(\d{8})_第\d+章_v(\d+)\.docx$", f.name)
+            if not m:
+                continue
+            st = f.stat()
+            docs.append({
+                "chapter": n,
+                "title": chapters.get(n, {}).get("title", f"第{n}章"),
+                "filename": f.name,
+                "version": int(m.group(2)),
+                "version_date": f"{m.group(1)[:4]}-{m.group(1)[4:6]}-{m.group(1)[6:]}",
+                "size": st.st_size,
+                "size_formatted": f"{st.st_size / 1024:.1f} KB" if st.st_size < 1024 * 1024 else f"{st.st_size / 1024 / 1024:.1f} MB",
+                # 统一约定：后端返回 UTC 字符串，前端 _fmtTime 换算北京时间（容器本地是 CST，不能用 fromtimestamp）
+                "updated_at": datetime.utcfromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+            })
+    # 章序在前、同章新版本在前
+    docs.sort(key=lambda d: (d["chapter"], -d["version"]))
     return {"documents": docs}

@@ -2601,11 +2601,11 @@ async function loadDocuments() {
         }
         tbody.innerHTML = docs.map(doc => `
             <tr>
-                <td><strong>${_escHtmlAttr(doc.title)}</strong><br><span class="text-muted text-sm">${_escHtmlAttr(doc.filename)}</span></td>
+                <td><strong>${_escHtmlAttr(doc.title)}</strong> <span class="badge badge-primary">v${doc.version}</span><br><span class="text-muted text-sm">${_escHtmlAttr(doc.filename)}</span></td>
                 <td>${_escHtmlAttr(_fmtTime(doc.updated_at))}</td>
                 <td>${_escHtmlAttr(doc.size_formatted)}</td>
                 <td><span class="badge badge-success">已完成</span></td>
-                <td><button class="btn btn-primary btn-sm" onclick="API.downloadChapterDocx(${doc.chapter})">下载</button></td>
+                <td><button class="btn btn-primary btn-sm" onclick="API.downloadChapterDocx(${doc.chapter}, ${doc.version})">下载</button></td>
             </tr>
         `).join('');
     } catch (error) {
