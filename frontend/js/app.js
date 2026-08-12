@@ -1700,6 +1700,7 @@ async function renderChapterEditor(n) {
                 <button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(_editorChapter)" title="自动保存后导出本章最新 Word（项目名_日期_第n章_vN）">⬇ 下载Word</button>
                     <button class="btn btn-ghost btn-sm" onclick="generateChapterDoc(_editorChapter)" title="把当前保存内容生成为新版本 Word，不触发下载">📄 生成该文档</button>
                 <button class="btn btn-primary btn-sm" onclick="saveChapter()">💾 保存</button>
+                    <span id="autosaveHint" class="text-muted" style="font-size:12px;margin-left:8px">${_autosaveHintText}</span>
             </div>
         </div>
         <div id="chapterGenBanner" class="kimi-status" style="display:none;margin-bottom:12px"></div>`;
@@ -1881,17 +1882,24 @@ function _pollChapterGeneration(n) {
 /**
  * 保存当前章：收集每个子标题的 Word 编辑区内容，回传给 reading skill（持久化）
  */
-async function saveChapter(silent) {
+/** 静默落盘编辑区内容（不弹提示、不刷预览）：手动保存/导出前自动保存/定期暂存 共用 */
+async function _persistChapter() {
     const editors = document.querySelectorAll('#chapterDetail .doc-editor');
-    if (!editors.length) { if (!silent) showToast('没有可保存的内容，请先生成', 'warning'); return false; }
+    if (!editors.length) return false;
     const sections = Array.from(editors).map(ed => ({
         id: ed.dataset.secid || '',
         title: ed.dataset.title || '',
         html: ed.innerHTML,
     }));
+    await API.saveChapterContent(_editorChapter, sections);
+    delete _previewCache[_editorChapter];   // 内容已改，缓存作废
+    return true;
+}
+
+async function saveChapter(silent) {
     try {
-        await API.saveChapterContent(_editorChapter, sections);
-        delete _previewCache[_editorChapter];   // 内容已改，缓存作废
+        const ok = await _persistChapter();
+        if (!ok) { if (!silent) showToast('没有可保存的内容，请先生成', 'warning'); return false; }
         if (!silent) showToast('已保存，并返回给 reading skill');
         // 预览开启时，保存后自动让 writing skill 写入 Word 并刷新预览（强制重生成）
         if (_previewOn) refreshChapterPreview(true);
@@ -1901,6 +1909,57 @@ async function saveChapter(silent) {
         showToast('保存失败: ' + e.message, 'error');
         return false;
     }
+}
+
+// ===== 编辑区定期暂存（防意外退出丢失未保存内容）=====
+let _editorDirty = false;     // 编辑区是否有未保存改动
+let _autoSaving = false;      // 防重入锁
+let _autosaveHintText = '';   // 工具栏暂存提示（模板重渲染时保留）
+
+/** 编辑区任何内容变化都记为“有未保存改动”（打字/粘贴/插图等程序性修改都算）；
+ * 每 30 秒静默暂存一次；关页/切后台时再补存一次（keepalive 保证送达）。 */
+function _initAutosave() {
+    const root = document.getElementById('chapterDetail');
+    if (root && typeof MutationObserver !== 'undefined') {
+        new MutationObserver(() => { _editorDirty = true; })
+            .observe(root, { subtree: true, childList: true, characterData: true });
+    }
+    setInterval(async () => {
+        if (!_editorDirty || _autoSaving) return;
+        const pg = document.getElementById('page-ndrc');
+        if (!pg || !pg.classList.contains('active')) return;
+        _autoSaving = true;
+        try {
+            if (await _persistChapter()) {
+                _editorDirty = false;
+                const t = new Date();
+                _autosaveHintText = `已自动暂存 ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+                const hint = document.getElementById('autosaveHint');
+                if (hint) hint.textContent = _autosaveHintText;
+            }
+        } catch (e) {
+            console.warn('[REIT-AI] 自动暂存失败，稍后重试:', e.message);
+        } finally { _autoSaving = false; }
+    }, 30000);
+    const lastChance = () => {
+        if (!_editorDirty) return;
+        const editors = document.querySelectorAll('#chapterDetail .doc-editor');
+        if (!editors.length) return;
+        const sections = Array.from(editors).map(ed => ({
+            id: ed.dataset.secid || '', title: ed.dataset.title || '', html: ed.innerHTML,
+        }));
+        fetch(`/api/skills/chapter/${_editorChapter}/save?project_id=${encodeURIComponent(currentProjectId || '')}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...AuthToken.headers() },
+            body: JSON.stringify({ sections }),
+            keepalive: true,
+        }).catch(() => {});
+        _editorDirty = false;
+    };
+    window.addEventListener('pagehide', lastChance);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') lastChance();
+    });
 }
 
 /** 工具栏/预览面板“⬇ 下载Word”：先静默自动保存编辑区，再导出新版本下载，保证所见即所得 */
@@ -3024,6 +3083,7 @@ async function initApp() {
 
     // 绑定全局事件（登录表单支持回车提交）
     bindGlobalEvents();
+    _initAutosave();
     document.getElementById('loginPassword').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') doLogin();
     });
