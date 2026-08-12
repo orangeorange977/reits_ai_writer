@@ -821,6 +821,26 @@ function renderColumnBrowser(container, files, dirs) {
     container.appendChild(first);
 }
 
+/** 缺件体检提示：catalog_check 有必交项缺失时，在统计行下方插黄色提醒条（业务语言）；
+ * available=false 或无缺件时移除提示。 */
+function _setCatalogWarn(hostId, cc) {
+    const host = document.getElementById(hostId);
+    if (!host) return;
+    const elId = hostId + '-warn';
+    let el = document.getElementById(elId);
+    const miss = (cc && cc.available && Array.isArray(cc.missing)) ? cc.missing : [];
+    if (!miss.length) { if (el) el.remove(); return; }
+    if (!el) {
+        el = document.createElement('div');
+        el.id = elId;
+        el.style.cssText = 'margin:6px 0;padding:8px 10px;border-radius:6px;background:#fff7e6;border:1px solid #ffd591;color:#874d00;font-size:13px;line-height:1.6;';
+        host.insertAdjacentElement('afterend', el);
+    }
+    const items = miss.slice(0, 8).map(m => `第${m.no}项·${m.name}`).join('；');
+    const more = miss.length > 8 ? `（等共${miss.length}项）` : '';
+    el.textContent = `⚠ 缺少${miss.length}项材料：${items}${more}。建议补充后再发起章节生成。`;
+}
+
 /** 拉取当前项目的材料列表并渲染（设置页平铺 + 申报材料页树形面板） */
 async function loadMaterialsUI() {
     try {
@@ -854,6 +874,9 @@ async function loadMaterialsUI() {
                 renderColumnBrowser(pList, data.files, data.dirs);
             }
         }
+        // 25 项清单缺件提示（后端 catalog_check；不可用/无缺件时自动移除）
+        _setCatalogWarn('materialsStat', data.catalog_check);
+        _setCatalogWarn('matPanelStat', data.catalog_check);
     } catch (e) {
         const stat = document.getElementById('materialsStat');
         if (stat) stat.textContent = '材料列表加载失败';
@@ -1688,6 +1711,19 @@ async function renderChapterEditor(n) {
         </details>`;
     }
 
+    // 表格数据勾稽提醒（黄色提示，只提醒不阻断保存；无问题时不展示）
+    if (content.table_check && content.table_check.length) {
+        const tips = content.table_check.map(t => `<div>⚠ ${_escHtmlAttr(t.message)}</div>`).join('');
+        html += `<div class="table-check-warn" style="margin:6px 0;padding:8px 10px;border-radius:6px;background:#fff7e6;border:1px solid #ffd591;color:#874d00;font-size:13px;line-height:1.7;">
+            <div style="font-weight:600;">以下表格数据建议人工复核：</div>${tips}
+        </div>`;
+    }
+
+    // 上次生成不完整的提醒（重新生成成功后自动消失）
+    if (content.generation_notice) {
+        html += `<div style="margin:6px 0;padding:8px 10px;border-radius:6px;background:#fff7e6;border:1px solid #ffd591;color:#874d00;font-size:13px;line-height:1.7;">⚠ ${_escHtmlAttr(content.generation_notice)}</div>`;
+    }
+
     // 左右分栏：左=编辑区，右=Word 预览（默认隐藏，由开启按钮控制）
     html += `<div class="ch1-split">
         <div class="ch1-editor-col">
@@ -1746,6 +1782,13 @@ async function renderChapterEditor(n) {
     } catch (e) { /* ignore */ }
 }
 
+/** 门禁提示条（业务语言黄色提醒，与预览 HTML 一起缓存） */
+function _gateWarnHtml(warnings) {
+    if (!warnings || !warnings.length) return '';
+    const tips = warnings.map(w => `<div>⚠ ${_escHtmlAttr(w)}</div>`).join('');
+    return `<div style="margin:0 0 8px;padding:8px 10px;border-radius:6px;background:#fff7e6;border:1px solid #ffd591;color:#874d00;font-size:13px;line-height:1.7;">${tips}</div>`;
+}
+
 /** 生成/刷新当前章 Word 预览（写入系统设置里的官方模板对应章节） */
 async function refreshChapterPreview(force = false) {
     const body = document.getElementById('ch1PreviewBody');
@@ -1761,8 +1804,9 @@ async function refreshChapterPreview(force = false) {
     try {
         const resp = await API.getChapterPreview(n);
         if (resp.has_content) {
-            body.innerHTML = resp.html;
-            _previewCache[n] = resp.html;  // 缓存，供下次开关预览直接用
+            const full = _gateWarnHtml(resp.gate_warnings) + resp.html;
+            body.innerHTML = full;
+            _previewCache[n] = full;  // 缓存（含门禁提示），供下次开关预览直接用
             if (!resp.used_template) {
                 showToast('未使用官方模板，已用独立文档预览（材料包内置模板未找到）', 'warning');
             }

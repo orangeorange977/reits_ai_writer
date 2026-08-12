@@ -21,7 +21,7 @@ from backend.config import NDRC_OFFICIAL_TEMPLATE, DEFAULT_PROJECT_ID, PROJECTS_
 from backend.database.db import (get_project_pack_id, get_project_owner_id,
                                  upsert_generation_job, get_generation_job,
                                  touch_project_updated_at)
-from backend.services import skill_runner, summary_service, materials_client, pack_service
+from backend.services import skill_runner, summary_service, materials_client, pack_service, json_gate
 from backend.services.kimi_client import chat
 
 router = APIRouter(tags=["Skill执行"], prefix="/skills")
@@ -525,18 +525,28 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
         sections = skill_runner.get_chapter_structured(n, pid)
         if not sections:
             return {"has_content": False, "html": "", "used_template": False}
+        # JSON 健康门禁：写 Word 前清理畸形块，坏数据不再把整章预览打崩；
+        # 门禁提示不缓存（内容修复后要立即消失）
+        sections, gate_warnings = json_gate.check_and_clean(sections)
+        if not sections:
+            return {"has_content": False, "html": "", "used_template": False,
+                    "gate_warnings": gate_warnings}
         wr = _load_web_render(pack_id)
         if tpl_resolved:
             wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"])
             html = wr.docx_to_preview_html(docx_path, cfg["title"], cfg["next"])
-            return {"has_content": True, "html": html, "used_template": True}
+            return {"has_content": True, "html": html, "used_template": True,
+                    "gate_warnings": gate_warnings}
         # 回退：没有有效模板路径时，独立生成一份
         wr.render_docx(sections, docx_path)
         html = wr.render_preview_html(sections)
-        return {"has_content": True, "html": html, "used_template": False}
+        return {"has_content": True, "html": html, "used_template": False,
+                "gate_warnings": gate_warnings}
 
     try:
         result = await asyncio.to_thread(_do)
+        # 缓存含 gate_warnings：签名含本章 JSON 的 mtime，内容修复后签名变、缓存失效，
+        # 提醒不会过时
         if result.get("has_content"):
             _PREVIEW_CACHE[key] = (sig, result)
         return {"status": "ok", **result}

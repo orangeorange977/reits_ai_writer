@@ -19,8 +19,8 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel
 
 from backend.config import PROJECTS_DIR
-from backend.database.db import get_db, get_project_owner_id, is_preset_project
-from backend.services import pack_service, materials_client
+from backend.database.db import get_db, get_project_owner_id, is_preset_project, get_project_pack_id
+from backend.services import pack_service, materials_client, materials_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -434,7 +434,7 @@ async def upload_materials(project_id: int, http_req: Request, files: List[Uploa
 
 @router.get("/projects/{project_id}/materials")
 async def list_materials(project_id: int, http_req: Request):
-    """列出当前项目已上传的申报材料（递归，含多级子文件夹）。"""
+    """列出当前项目已上传的申报材料（递归，含多级子文件夹），附带 25 项清单缺件体检。"""
     await _assert_project_owned(project_id, _current_user_id(http_req))
     root = _materials_dir(project_id)
     files, dirs = [], []
@@ -447,12 +447,20 @@ async def list_materials(project_id: int, http_req: Request):
                     "path": p.relative_to(root).as_posix(),
                     "size": p.stat().st_size,
                 })
+    # 缺件体检：失败/无清单时 available=False，前端不展示，不影响列表
+    try:
+        pack_id = await get_project_pack_id(project_id)
+        catalog_check = await asyncio.to_thread(
+            materials_catalog.check_materials, root, pack_id)
+    except Exception:
+        catalog_check = {"available": False}
     return {
         "project_id": project_id,
         "total_files": len(files),
         "total_size": sum(f["size"] for f in files),
         "files": files,
         "dirs": dirs,
+        "catalog_check": catalog_check,
     }
 
 

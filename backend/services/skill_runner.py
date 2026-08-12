@@ -8,14 +8,15 @@ Skill 执行器 - 让 Kimi 按 reits-reading 各章 SKILL.md 的要求生成章�
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from html.parser import HTMLParser
 
 from backend.config import (DATA_SOURCE_BASE, PROJECTS_DIR, safe_project_id,
                             DEEPSEEK_MODEL)
 from backend.services.kimi_client import chat, chat_with_tools, _is_deepseek
-from backend.services import summary_service, tianyancha_client, materials_client
-from backend.services import pack_service
+from backend.services import summary_service, tianyancha_client, materials_client, read_ledger
+from backend.services import pack_service, table_check
 
 logger = logging.getLogger(__name__)
 
@@ -856,6 +857,10 @@ def get_chapter_content(n: int, subtitles: list = None,
     refs = loaded.get("refs", []) or []  # 本章生成时参考的材料清单（业务化展示）
     # 兜底：把误升级成 section 的编号项（“1.奥飞数据”等）折回其所属的模板小标题，锁定小标题结构
     saved = _fold_enumerated_sections(saved, subtitles)
+    # 财务表勾稽检查：只提示不阻断，失败时返回空列表（不影响预览）
+    checks = table_check.check_sections(saved)
+    # 上次生成不完整时的业务提示（重新生成成功后自动消失）
+    notice = str(loaded.get("generation_notice") or "")
 
     if subtitles:
         if saved:
@@ -877,14 +882,19 @@ def get_chapter_content(n: int, subtitles: list = None,
             source = "template"
         return {"source": source,
                 "sections": _sections_to_html(_number_captions(struct, table_start)),
-                "refs": refs}
+                "refs": refs,
+                "table_check": checks,
+                "generation_notice": notice}
 
     # 没有模板子标题：回退到已保存内容
     if not saved:
-        return {"source": "none", "sections": [], "refs": refs}
+        return {"source": "none", "sections": [], "refs": refs,
+                "table_check": [], "generation_notice": notice}
     return {"source": "ready",
             "sections": _sections_to_html(_number_captions(saved, table_start)),
-            "refs": refs}
+            "refs": refs,
+            "table_check": checks,
+            "generation_notice": notice}
 
 
 def get_chapter_structured(n: int, project_id: str = None) -> list:
@@ -1229,6 +1239,8 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
     if mat_root is not None:
         tools += _MAT_TOOLS
         mat_exec = _make_materials_executor(mat_root)
+        # 重跑覆盖：本次生成前清掉本章旧阅读台账（失败不阻断）
+        read_ledger.reset_chapter(project_id, n)
 
     if tools:
         def _combined_executor(name, args):
@@ -1245,6 +1257,11 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
                     path = str((args or {}).get("path") or "").strip()
                     if path:
                         _add_ref(f"申报材料：{path}")
+                        # 阅读台账：登记文件+页码，供量化核对（失败不阻断）；
+                        # 读取失败/文件不存在的调用不计入（台账只反映真实查阅）
+                        if not result.startswith("（读取失败") and not result.startswith("（找不到文件"):
+                            read_ledger.record_read(project_id, n, path,
+                                                    (args or {}).get("pages", ""))
                 return result
             return f"（未知工具 {name}）"
         raw = chat_with_tools(messages, tools, _combined_executor,
@@ -1261,6 +1278,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
         logger.warning(f"ch{n} 解析模型输出失败：{e}；原始输出前 500 字：{raw[:500]!r}；自动纠偏重试一次")
         # 自动纠偏：要求模型把上次的内容重新输出为纯 JSON（常见于输出被截断/夹带说明文字），
         # 免去用户手动重生成又要等几分钟
+        raw2 = ""
         try:
             fix_msgs = messages + [
                 {"role": "assistant", "content": raw[-3000:]},
@@ -1274,7 +1292,21 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
             logger.info(f"ch{n} 纠偏重试成功")
         except Exception as e2:
             logger.warning(f"ch{n} 纠偏重试仍失败：{e2}")
-            raise RuntimeError(f"模型输出不是有效 JSON（{e2}），请重试生成") from e2
+            # 失败保护①：从截断输出里抢救已写完的小节，保住已完成部分
+            salvaged = _salvage_truncated(raw2) or {}
+            if not salvaged.get("sections"):
+                salvaged = _salvage_truncated(raw) or {}
+            if salvaged.get("sections"):
+                data = salvaged
+                data["partial"] = True
+                data["generation_notice"] = (
+                    f"本次生成输出不完整，已保留前 {len(data['sections'])} 个小节，"
+                    f"其余内容请重新生成或手工补充。")
+                logger.warning(f"ch{n} 已从截断输出抢救 {len(data['sections'])} 个小节")
+            else:
+                # 失败保护②：抢救不出时把原始输出留证，再报错
+                _dump_last_failed(n, project_id, raw, raw2, str(e2))
+                raise RuntimeError(f"模型输出不是有效 JSON（{e2}），请重试生成") from e2
     # 锁定小标题结构＝模板：把 Kimi 误当成 section 的编号项（“1.奥飞数据”等）折回其所属模板小标题
     if isinstance(data, dict) and data.get("sections"):
         data["sections"] = _fold_enumerated_sections(data["sections"], subtitles)
@@ -1291,6 +1323,15 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
                         f"不涉及去依据{st['removed_inapplicable']}，删无源依据{st['removed_untraceable']}")
         except Exception as e:
             logger.warning(f"ch{n} 依据自检失败（不影响生成）：{e}")
+    # 阅读台账统计：本章实际查阅了多少份材料（与 refs 对账用，失败不阻断）；
+    # 在落盘前算好，ch{n}.json 里一并持久化
+    try:
+        if isinstance(data, dict):
+            data["read_stats"] = read_ledger.chapter_stats(project_id, n)
+            logger.info(f"ch{n} 阅读台账：{data['read_stats'].get('message') or '未登记到材料读取'}")
+    except Exception as e:
+        logger.warning(f"ch{n} 阅读台账统计失败（不影响生成）：{e}")
+
     try:
         _save_json(n, data, project_id)
     except Exception as e:
@@ -1548,3 +1589,69 @@ def _parse_json(raw: str) -> dict:
         f"解析模型输出 JSON 失败：{last}；总长={len(core)}；"
         f"出错位置附近：…{core[max(0, off - 80):off + 80]!r}…")
     raise last
+
+
+def _closer_stack(s: str):
+    """扫描 JSON 前缀，返回补全所需的闭合字符串；括号不配对返回 None。"""
+    stack, in_str, esc = [], False, False
+    for ch in s:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if stack and stack[-1] == ch:
+                stack.pop()
+            else:
+                return None
+    if in_str:
+        stack.append('"')  # 截断在字符串中间：先补引号再闭合
+    return "".join(reversed(stack))
+
+
+def _salvage_truncated(raw: str):
+    """从被截断的模型输出里抢救已写完的部分：给未闭合的括号补尾；
+    仍不行就从末尾逐个逗号回退（丢弃截断在半路上的最后一块）再试，最多 30 轮。
+    成功返回 dict（可能只含部分 sections），失败返回 None。"""
+    text = (raw or "").strip()
+    start = text.find("{")
+    if start == -1:
+        return None
+    core = text[start:]
+    candidate = core
+    for _ in range(30):
+        closer = _closer_stack(candidate)
+        if closer is not None:
+            try:
+                d = json.loads(candidate + closer)
+                if isinstance(d, dict):
+                    return d
+            except json.JSONDecodeError:
+                pass
+        cut = candidate.rfind(",")
+        if cut <= 0:
+            break
+        candidate = candidate[:cut]
+    return None
+
+
+def _dump_last_failed(n: int, project_id, raw: str, raw2: str, err: str) -> None:
+    """彻底失败时把模型原始输出留证到 ch{n}.last_failed.json（供排查/手工抢救），失败静默。"""
+    try:
+        pid = safe_project_id(project_id)
+        p = PROJECTS_DIR / pid / f"ch{n}.last_failed.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"at": time.strftime("%Y-%m-%d %H:%M:%S"), "error": err,
+                   "raw": (raw or "")[-200000:], "retry_raw": (raw2 or "")[-200000:]}
+        p.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+        logger.warning(f"ch{n} 失败输出已留存：{p}")
+    except Exception as e:
+        logger.warning(f"ch{n} 留存失败输出出错：{e}")
