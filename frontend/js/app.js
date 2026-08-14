@@ -2345,9 +2345,7 @@ function _ensureAIPanel() {
     document.getElementById('aiReplaceBtn').addEventListener('click', () => _aiApply(true));
     document.getElementById('aiInsertBtn').addEventListener('click', () => _aiApply(false));
     document.getElementById('aiCopyBtn').addEventListener('click', () => {
-        const t = document.getElementById('aiResult').innerText;
-        navigator.clipboard && navigator.clipboard.writeText(t);
-        showToast('已复制');
+        _copyText(document.getElementById('aiResult').innerText);
     });
 }
 
@@ -2569,12 +2567,15 @@ function _ensureKimiDrawer() {
     d.querySelector('#kimiInput').addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _kimiSend(); }
     });
-    // 消息区的“替换/插入/复制”按钮（事件委托）
+    // 消息区的“复制/重新生成”按钮（事件委托）
     d.querySelector('#kimiMsgs').addEventListener('click', (e) => {
         const b = e.target.closest('button[data-act]');
         if (!b) return;
-        const msg = _kimiHistory[parseInt(b.dataset.i, 10)];
-        if (msg) _kimiInsert(msg.content, b.dataset.act);
+        const i = parseInt(b.dataset.i, 10);
+        const msg = _kimiHistory[i];
+        if (!msg) return;
+        if (b.dataset.act === 'copy') _copyText(msg.content);
+        else if (b.dataset.act === 'regen') _kimiRegen(i);
     });
 
     // 拖拽左边缘 / 左上角圆弧手柄，改变抽屉宽度（向左拖变宽，向右拖变窄）
@@ -2685,9 +2686,8 @@ function _kimiRenderMsgs() {
         if (m.role === 'user') return `<div class="kimi-msg user">${_kimiEsc(m.content)}</div>`;
         return `<div class="kimi-msg assistant">${_kimiEsc(m.content)}</div>` +
             `<div class="kimi-acts">` +
-            `<button data-act="replace" data-i="${i}">替换选区</button>` +
-            `<button data-act="insert" data-i="${i}">插入到光标</button>` +
-            `<button data-act="copy" data-i="${i}">复制</button></div>`;
+            `<button data-act="copy" data-i="${i}">复制</button>` +
+            `<button data-act="regen" data-i="${i}">重新生成</button></div>`;
     }).join('');
     box.scrollTop = box.scrollHeight;
 }
@@ -2738,23 +2738,50 @@ async function _kimiSend() {
     }
 }
 
-function _kimiInsert(text, mode) {
-    text = String(text || '').trim();
-    if (!text) { showToast('没有可用内容', 'warning'); return; }
-    if (mode === 'copy') {
-        navigator.clipboard && navigator.clipboard.writeText(text);
-        showToast('已复制'); return;
+/** 复制文字：线上是 HTTP（非安全上下文）没有 navigator.clipboard，回退 execCommand 保证能复制 */
+function _copyText(t) {
+    t = String(t == null ? '' : t);
+    if (!t) { showToast('没有可复制的内容', 'warning'); return; }
+    const ok = () => showToast('已复制');
+    const fallback = () => {
+        const ta = document.createElement('textarea');
+        ta.value = t;
+        ta.style.cssText = 'position:fixed;top:-1000px;left:0;opacity:0;';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        let done = false;
+        try { done = document.execCommand('copy'); } catch (e) { done = false; }
+        ta.remove();
+        if (done) ok(); else showToast('复制失败，请手动选择文字复制', 'warning');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(t).then(ok).catch(fallback);
+    } else fallback();
+}
+
+/** 重新生成：把该条回复对应的用户提问再发一遍，新回复覆盖旧回复 */
+async function _kimiRegen(i) {
+    let j = i - 1;
+    while (j >= 0 && _kimiHistory[j].role !== 'user') j--;
+    if (j < 0) { showToast('找不到对应的提问，无法重新生成', 'warning'); return; }
+    const old = _kimiHistory[i].content;
+    _kimiHistory[i] = { role: 'assistant', content: '⏳ 重新生成中…' };
+    _kimiRenderMsgs();
+    const sendBtn = document.getElementById('kimiSend');
+    sendBtn.disabled = true;
+    try {
+        const fd = new FormData();
+        fd.append('history', JSON.stringify(_kimiHistory.slice(0, j)));
+        fd.append('message', _kimiHistory[j].content.replace(/\n?📎 已附素材$/, ''));
+        const r = await API.aiChat(fd);
+        _kimiHistory[i] = { role: 'assistant', content: r.reply || '(空回复)' };
+    } catch (e) {
+        _kimiHistory[i] = { role: 'assistant', content: old };
+        showToast('重新生成失败：' + (e.message || e), 'error');
+    } finally {
+        sendBtn.disabled = false;
+        _kimiRenderMsgs();
     }
-    if (!_kimiRange) {
-        showToast('请先回到正文里选中一段文字（或点一下放置光标），再打开助手', 'warning');
-        return;
-    }
-    const range = _kimiRange;
-    if (mode === 'replace' && !range.collapsed) range.deleteContents();
-    else range.collapse(false);
-    range.insertNode(_textToFragment(text));
-    range.collapse(false);
-    showToast(mode === 'replace' ? '已替换，记得点“保存”' : '已插入，记得点“保存”');
 }
 
 /** 在当前光标处插入脚注 */
