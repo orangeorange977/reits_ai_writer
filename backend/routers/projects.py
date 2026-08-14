@@ -178,6 +178,11 @@ class CreateProjectRequest(BaseModel):
     pack_id: Optional[str] = None  # 绑定的模板包；不传时绑默认包
 
 
+class UpdateProjectRequest(BaseModel):
+    """更新项目请求（当前支持改名）"""
+    name: str
+
+
 class ProjectResponse(BaseModel):
     """项目响应"""
     id: int
@@ -331,6 +336,45 @@ async def get_project(project_id: int, http_req: Request):
     except Exception as e:
         logger.error(f"获取项目详情失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取项目详情失败: {e}")
+    finally:
+        await db.close()
+
+
+@router.put("/projects/{project_id}", response_model=ProjectResponse)
+async def update_project(project_id: int, request: UpdateProjectRequest, http_req: Request):
+    """项目改名（仅归属当前用户的项目）"""
+    await _assert_project_owned(project_id, _current_user_id(http_req))
+    name = (request.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="项目名称不能为空")
+    if len(name) > 100:
+        raise HTTPException(status_code=400, detail="项目名称过长（最多 100 字）")
+    db = await get_db()
+    try:
+        await db.execute(
+            "UPDATE projects SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (name, project_id)
+        )
+        await db.commit()
+        cursor = await db.execute(
+            "SELECT id, name, data_source_path, status, created_at, updated_at, pack_id FROM projects WHERE id = ?",
+            (project_id,)
+        )
+        row = await cursor.fetchone()
+        logger.info(f"项目改名成功: ID={project_id} -> {name}")
+        return ProjectResponse(
+            id=row[0],
+            name=row[1],
+            data_source_path=row[2],
+            status=row[3],
+            created_at=row[4],
+            updated_at=row[5],
+            is_demo=is_preset_project(row[2]),
+            pack_id=row[6],
+        )
+    except Exception as e:
+        logger.error(f"项目改名失败: {e}")
+        raise HTTPException(status_code=500, detail=f"项目改名失败: {e}")
     finally:
         await db.close()
 

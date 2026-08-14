@@ -3351,6 +3351,53 @@ async function confirmDeleteProject(projectId) {
     }
 }
 
+/** 编辑项目（改名）：与同事版“进入/编辑/删除”三按钮布局对齐，编辑弹改名框 */
+function openEditProject(projectId) {
+    const proj = (_projectsCache || []).find(p => p.id === projectId);
+    if (!proj) { showToast('未找到项目信息，请刷新列表后重试', 'warning'); return; }
+    let m = document.getElementById('modalEditProject');
+    if (!m) {
+        m = document.createElement('div');
+        m.id = 'modalEditProject';
+        m.className = 'modal';
+        m.innerHTML = `
+            <div class="modal-content" style="max-width:420px">
+                <div class="modal-header"><h3>项目改名</h3><button class="modal-close" onclick="closeModal('modalEditProject')">✕</button></div>
+                <div class="modal-body">
+                    <input type="text" id="editProjectName" class="form-input" maxlength="100" placeholder="请输入项目名称">
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost" onclick="closeModal('modalEditProject')">取消</button>
+                    <button class="btn btn-primary" id="editProjectSave">保存</button>
+                </div>
+            </div>`;
+        document.body.appendChild(m);
+        m.querySelector('#editProjectSave').addEventListener('click', async () => {
+            const name = (document.getElementById('editProjectName').value || '').trim();
+            if (!name) { showToast('项目名称不能为空', 'warning'); return; }
+            try {
+                await API.updateProject(m.dataset.pid, { name });
+                showToast('已改名');
+                closeModal('modalEditProject');
+                await loadOverviewData();
+                updateProjectHeaderBar();
+            } catch (e) {
+                showToast('改名失败：' + (e.message || e), 'error');
+            }
+        });
+        m.querySelector('#editProjectName').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') m.querySelector('#editProjectSave').click();
+        });
+    }
+    m.dataset.pid = projectId;
+    m.querySelector('#editProjectName').value = proj.name || '';
+    openModal('modalEditProject');
+    setTimeout(() => {
+        const el = document.getElementById('editProjectName');
+        el.focus(); el.select();
+    }, 50);
+}
+
 /**
  * 初始化应用
  */

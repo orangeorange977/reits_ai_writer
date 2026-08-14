@@ -50,8 +50,9 @@ function renderProjectTable(container, projects) {
             <td><span class="badge ${statusBadgeMap[proj.status] || 'badge-info'}">${proj.status}</span></td>
             <td class="text-sm text-muted">${proj.updateTime}</td>
             <td>
-                <button class="btn btn-ghost btn-sm" onclick="selectProject(${proj.id})">编辑</button>
-                ${proj.isDemo ? '' : `<button class="btn btn-ghost btn-sm" style="color:#d9534f" onclick="confirmDeleteProject(${proj.id})">删除</button>`}
+                <button class="btn btn-primary btn-sm" onclick="selectProject(${proj.id})">进入</button>
+                <button class="btn btn-ghost btn-sm" onclick="openEditProject(${proj.id})">编辑</button>
+                ${proj.isDemo ? '' : `<button class="btn btn-ghost btn-sm" style="color:#d9534f" onclick="confirmDeleteProject(${proj.id})" title="删除该项目及其数据">删除</button>`}
             </td>
         </tr>
     `).join('');

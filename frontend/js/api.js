@@ -187,6 +187,15 @@ const API = {
         return this.delete(`/projects/${id}`);
     },
 
+    /**
+     * 项目改名
+     * @param {number} id - 项目ID
+     * @param {object} body - {name}
+     */
+    async updateProject(id, body) {
+        return this.put(`/projects/${id}`, body);
+    },
+
     // ===== 申报材料上传（步骤 3.4：上传模式替代本机路径）=====
 
     /**
