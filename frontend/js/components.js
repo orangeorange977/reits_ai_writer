@@ -5,6 +5,24 @@
  * 旧管线的字段表单/文档表格等渲染器已随步骤 2.6 删除。
  */
 
+/** 字节风格线性图标统一出口：stroke 跟随 currentColor，尺寸由容器 .icn 规则控制 */
+const ICN = {
+    folder: '<svg class="icn" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>',
+    file: '<svg class="icn" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+    upload: '<svg class="icn" viewBox="0 0 24 24"><path d="M12 15V4m0 0 4 4m-4-4-4 4M4 20h16"/></svg>',
+    download: '<svg class="icn" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M4 20h16"/></svg>',
+    plus: '<svg class="icn" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+    edit: '<svg class="icn" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+    save: '<svg class="icn" viewBox="0 0 24 24"><path d="M17 21v-8H7v8M7 3v5h8"/><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>',
+    robot: '<svg class="icn" viewBox="0 0 24 24"><rect x="5" y="9" width="14" height="10" rx="2"/><path d="M12 9V5"/><circle cx="12" cy="4" r="1"/><path d="M9.5 13v1.5M14.5 13v1.5"/></svg>',
+    chat: '<svg class="icn" viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></svg>',
+    image: '<svg class="icn" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m5 19 5-5 3 3 4-4 2 2"/></svg>',
+    trash: '<svg class="icn" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>',
+    refresh: '<svg class="icn" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>',
+    check: '<svg class="icn" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.3 2.4 2.4 4.8-4.8"/></svg>',
+    grid: '<svg class="icn" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>',
+};
+
 /**
  * 渲染统计卡片
  * @param {HTMLElement} container - 容器元素

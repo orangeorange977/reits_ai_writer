@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>REIT-AI 法律文件生成系统</title>
-    <link rel="stylesheet" href="/css/style.css?v=20260814j">
+    <link rel="stylesheet" href="/css/style.css?v=20260814k">
 </head>
 <body>
     <!-- 侧边栏 -->
@@ -61,7 +61,7 @@
         </nav>
 
         <div class="sidebar-footer">
-            <button id="btnLogout" onclick="logout()" title="退出登录" style="width:100%;margin-bottom:8px;padding:6px 0;background:transparent;border:1px solid var(--border-color);border-radius:6px;color:var(--text-secondary);font-size:12px;cursor:pointer">退出登录</button>
+            <button id="btnLogout" onclick="logout()" title="退出登录" style="width:100%;margin-bottom:8px;padding:6px 0;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-size:12px;cursor:pointer">退出登录</button>
             <div class="version-info">© 2026 REIT-AI v1.0.0</div>
         </div>
     </aside>
@@ -161,7 +161,7 @@
                 <!-- 项目信息栏（由 JS 按当前项目渲染） -->
                 <div class="project-header-bar">
                     <div class="ph-left">
-                        <div class="ph-icon">📄</div>
+                        <div class="ph-icon"><svg class="icn" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
                         <div class="ph-info">
                             <h2 id="projectHeaderTitle">未选择项目</h2>
                             <p id="projectHeaderMeta">请先在系统概览中选择或创建项目</p>
@@ -169,20 +169,20 @@
                     </div>
                     <div class="ph-right">
                         <button class="btn btn-ghost btn-sm" onclick="navigate('overview')">← 返回项目列表</button>
-                        <button class="btn btn-primary btn-sm" onclick="openCoverEditor()" title="编辑封面：标题/原始权益人自动取自摘要表，可上传四角色 logo、填写日期并下载封面 Word">🖼 编辑封面</button>
+                        <button class="btn btn-primary btn-sm" onclick="openCoverEditor()" title="编辑封面：标题/原始权益人自动取自摘要表，可上传四角色 logo、填写日期并下载封面 Word"><svg class="icn" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m5 19 5-5 3 3 4-4 2 2"/></svg>编辑封面</button>
                     </div>
                 </div>
 
                 <!-- 申报材料面板：本项目已上传材料的查看/上传入口（树形列表，保留文件夹层级） -->
                 <div class="enhancements-panel" style="margin-top:16px">
                     <div class="panel-header" onclick="toggleMaterialsPanel(this)">
-                        <h3>📁 申报材料 <span id="matPanelCount" class="text-muted text-sm" style="font-weight:400"></span></h3>
+                        <h3><svg class="icn" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>申报材料 <span id="matPanelCount" class="text-muted text-sm" style="font-weight:400"></span></h3>
                         <span class="toggle-icon">▼</span>
                     </div>
                     <div class="panel-body" id="materials-body" style="display:none;">
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                            <button class="btn btn-primary" onclick="document.getElementById('matPanelFileInput').click()">⬆️ 上传文件</button>
-                            <button class="btn btn-primary" onclick="document.getElementById('matPanelFolderInput').click()">📂 上传文件夹</button>
+                            <button class="btn btn-primary" onclick="document.getElementById('matPanelFileInput').click()"><svg class="icn" viewBox="0 0 24 24"><path d="M12 15V4m0 0 4 4m-4-4-4 4M4 20h16"/></svg>上传文件</button>
+                            <button class="btn btn-primary" onclick="document.getElementById('matPanelFolderInput').click()"><svg class="icn" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>上传文件夹</button>
                             <button class="btn btn-ghost" onclick="clearMaterialsUI()">清空</button>
                             <span class="text-muted text-sm" id="matPanelStat">加载中…</span>
                             <input type="file" id="matPanelFileInput" multiple style="display:none"
@@ -200,7 +200,7 @@
 
                 <!-- 七章节步骤条 -->
                 <div class="stepper-card">
-                    <h3 style="font-size:14px;font-weight:600;margin-bottom:20px;color:var(--text-primary)">📋 申报材料章节进度</h3>
+                    <h3 style="font-size:14px;font-weight:600;margin-bottom:20px;color:var(--text-primary)"><svg class="icn" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 9.5h6M9 13h6M9 16.5h6"/></svg>申报材料章节进度</h3>
                     <div class="stepper" id="chapterStepper">
                         <!-- 由JS动态渲染 -->
                         <div class="text-muted text-sm" style="padding:8px 0">章节加载中…</div>
@@ -242,7 +242,7 @@
 
                 <div class="card">
                     <div class="card-header">
-                        <h3>📂 已生成文档</h3>
+                        <h3><svg class="icn" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>已生成文档</h3>
                         <div class="flex gap-8">
                             <input type="text" class="search-box" style="width:200px" placeholder="搜索文档...">
                             <button class="btn btn-primary btn-sm" onclick="navigate('ndrc')">生成新文档</button>
@@ -271,7 +271,7 @@
                 <!-- 历史版本对比（暂无版本历史 API，先隐藏） -->
                 <div class="card" style="margin-top:24px;display:none">
                     <div class="card-header">
-                        <h3>📝 版本历史</h3>
+                        <h3><svg class="icn" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>版本历史</h3>
                     </div>
                     <div class="card-body">
                         <div class="timeline" id="docVersionTimeline">
@@ -284,7 +284,7 @@
             <!-- ==================== 页面5：系统设置 ==================== -->
             <div class="page" id="page-settings">
                 <div class="card">
-                    <div class="card-header"><h3>⚙️ 系统设置</h3></div>
+                    <div class="card-header"><h3><svg class="icn" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82V15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>系统设置</h3></div>
                     <div class="card-body">
                         <div class="form-group">
                             <label>AI 模型</label>
@@ -303,7 +303,7 @@
                                 上传申报/证明材料后，各章生成时 AI 会自动读取这些文件（支持多选，zip 会自动解压，文件夹结构原样保留）。
                             </div>
                             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                                <button class="btn btn-primary" onclick="document.getElementById('materialsFileInput').click()">⬆️ 上传材料</button>
+                                <button class="btn btn-primary" onclick="document.getElementById('materialsFileInput').click()"><svg class="icn" viewBox="0 0 24 24"><path d="M12 15V4m0 0 4 4m-4-4-4 4M4 20h16"/></svg>上传材料</button>
                                 <button class="btn btn-ghost" id="materialsClearBtn" onclick="clearMaterialsUI()">清空</button>
                                 <span class="text-muted text-sm" id="materialsStat">加载中…</span>
                                 <input type="file" id="materialsFileInput" multiple style="display:none"
@@ -331,7 +331,7 @@
     <div class="modal-overlay" id="modal-folder-browser">
         <div class="modal" style="width:600px;max-height:70vh">
             <div class="modal-header">
-                <span class="modal-title">📁 浏览文件夹</span>
+                <span class="modal-title"><svg class="icn" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>浏览文件夹</span>
                 <button class="modal-close" onclick="closeModal('modal-folder-browser')">✕</button>
             </div>
             <div class="modal-body" style="padding:0">
@@ -370,7 +370,7 @@
     <div class="modal-overlay" id="modal-new-project">
         <div class="modal">
             <div class="modal-header">
-                <span class="modal-title">➕ 新建项目</span>
+                <span class="modal-title"><svg class="icn" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>新建项目</span>
                 <span style="display:flex;gap:2px">
                     <button class="modal-close" onclick="minimizeNewProjectModal()" title="收起窗口（上传在后台继续，点小圆圈可找回进度）">—</button>
                     <button class="modal-close" onclick="closeModal('modal-new-project')">✕</button>
@@ -438,7 +438,7 @@
     <div class="modal-overlay" id="modal-change-password" data-sticky="true">
         <div class="modal" style="width:420px">
             <div class="modal-header">
-                <span class="modal-title">🔑 请修改密码</span>
+                <span class="modal-title"><svg class="icn" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.2-8.2M15 7l3 3"/></svg>请修改密码</span>
             </div>
             <div class="modal-body">
                 <div class="text-muted text-sm" style="margin-bottom:12px">
@@ -464,9 +464,9 @@
 
     <!-- JavaScript -->
     <script src="/js/api.js?v=20260814h"></script>
-    <script src="/js/components.js?v=20260814e"></script>
+    <script src="/js/components.js?v=20260814f"></script>
     <script src="/js/diagram.js?v=20260813c"></script>
-    <script src="/js/app.js?v=20260814h"></script>
+    <script src="/js/app.js?v=20260814i"></script>
 
     <style>
     /* 文件夹浏览器样式 */

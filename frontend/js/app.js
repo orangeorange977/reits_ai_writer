@@ -479,7 +479,7 @@ function _updateMatToggleBtn() {
     if (!btn || !_matState) return;
     const isPdf = /\.pdf$/i.test(_matState.path || '');
     btn.style.display = isPdf ? '' : 'none';
-    btn.textContent = _matState.mode === 'pages' ? '📝 文本版' : '📄 原版页面';
+    btn.innerHTML = _matState.mode === 'pages' ? ICN.edit + ' 文本版' : ICN.file + ' 原版页面';
 }
 
 /** PDF 按页原版图预览：首批 3 页；摘录命中页不在首批时从命中页开始，顶部提供“加载前几页” */
@@ -542,7 +542,7 @@ function _renderPrevBtn() {
     const st = _matState && _matState.pagesState;
     if (!wrap || !st) return;
     wrap.innerHTML = st.start > 1
-        ? `<div style="text-align:center;padding:8px"><button class="btn btn-ghost btn-sm" onclick="_prependPages()">⬆️ 加载第 ${Math.max(1, st.start - 3)}–${st.start - 1} 页</button></div>`
+        ? `<div style="text-align:center;padding:8px"><button class="btn btn-ghost btn-sm" onclick="_prependPages()">${ICN.upload} 加载第 ${Math.max(1, st.start - 3)}–${st.start - 1} 页</button></div>`
         : '';
 }
 
@@ -827,7 +827,7 @@ function renderColumnBrowser(container, files, dirs) {
         const dirNames = Array.from(node.dirs.keys()).sort((a, b) => a.localeCompare(b, 'zh'));
         for (const d of dirNames) {
             h += `<div class="mc-row mc-dir" data-name="${_escHtmlAttr(d)}" data-type="dir">
-                <span class="mc-ico">📁</span><span class="mc-name" title="${_escHtmlAttr(d)}">${_escHtmlAttr(d)}</span>
+                <span class="mc-ico">${ICN.folder}</span><span class="mc-name" title="${_escHtmlAttr(d)}">${_escHtmlAttr(d)}</span>
                 <span class="mc-meta">${_countTreeFiles(node.dirs.get(d))}</span><span class="mc-arrow">▸</span></div>`;
         }
         for (const f of node.files.sort((a, b) => a.name.localeCompare(b.name, 'zh'))) {
@@ -1087,10 +1087,10 @@ async function loadOverviewData() {
             const generating = projects.filter(p => p.status === 'generating').length;
             const completed = projects.filter(p => p.status === 'generated').length;
             renderStatCards(statsContainer, [
-                { icon: '📁', value: projects.length, label: '项目总数', color: 'blue' },
-                { icon: '🔄', value: generating, label: '生成中', color: 'orange' },
-                { icon: '✅', value: completed, label: '已完成', color: 'green' },
-                { icon: '📐', value: 1, label: '模板数', color: 'purple' },
+                { icon: ICN.folder, value: projects.length, label: '项目总数', color: 'blue' },
+                { icon: ICN.refresh, value: generating, label: '生成中', color: 'orange' },
+                { icon: ICN.check, value: completed, label: '已完成', color: 'green' },
+                { icon: ICN.grid, value: 1, label: '模板数', color: 'purple' },
             ]);
         }
     } catch (error) {
@@ -1436,9 +1436,9 @@ async function selectSummary() {
                 <h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">摘要表和释义</h3>
             </div>
             <div class="flex gap-8">
-                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('summaryExcelInput').click()">📥 上传Excel导入</button>
+                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('summaryExcelInput').click()">${ICN.download} 上传Excel导入</button>
                 <input type="file" id="summaryExcelInput" accept=".xlsx,.xls" style="display:none" onchange="importSummaryExcel(this)">
-                <button class="btn btn-primary btn-sm" onclick="saveSummary()">💾 保存</button>
+                <button class="btn btn-primary btn-sm" onclick="saveSummary()">${ICN.save} 保存</button>
             </div>
         </div>
         <div class="chapter-detail-body">
@@ -1684,7 +1684,7 @@ function toggleChapterPreview() {
     const col = document.getElementById('ch1PreviewCol');
     const btn = document.getElementById('btnChapterPreviewToggle');
     if (col) col.style.display = _previewOn ? '' : 'none';
-    if (btn) btn.textContent = _previewOn ? '📄 关闭Word预览' : '📄 开启Word预览';
+    if (btn) btn.innerHTML = ICN.file + (_previewOn ? ' 关闭Word预览' : ' 开启Word预览');
     if (_previewOn) refreshChapterPreview();
 }
 
@@ -1734,14 +1734,14 @@ async function renderChapterEditor(n) {
                 ${srcBadge}
             </div>
             <div class="flex gap-8">
-                <button class="btn btn-ghost btn-sm" id="btnChapterGen" onclick="runKimiChapter()">🤖 ${content.source === 'ready' ? '重新生成' : 'AI 生成'}</button>
-                <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="insertFootnote()" title="把光标放到正文中要加脚注的位置，再点此">➕ 脚注</button>
-                <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="insertDiagram()" title="把光标放到正文中要插图的位置，再点此画框图">🖼 画图</button>
-                <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="openKimiChat()" title="打开 Kimi 助手：多轮对话，可粘贴文字/贴链接/上传文件，回复可一键插入正文">💬 Kimi 助手</button>
-                <button class="btn btn-ghost btn-sm" id="btnChapterPreviewToggle" onclick="toggleChapterPreview()">📄 ${_previewOn ? '关闭Word预览' : '开启Word预览'}</button>
-                <button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(_editorChapter)" title="自动保存后导出本章最新 Word（项目名_日期_第n章_vN）">⬇ 下载Word</button>
-                    <button class="btn btn-ghost btn-sm" onclick="generateChapterDoc(_editorChapter)" title="把当前保存内容生成为新版本 Word，不触发下载">📄 生成该文档</button>
-                <button class="btn btn-primary btn-sm" onclick="saveChapter()">💾 保存</button>
+                <button class="btn btn-ghost btn-sm" id="btnChapterGen" onclick="runKimiChapter()">${ICN.robot} ${content.source === 'ready' ? '重新生成' : 'AI 生成'}</button>
+                <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="insertFootnote()" title="把光标放到正文中要加脚注的位置，再点此">${ICN.plus} 脚注</button>
+                <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="insertDiagram()" title="把光标放到正文中要插图的位置，再点此画框图">${ICN.image} 画图</button>
+                <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="openKimiChat()" title="打开 Kimi 助手：多轮对话，可粘贴文字/贴链接/上传文件，回复可一键插入正文">${ICN.chat} Kimi 助手</button>
+                <button class="btn btn-ghost btn-sm" id="btnChapterPreviewToggle" onclick="toggleChapterPreview()">${ICN.file} ${_previewOn ? '关闭Word预览' : '开启Word预览'}</button>
+                <button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(_editorChapter)" title="自动保存后导出本章最新 Word（项目名_日期_第n章_vN）">${ICN.download} 下载Word</button>
+                    <button class="btn btn-ghost btn-sm" onclick="generateChapterDoc(_editorChapter)" title="把当前保存内容生成为新版本 Word，不触发下载">${ICN.file} 生成该文档</button>
+                <button class="btn btn-primary btn-sm" onclick="saveChapter()">${ICN.save} 保存</button>
                     <span id="autosaveHint" class="text-muted" style="font-size:12px;margin-left:8px">${_autosaveHintText}</span>
             </div>
         </div>
@@ -1799,9 +1799,9 @@ async function renderChapterEditor(n) {
         </div>
         <div class="ch1-preview-col" id="ch1PreviewCol" style="${_previewOn ? '' : 'display:none'}">
             <div class="ch1-preview-head">
-                <span>📄 Word 实时预览</span>
+                <span>${ICN.file} Word 实时预览</span>
                 <span class="flex gap-8">
-                    <button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(${n})">⬇ 下载Word</button>
+                    <button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(${n})">${ICN.download} 下载Word</button>
                 </span>
             </div>
             <div id="ch1PreviewBody" class="ch1-preview-body">
@@ -1914,7 +1914,7 @@ function _pollChapterGeneration(n) {
             if (_editorChapter === n) {
                 const btn2 = document.getElementById('btnChapterGen');
                 const banner2 = document.getElementById('chapterGenBanner');
-                if (btn2) { btn2.disabled = false; btn2.textContent = '🤖 AI 生成'; }
+                if (btn2) { btn2.disabled = false; btn2.innerHTML = ICN.robot + ' AI 生成'; }
                 if (banner2) { banner2.className = 'kimi-status error'; banner2.textContent = '生成失败：' + (st.error || '未知错误'); }
             }
             showToast(`生成失败：${_chapterTitle(n) || '本章'}`, 'error');
@@ -2366,9 +2366,9 @@ function _ensureKimiDrawer() {
       <div class="kimi-resize" id="kimiResize" title="拖动改变宽度"></div>
       <div class="kimi-grip" id="kimiGrip" title="拖动改变宽度"></div>
       <div class="kimi-drawer-head">
-        <span>💬 Kimi 助手</span>
+        <span>${ICN.chat} Kimi 助手</span>
         <span class="khbtns">
-          <button id="kimiNewChat" title="清空，开一个新对话">🗑 新对话</button>
+          <button id="kimiNewChat" title="清空，开一个新对话">${ICN.trash} 新对话</button>
           <button id="kimiClose" title="关闭">✕</button>
         </span>
       </div>
@@ -3468,7 +3468,7 @@ function _ensureCoverModal() {
     ov.innerHTML = `
       <div class="cover-modal">
         <div class="cover-head">
-          <span class="t">🖼 编辑封面</span>
+          <span class="t">${ICN.image} 编辑封面</span>
           <button class="x" id="coverClose" title="关闭">✕</button>
         </div>
         <div class="cover-body">
@@ -3476,8 +3476,8 @@ function _ensureCoverModal() {
           <div class="cover-prev"><div class="cv-page" id="coverPreview"></div></div>
         </div>
         <div class="cover-foot">
-          <button class="btn btn-ghost btn-sm" id="coverDownload">⬇ 下载封面Word</button>
-          <button class="btn btn-primary btn-sm" id="coverSave">💾 保存</button>
+          <button class="btn btn-ghost btn-sm" id="coverDownload">${ICN.download} 下载封面Word</button>
+          <button class="btn btn-primary btn-sm" id="coverSave">${ICN.save} 保存</button>
         </div>
       </div>`;
     document.body.appendChild(ov);
