@@ -11,22 +11,22 @@
     --primary-light: rgba(76, 175, 80, 0.12);
     --primary-glow: rgba(76, 175, 80, 0.2);
 
-    /* 背景色（浅灰/白） */
-    --bg-base: #F5F6F7;
+    /* 背景色（Apple 中性画布） */
+    --bg-base: #f5f5f7;
     --bg-surface: #FFFFFF;
-    --bg-elevated: #F7F8FA;
-    --bg-hover: #F2F3F5;
+    --bg-elevated: #f5f5f7;
+    --bg-hover: #f5f5f7;
     --bg-active: #E8F5E9;
 
-    /* 文字色（中性灰阶，借鉴 Arco） */
-    --text-primary: #1D2129;
-    --text-secondary: #4E5969;
-    --text-muted: #86909C;
+    /* 文字色（Apple 灰阶） */
+    --text-primary: #1d1d1f;
+    --text-secondary: #6e6e73;
+    --text-muted: #86868b;
     --text-inverse: #FFFFFF;
 
     /* 边框色 */
-    --border: #E5E6EB;
-    --border-light: #C9CDD4;
+    --border: #e8e8ed;
+    --border-light: #d2d2d7;
     --border-focus: #4CAF50;
 
     /* 状态色 */
@@ -51,13 +51,13 @@
     /* 圆角 */
     --radius-sm: 4px;
     --radius-md: 8px;
-    --radius-lg: 12px;
-    --radius-xl: 16px;
+    --radius-lg: 18px;
+    --radius-xl: 28px;
 
     /* 阴影 */
     --shadow-sm: 0 1px 2px rgba(29, 33, 41, 0.06);
     --shadow-md: 0 4px 12px rgba(29, 33, 41, 0.08);
-    --shadow-lg: 0 10px 25px rgba(29, 33, 41, 0.12);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.10);
     --shadow-glow: 0 0 20px rgba(76, 175, 80, 0.15);
 
     /* 过渡 */
@@ -72,7 +72,7 @@
     --drawer-w: min(720px, 55vw);
 
     /* 字体 */
-    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    --font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'SF Pro Icons', 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 }
 
@@ -91,7 +91,8 @@ html, body {
 body {
     font-family: var(--font-family);
     font-size: 14px;
-    line-height: 1.6;
+    line-height: 1.47;
+    letter-spacing: -0.016em;
     color: var(--text-primary);
     background: var(--bg-base);
     display: flex;
@@ -135,7 +136,7 @@ body {
     font-size: 16px;
     font-weight: 700;
     color: var(--text-primary);
-    letter-spacing: 0.5px;
+    letter-spacing: -0.01em;
 }
 
 .logo-subtitle {
@@ -155,7 +156,7 @@ body {
     align-items: center;
     gap: var(--spacing-md);
     padding: var(--spacing-md) var(--spacing-lg);
-    border-radius: var(--radius-md);
+    border-radius: 980px;
     cursor: pointer;
     transition: all var(--transition-fast);
     color: var(--text-secondary);
@@ -352,7 +353,6 @@ body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 
 .card:hover {
     border-color: var(--border-light);
-    box-shadow: var(--shadow-md);
 }
 
 .card-header {
@@ -434,7 +434,7 @@ body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
     justify-content: center;
     gap: var(--spacing-sm);
     padding: var(--spacing-sm) var(--spacing-lg);
-    border-radius: var(--radius-md);
+    border-radius: 980px;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -453,8 +453,9 @@ body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 
 .btn-primary:hover {
     background: var(--primary-hover);
-    box-shadow: var(--shadow-glow);
 }
+
+.btn:active { transform: scale(0.98); }
 
 .btn-ghost {
     background: transparent;
@@ -477,8 +478,8 @@ body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 .badge {
     display: inline-flex;
     align-items: center;
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 2px 10px;
+    border-radius: 980px;
     font-size: 12px;
     font-weight: 400;
 }
@@ -994,7 +995,7 @@ body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 .modal {
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 18px;
     width: 680px;
     max-width: 90vw;
     max-height: 85vh;
@@ -1190,7 +1191,7 @@ body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 .ph-icon {
     width: 48px;
     height: 48px;
-    border-radius: var(--radius-md);
+    border-radius: 12px;
     background: #E8F5E9;
     color: #4CAF50;
     display: flex;
@@ -2783,16 +2784,16 @@ body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 }
 
 /* 横幅：更克制的渐变与按钮 */
-#page-overview .overview-hero { border-radius: 12px; background: linear-gradient(115deg, #43A047 0%, #5CB860 55%, #7BC67E 100%); box-shadow: none; }
-#page-overview .overview-hero h2 { font-size: 24px; font-weight: 600; letter-spacing: .2px; }
+#page-overview .overview-hero { border-radius: 18px; background: linear-gradient(115deg, #43A047 0%, #5CB860 55%, #7BC67E 100%); box-shadow: none; }
+#page-overview .overview-hero h2 { font-size: 28px; font-weight: 600; letter-spacing: -0.015em; }
 #page-overview .overview-hero p { font-size: 13px; opacity: .85; }
-#page-overview .hero-btn-primary { background: #fff; color: #2E7D32; border: none; border-radius: 8px; font-weight: 600; }
+#page-overview .hero-btn-primary { background: #fff; color: #2E7D32; border: none; border-radius: 980px; font-weight: 600; }
 #page-overview .hero-btn-primary:hover { transform: none; box-shadow: 0 4px 12px rgba(0, 0, 0, .15); }
-#page-overview .hero-btn-ghost { background: transparent; border: 1px solid rgba(255, 255, 255, .5); border-radius: 8px; }
+#page-overview .hero-btn-ghost { background: transparent; border: 1px solid rgba(255, 255, 255, .5); border-radius: 980px; }
 #page-overview .hero-btn-ghost:hover { background: rgba(255, 255, 255, .16) !important; }
 
 /* 统计卡片：白底+发丝线+中性文字+扁平图标底 */
-#page-overview .stat-row .stat-card { background: #fff; border: 1px solid var(--nd-line); border-radius: 12px; padding: 18px 20px; box-shadow: none; }
+#page-overview .stat-row .stat-card { background: #fff; border: 1px solid var(--nd-line); border-radius: 18px; padding: 18px 20px; box-shadow: none; }
 #page-overview .stat-card:hover { transform: none; border-color: #C9CDD4; box-shadow: 0 4px 12px rgba(29, 33, 41, .06); }
 #page-overview .stat-icon { width: 44px; height: 44px; border-radius: 10px; font-size: 0; }
 #page-overview .stat-icon .icn { width: 20px; height: 20px; }
@@ -2800,20 +2801,19 @@ body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 #page-overview .stat-icon.orange { background: #FFF7E8; color: #FF7D00; }
 #page-overview .stat-icon.green { background: #E8FFEA; color: #00B42A; }
 #page-overview .stat-icon.purple { background: #F5E8FF; color: #722ED1; }
-#page-overview .stat-value { color: var(--nd-t1); font-size: 24px; font-weight: 600; }
+#page-overview .stat-value { color: var(--nd-t1); font-size: 28px; font-weight: 600; letter-spacing: -0.015em; }
 #page-overview .stat-label { color: var(--nd-t3); font-size: 12px; letter-spacing: 0; text-transform: none; }
 
 /* 项目列表卡片：发丝线+灰表头+干净表格 */
-#page-overview .card { border: 1px solid var(--nd-line); border-radius: 12px; box-shadow: none; }
-#page-overview .card-header h3 { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: var(--nd-t1); }
+#page-overview .card { border: 1px solid var(--nd-line); border-radius: 18px; box-shadow: none; }
+#page-overview .card-header h3 { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; color: var(--nd-t1); }
 #page-overview .card-header h3 .icn { color: var(--nd-t2); }
 #page-overview .data-table th { background: var(--nd-fill); color: var(--nd-t3); font-weight: 500; font-size: 12px; text-transform: none; letter-spacing: 0; border-bottom: 1px solid var(--nd-line); }
 #page-overview .data-table td { border-bottom: 1px solid var(--nd-hov); color: var(--nd-t1); font-size: 14px; }
 #page-overview .data-table tr:hover td { background: #FAFBFC; }
-#page-overview .badge { border-radius: 4px; font-size: 12px; font-weight: 400; letter-spacing: 0; }
+#page-overview .badge { border-radius: 980px; font-size: 12px; font-weight: 400; letter-spacing: 0; }
 
-/* 页内按钮：统一圆角，悬停不跳 */
-#page-overview .btn { border-radius: 8px; }
+/* 页内按钮：悬停不跳 */
 #page-overview .btn-primary:hover { transform: none; box-shadow: 0 2px 8px rgba(76, 175, 80, .35); }
 
 /* ===== 字节风格全局推广（2026-08-14）：线性图标在各类容器中的尺寸 ===== */
@@ -2822,3 +2822,7 @@ body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 .khbtns .icn { width: 12px; height: 12px; }
 .modal-title .icn, .card-header h3 .icn, .panel-header h3 .icn { width: 16px; height: 16px; color: var(--text-secondary); }
 .kimi-drawer-head .icn, .cover-head .icn, .ch1-preview-head .icn { width: 14px; height: 14px; }
+
+/* Apple 排版质感：标题层级（SF Pro 度量：600 字重 + 受控负字距） */
+.card-header h3, .modal-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+h2 { letter-spacing: -0.015em; }
