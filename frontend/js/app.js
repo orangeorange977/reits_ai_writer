@@ -2512,6 +2512,8 @@ function _ensureKimiDrawer() {
       body.kimi-resizing{user-select:none;cursor:col-resize;}
       body.kimi-open{transition:padding-right .2s;}
       body.kimi-resizing{transition:none;}
+      /* Kimi 助手打开时，依据预览抽屉整体左移让位，避免两者叠盖、中间留空白带 */
+      body.kimi-open .mat-preview-overlay{right:var(--kimi-w,0px);transition:right .2s;}
       @media (max-width:560px){.kimi-drawer{width:100vw !important;} body.kimi-open{padding-right:0 !important;}
         .kimi-resize,.kimi-grip{display:none;}}
     `;
@@ -2592,6 +2594,7 @@ function _ensureKimiDrawer() {
         _kimiWidth = w;
         _kimiDrawer.style.width = w + 'px';
         document.body.style.paddingRight = w + 'px';
+        document.body.style.setProperty('--kimi-w', w + 'px');
     };
     const onUp = () => {
         if (!dragging) return;
@@ -2659,6 +2662,7 @@ function openKimiChat() {
     _kimiDrawer.style.display = 'flex';
     document.body.classList.add('kimi-open');
     document.body.style.paddingRight = w + 'px';
+    document.body.style.setProperty('--kimi-w', w + 'px');
     if (_kimiInputH) document.getElementById('kimiInput').style.height = _kimiInputH + 'px';
     document.getElementById('kimiInput').focus();
 }
@@ -2667,6 +2671,7 @@ function closeKimiChat() {
     if (_kimiDrawer) _kimiDrawer.style.display = 'none';
     document.body.classList.remove('kimi-open');
     document.body.style.paddingRight = '';
+    document.body.style.removeProperty('--kimi-w');
 }
 
 function _kimiRenderMsgs() {
