@@ -649,8 +649,11 @@ def resolve_material_ref(name: str, mat_root: Path):
     return None
 
 
-def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> str:
+def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "",
+              max_chars: int = None, default_ocr_pages: int = None) -> str:
     import fitz  # PyMuPDF
+    mc = int(max_chars) if max_chars else _MAX_TEXT              # 文字上限（AI 助手会传更大）
+    dop = int(default_ocr_pages) if default_ocr_pages else _MAX_OCR_PAGES  # 未指定页时 OCR 几页
     doc = fitz.open(str(p))
     n_pages = doc.page_count
     has_text = any(doc[i].get_text().strip() for i in range(min(n_pages, 6)))
@@ -665,7 +668,7 @@ def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> st
             parts = [f"［第{j + 1}页］\n{_reflow_text(doc[j].get_text())}" for j in range(hit, hi)]
             doc.close()
             head = f"（已在第 {hit + 1} 页定位到“{anchor}”，返回第 {hit + 1}–{hi} 页文字。）\n"
-            return (head + "\n".join(parts)).strip()[:_MAX_TEXT]
+            return (head + "\n".join(parts)).strip()[:mc]
 
     want = _parse_pages(pages, n_pages)          # 指定的 0-based 页索引（空=未指定）
     scan_idxs = want if want else list(range(n_pages))
@@ -676,7 +679,7 @@ def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> st
         t = _reflow_text(doc[i].get_text())
         parts.append(t)
         total += len(t)
-        if total >= _MAX_TEXT:
+        if total >= mc:
             break
     text = "\n".join(parts).strip()
     if text:
@@ -685,13 +688,13 @@ def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> st
         if anchor:  # 有文字层但没搜到锚点：多半是用词不同（如无“合并”二字）
             note = (f"（注：文字层里没找到“{anchor}”，可能用词不同/无“合并”二字；"
                     f"以下为{'指定页' if want else '全文'}文字，请自行辨认三张报表。）\n")
-        return (note + text)[:_MAX_TEXT]
+        return (note + text)[:mc]
 
     # ③ 没有文字层 → 扫描件：只把“真正需要的少数几页”转图片做 OCR，绝不整篇 OCR
     if want:
         ocr_idxs = want[:_MAX_OCR_PAGES_EXPLICIT]
     else:
-        ocr_idxs = list(range(min(n_pages, _MAX_OCR_PAGES)))
+        ocr_idxs = list(range(min(n_pages, dop)))
     images = [doc[i].get_pixmap(dpi=_OCR_DPI).tobytes("png") for i in ocr_idxs]
     doc.close()
     ocr = _ocr(images, query)
@@ -721,21 +724,23 @@ def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "") -> st
         rest = sorted(i + 1 for i in want[_MAX_OCR_PAGES_EXPLICIT:])
         notes.append(f"你请求的页较多，扫描件单次最多识别 {_MAX_OCR_PAGES_EXPLICIT} 页，已识别第 {done} 页；"
                      f"其余第 {rest} 页请再调一次 pages 读取（分批小步读，别一次要太多页）。")
-    elif not want and n_pages > _MAX_OCR_PAGES:
+    elif not want and n_pages > dop:
         notes.append(f"该文件共 {n_pages} 页，为控成本仅识别了第 {done} 页；如需其它页请用 pages 指定。")
     note = ("（注：" + " ".join(notes) + "）\n") if notes else ""
-    return ("【以下为扫描件的视觉识别结果，供参考，请核对】\n" + note + _reflow_text(ocr)).strip()[:_MAX_TEXT]
+    return ("【以下为扫描件的视觉识别结果，供参考，请核对】\n" + note + _reflow_text(ocr)).strip()[:mc]
 
 
-def _read_docx(p: Path) -> str:
+def _read_docx(p: Path, max_chars: int = None) -> str:
     import docx
+    mc = int(max_chars) if max_chars else _MAX_TEXT
     d = docx.Document(str(p))
     text = "\n".join(par.text for par in d.paragraphs)
-    return text[:_MAX_TEXT] if text.strip() else "（Word 文档无文字内容）"
+    return text[:mc] if text.strip() else "（Word 文档无文字内容）"
 
 
-def _read_xlsx(p: Path) -> str:
+def _read_xlsx(p: Path, max_chars: int = None) -> str:
     import openpyxl
+    mc = int(max_chars) if max_chars else _MAX_TEXT
     wb = openpyxl.load_workbook(str(p), read_only=True, data_only=True)
     out, total = [], 0
     for ws in wb.worksheets:
@@ -746,16 +751,17 @@ def _read_xlsx(p: Path) -> str:
                 line = "\t".join(cells)
                 out.append(line)
                 total += len(line)
-        if total >= _MAX_TEXT:
+        if total >= mc:
             break
     wb.close()
-    return "\n".join(out)[:_MAX_TEXT]
+    return "\n".join(out)[:mc]
 
 
-def _read_pptx(p: Path) -> str:
+def _read_pptx(p: Path, max_chars: int = None) -> str:
     """从 .pptx 里按幻灯片顺序抽取文字（不依赖 python-pptx，直接解压读 slideN.xml）。"""
     import zipfile
     from html import unescape
+    mc = int(max_chars) if max_chars else _MAX_TEXT
     out, total = [], 0
     with zipfile.ZipFile(str(p)) as z:
         slides = sorted(
@@ -773,26 +779,30 @@ def _read_pptx(p: Path) -> str:
                 block = f"【第{i}页】\n" + "\n".join(lines)
                 out.append(block)
                 total += len(block)
-                if total >= _MAX_TEXT:
+                if total >= mc:
                     break
     text = "\n\n".join(out).strip()
-    return text[:_MAX_TEXT] if text else "（PPT 未提取到文字）"
+    return text[:mc] if text else "（PPT 未提取到文字）"
 
 
-def extract_file_text(p: Path, query: str = "") -> str:
-    """通用文件取文本：按扩展名分派（PDF/Word/Excel/PPT/文本/图片OCR）。用于 AI 辅助读取用户上传的素材。"""
+def extract_file_text(p: Path, query: str = "", max_chars: int = None,
+                      ocr_pages: int = None) -> str:
+    """通用文件取文本：按扩展名分派（PDF/Word/Excel/PPT/文本/图片OCR）。用于 AI 辅助读取用户上传的素材。
+    max_chars：单文件最多返回多少字（AI 助手会传更大值放宽限制）。
+    ocr_pages：扫描件默认识别多少页（AI 助手放大；视觉侧已分批，安全）。"""
     ext = p.suffix.lower()
     try:
         if ext == ".pdf":
-            return _read_pdf(p, query=query)
+            return _read_pdf(p, query=query, max_chars=max_chars, default_ocr_pages=ocr_pages)
         if ext == ".docx":
-            return _read_docx(p)
+            return _read_docx(p, max_chars=max_chars)
         if ext in (".xlsx", ".xlsm"):
-            return _read_xlsx(p)
+            return _read_xlsx(p, max_chars=max_chars)
         if ext == ".pptx":
-            return _read_pptx(p)
+            return _read_pptx(p, max_chars=max_chars)
         if ext in _TEXT_EXT:
-            return p.read_text(encoding="utf-8", errors="ignore")[:_MAX_TEXT]
+            mc = int(max_chars) if max_chars else _MAX_TEXT
+            return p.read_text(encoding="utf-8", errors="ignore")[:mc]
         if ext in _IMAGE_EXT:
             return _ocr([p.read_bytes()], query) or "（图片未识别出文字）"
         if ext in (".doc", ".ppt", ".xls"):

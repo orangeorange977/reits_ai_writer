@@ -1709,6 +1709,7 @@ async function renderChapterEditor(n) {
                 <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="insertFootnote()" title="把光标放到正文中要加脚注的位置，再点此">➕ 脚注</button>
                 <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="insertDiagram()" title="把光标放到正文中要插图的位置，再点此画框图">🖼 画图</button>
                 <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="openAIAssist()" title="先在正文里选中一段文字，再点此让AI润色/改写/扩写等">✨ AI辅助</button>
+                <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="openKimiChat()" title="打开 Kimi 助手：多轮对话，可粘贴文字/贴链接/上传文件，回复可一键插入正文">💬 Kimi 助手</button>
                 <button class="btn btn-ghost btn-sm" id="btnChapterPreviewToggle" onclick="toggleChapterPreview()">📄 ${_previewOn ? '关闭Word预览' : '开启Word预览'}</button>
                 <button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(_editorChapter)" title="自动保存后导出本章最新 Word（项目名_日期_第n章_vN）">⬇ 下载Word</button>
                     <button class="btn btn-ghost btn-sm" onclick="generateChapterDoc(_editorChapter)" title="把当前保存内容生成为新版本 Word，不触发下载">📄 生成该文档</button>
@@ -2449,6 +2450,306 @@ function _aiApply(replace) {
     range.collapse(false);  // 光标落到插入内容之后，便于连续操作
     _aiPanel.style.display = 'none';
     showToast(replace ? '已替换，记得点“保存”' : '已插入，记得点“保存”');
+}
+
+/* ============ 💬 Kimi 助手（右侧抽屉，多轮对话） ============ */
+let _kimiReady = false;
+let _kimiDrawer = null;
+let _kimiHistory = [];      // [{role:'user'|'assistant', content}]
+let _kimiRange = null;      // 打开时保存的编辑区选区（用于插入回填）
+let _kimiUseSel = false;    // 本次是否带上编辑区选中的文字
+let _kimiSelText = '';
+let _kimiWidth = null;      // 记住用户拖拽后的抽屉宽度（px），下次打开沿用
+let _kimiInputH = null;     // 记住用户拖拽后的输入框高度（px）
+
+function _kimiEsc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function _ensureKimiDrawer() {
+    if (_kimiReady) return;
+    _kimiReady = true;
+    const style = document.createElement('style');
+    style.textContent = `
+      .kimi-drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,94vw);background:#fff;
+        border-left:1px solid #e2e6ea;box-shadow:-8px 0 24px rgba(20,30,45,.12);z-index:9999;
+        display:flex;flex-direction:column;font-size:14px;}
+      .kimi-drawer-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;
+        border-bottom:1px solid #eef1f4;font-weight:600;}
+      .kimi-drawer-head .khbtns button{border:none;background:transparent;cursor:pointer;font-size:13px;color:#666;margin-left:10px;}
+      .kimi-sel{padding:6px 14px;font-size:12px;color:#2e7d32;background:#eaf6ec;border-bottom:1px solid #eef1f4;
+        display:flex;align-items:center;justify-content:space-between;gap:8px;}
+      .kimi-sel button{border:none;background:transparent;cursor:pointer;color:#888;}
+      .kimi-msgs{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
+      .kimi-empty{color:#999;font-size:13px;text-align:center;margin-top:28px;line-height:1.7;}
+      .kimi-msg{max-width:88%;padding:8px 11px;border-radius:10px;line-height:1.55;white-space:pre-wrap;word-break:break-word;}
+      .kimi-msg.user{align-self:flex-end;background:#4CAF50;color:#fff;}
+      .kimi-msg.assistant{align-self:flex-start;background:#f2f4f7;color:#1a2330;}
+      .kimi-acts{align-self:flex-start;display:flex;gap:6px;margin:-4px 0 2px;flex-wrap:wrap;}
+      .kimi-acts button{font-size:12px;border:1px solid #dfe4ea;background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;color:#333;}
+      .kimi-typing{align-self:flex-start;color:#999;font-size:13px;padding:4px 2px;}
+      .kimi-attach{padding:8px 14px;border-top:1px solid #eef1f4;background:#fafbfc;}
+      .kimi-attach .lbl{font-size:12px;color:#666;margin:4px 0 2px;}
+      .kimi-attach textarea,.kimi-attach input[type=file]{width:100%;font-size:12px;box-sizing:border-box;}
+      .kimi-attach textarea{border:1px solid #dfe4ea;border-radius:6px;padding:5px;}
+      .kimi-input-grip{height:9px;cursor:ns-resize;border-top:1px solid #eef1f4;display:flex;align-items:center;justify-content:center;background:#fafbfc;}
+      .kimi-input-grip::before{content:'';width:34px;height:3px;border-radius:2px;background:#cdd5de;}
+      .kimi-input-grip:hover::before{background:#4CAF50;}
+      .kimi-input-row{display:flex;align-items:flex-end;gap:8px;padding:10px 14px;}
+      .kimi-input-row textarea{flex:1;resize:none;min-height:40px;max-height:none;padding:8px;border:1px solid #dfe4ea;border-radius:8px;font-size:14px;box-sizing:border-box;}
+      body.kimi-vresizing{user-select:none;cursor:ns-resize;}
+      .kimi-iconbtn{border:1px solid #dfe4ea;background:#fff;border-radius:8px;padding:8px 10px;cursor:pointer;
+        color:#555;line-height:0;display:flex;align-items:center;justify-content:center;}
+      .kimi-iconbtn:hover{background:#eaf6ec;color:#388E3C;border-color:#cde5cf;}
+      /* 左边整条都可抓着拖动改宽度；左上角露出一个圆弧手柄作为提示 */
+      .kimi-resize{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:col-resize;z-index:2;}
+      .kimi-resize:hover{background:rgba(76,175,80,.12);}
+      .kimi-grip{position:absolute;left:-9px;top:16px;width:18px;height:40px;border-radius:12px 0 0 12px;
+        background:#4CAF50;cursor:col-resize;z-index:3;display:flex;align-items:center;justify-content:center;
+        box-shadow:-2px 0 6px rgba(20,30,45,.18);}
+      .kimi-grip::before{content:'';width:6px;height:16px;
+        border-left:2px solid rgba(255,255,255,.85);border-right:2px solid rgba(255,255,255,.85);}
+      body.kimi-resizing{user-select:none;cursor:col-resize;}
+      body.kimi-open{transition:padding-right .2s;}
+      body.kimi-resizing{transition:none;}
+      @media (max-width:560px){.kimi-drawer{width:100vw !important;} body.kimi-open{padding-right:0 !important;}
+        .kimi-resize,.kimi-grip{display:none;}}
+    `;
+    document.head.appendChild(style);
+
+    const d = document.createElement('div');
+    d.className = 'kimi-drawer';
+    d.style.display = 'none';
+    d.innerHTML = `
+      <div class="kimi-resize" id="kimiResize" title="拖动改变宽度"></div>
+      <div class="kimi-grip" id="kimiGrip" title="拖动改变宽度"></div>
+      <div class="kimi-drawer-head">
+        <span>💬 Kimi 助手</span>
+        <span class="khbtns">
+          <button id="kimiNewChat" title="清空，开一个新对话">🗑 新对话</button>
+          <button id="kimiClose" title="关闭">✕</button>
+        </span>
+      </div>
+      <div class="kimi-sel" id="kimiSelChip" style="display:none;"></div>
+      <div class="kimi-msgs" id="kimiMsgs"></div>
+      <div class="kimi-attach" id="kimiAttach" style="display:none;">
+        <div class="lbl">粘贴文字</div>
+        <textarea id="kimiPasted" rows="2" placeholder="把参考资料粘贴到这里…"></textarea>
+        <div class="lbl">网页链接（每行一个）</div>
+        <textarea id="kimiUrls" rows="1" placeholder="https://…"></textarea>
+        <div class="lbl">上传文件（Word/PPT/Excel/PDF/图片，可多选）</div>
+        <input type="file" id="kimiFiles" multiple accept=".doc,.docx,.ppt,.pptx,.xls,.xlsx,.pdf,.png,.jpg,.jpeg,.txt,.md,.csv" />
+        <div id="kimiFilesList" style="font-size:12px;color:#444;margin-top:4px;"></div>
+      </div>
+      <div class="kimi-input-grip" id="kimiInputGrip" title="拖动改变输入框高度"></div>
+      <div class="kimi-input-row">
+        <button class="kimi-iconbtn" id="kimiAttachBtn" title="添加素材（粘贴文字/链接/上传文件）"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+        <textarea id="kimiInput" placeholder="问 Kimi，或让它写/改一段…（Enter 发送，Shift+Enter 换行）"></textarea>
+        <button class="btn btn-primary btn-sm" id="kimiSend">发送</button>
+      </div>`;
+    document.body.appendChild(d);
+    _kimiDrawer = d;
+
+    d.querySelector('#kimiClose').addEventListener('click', closeKimiChat);
+    d.querySelector('#kimiNewChat').addEventListener('click', () => {
+        _kimiHistory = []; _kimiRenderMsgs();
+    });
+    d.querySelector('#kimiAttachBtn').addEventListener('click', () => {
+        const a = document.getElementById('kimiAttach');
+        a.style.display = a.style.display === 'none' ? 'block' : 'none';
+    });
+    d.querySelector('#kimiFiles').addEventListener('change', (e) => {
+        const names = Array.from(e.target.files || []).map(f => f.name);
+        document.getElementById('kimiFilesList').textContent =
+            names.length ? ('已选 ' + names.length + ' 个：' + names.join('、')) : '';
+    });
+    d.querySelector('#kimiSend').addEventListener('click', _kimiSend);
+    d.querySelector('#kimiInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _kimiSend(); }
+    });
+    // 消息区的“替换/插入/复制”按钮（事件委托）
+    d.querySelector('#kimiMsgs').addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-act]');
+        if (!b) return;
+        const msg = _kimiHistory[parseInt(b.dataset.i, 10)];
+        if (msg) _kimiInsert(msg.content, b.dataset.act);
+    });
+
+    // 拖拽左边缘 / 左上角圆弧手柄，改变抽屉宽度（向左拖变宽，向右拖变窄）
+    let dragging = false, startX = 0, startW = 0;
+    const onDown = (e) => {
+        dragging = true;
+        startX = e.clientX;
+        startW = _kimiDrawer.getBoundingClientRect().width;
+        document.body.classList.add('kimi-resizing');
+        e.preventDefault();
+    };
+    const onMove = (e) => {
+        if (!dragging) return;
+        let w = startW + (startX - e.clientX);          // 往左拖 clientX 变小 → 变宽
+        const maxW = Math.round(window.innerWidth * 0.94);
+        w = Math.max(320, Math.min(w, maxW));
+        _kimiWidth = w;
+        _kimiDrawer.style.width = w + 'px';
+        document.body.style.paddingRight = w + 'px';
+    };
+    const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.classList.remove('kimi-resizing');
+    };
+    d.querySelector('#kimiResize').addEventListener('mousedown', onDown);
+    d.querySelector('#kimiGrip').addEventListener('mousedown', onDown);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+
+    // 拖拽输入框顶部把手，改变输入框高度（往上拖变高、往下拖变矮）
+    const ta = d.querySelector('#kimiInput');
+    let vDrag = false, vStartY = 0, vStartH = 0;
+    d.querySelector('#kimiInputGrip').addEventListener('mousedown', (e) => {
+        vDrag = true;
+        vStartY = e.clientY;
+        vStartH = ta.getBoundingClientRect().height;
+        document.body.classList.add('kimi-vresizing');
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (!vDrag) return;
+        let h = vStartH + (vStartY - e.clientY);          // 往上拖 clientY 变小 → 变高
+        const maxH = Math.round(window.innerHeight * 0.6);
+        h = Math.max(40, Math.min(h, maxH));
+        _kimiInputH = h;
+        ta.style.height = h + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+        if (!vDrag) return;
+        vDrag = false;
+        document.body.classList.remove('kimi-vresizing');
+    });
+}
+
+function openKimiChat() {
+    _ensureKimiDrawer();
+    // 捕获编辑区选区（用于把回复插回原处），并记录选中的文字作为可选上下文
+    let rng = null;
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount) {
+        let node = sel.getRangeAt(0).startContainer;
+        if (node && node.nodeType === 3) node = node.parentElement;
+        if (node && node.closest && node.closest('.doc-editor')) rng = sel.getRangeAt(0).cloneRange();
+    }
+    if (!rng && _lastEditorRange) rng = _lastEditorRange.cloneRange();
+    _kimiRange = rng;
+    _kimiSelText = (rng && !rng.collapsed) ? rng.toString().trim() : '';
+    _kimiUseSel = !!_kimiSelText;
+    const chip = document.getElementById('kimiSelChip');
+    if (_kimiSelText) {
+        const short = _kimiSelText.length > 40 ? _kimiSelText.slice(0, 40) + '…' : _kimiSelText;
+        chip.style.display = 'flex';
+        chip.innerHTML = `<span>已带上选中的 ${_kimiSelText.length} 字：${_kimiEsc(short)}</span><button id="kimiSelX" title="不带">✕</button>`;
+        chip.querySelector('#kimiSelX').addEventListener('click', () => { _kimiUseSel = false; chip.style.display = 'none'; });
+    } else {
+        chip.style.display = 'none';
+    }
+    _kimiRenderMsgs();
+    // 宽度：优先用用户上次拖拽后的宽度，否则默认 min(440, 94vw)
+    const maxW = Math.round(window.innerWidth * 0.94);
+    const w = Math.max(320, Math.min(_kimiWidth || Math.min(440, maxW), maxW));
+    _kimiDrawer.style.width = w + 'px';
+    _kimiDrawer.style.display = 'flex';
+    document.body.classList.add('kimi-open');
+    document.body.style.paddingRight = w + 'px';
+    if (_kimiInputH) document.getElementById('kimiInput').style.height = _kimiInputH + 'px';
+    document.getElementById('kimiInput').focus();
+}
+
+function closeKimiChat() {
+    if (_kimiDrawer) _kimiDrawer.style.display = 'none';
+    document.body.classList.remove('kimi-open');
+    document.body.style.paddingRight = '';
+}
+
+function _kimiRenderMsgs() {
+    const box = document.getElementById('kimiMsgs');
+    if (!box) return;
+    if (!_kimiHistory.length) {
+        box.innerHTML = '<div class="kimi-empty">和 Kimi 聊聊 —— 问问题，或让它写 / 改一段申报材料。<br>点 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> 可粘贴文字、贴链接、上传文件作参考。</div>';
+        return;
+    }
+    box.innerHTML = _kimiHistory.map((m, i) => {
+        if (m.role === 'user') return `<div class="kimi-msg user">${_kimiEsc(m.content)}</div>`;
+        return `<div class="kimi-msg assistant">${_kimiEsc(m.content)}</div>` +
+            `<div class="kimi-acts">` +
+            `<button data-act="replace" data-i="${i}">替换选区</button>` +
+            `<button data-act="insert" data-i="${i}">插入到光标</button>` +
+            `<button data-act="copy" data-i="${i}">复制</button></div>`;
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+}
+
+async function _kimiSend() {
+    const input = document.getElementById('kimiInput');
+    const text = input.value.trim();
+    const pasted = (document.getElementById('kimiPasted').value || '').trim();
+    const urls = (document.getElementById('kimiUrls').value || '').trim();
+    const fileInput = document.getElementById('kimiFiles');
+    const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
+    const hasAttach = !!(pasted || urls || files.length);
+    if (!text && !hasAttach) { showToast('请输入内容', 'warning'); return; }
+
+    // 展示的用户气泡：用户输入 + 附件提示（素材本身不进历史，避免越滚越大）
+    const shown = text + (hasAttach ? (text ? '\n' : '') + '📎 已附素材' : '');
+    _kimiHistory.push({ role: 'user', content: shown });
+    _kimiRenderMsgs();
+    input.value = '';
+
+    const box = document.getElementById('kimiMsgs');
+    const typing = document.createElement('div');
+    typing.className = 'kimi-typing'; typing.textContent = 'Kimi 正在思考…';
+    box.appendChild(typing); box.scrollTop = box.scrollHeight;
+    const sendBtn = document.getElementById('kimiSend');
+    sendBtn.disabled = true;
+
+    try {
+        const fd = new FormData();
+        // 历史只发到本轮用户消息之前（本轮消息通过 message 单独带，附件另发）
+        fd.append('history', JSON.stringify(_kimiHistory.slice(0, -1)));
+        fd.append('message', text);
+        if (_kimiUseSel && _kimiSelText) fd.append('selected_text', _kimiSelText);
+        fd.append('pasted_text', pasted);
+        fd.append('urls', urls);
+        files.forEach(f => fd.append('files', f, f.name));
+        const r = await API.aiChat(fd);
+        _kimiHistory.push({ role: 'assistant', content: r.reply || '(空回复)' });
+        // 附件是一次性的，用过即清
+        document.getElementById('kimiPasted').value = '';
+        document.getElementById('kimiUrls').value = '';
+        fileInput.value = ''; document.getElementById('kimiFilesList').textContent = '';
+    } catch (e) {
+        _kimiHistory.push({ role: 'assistant', content: '（出错了：' + (e.message || e) + '）' });
+    } finally {
+        sendBtn.disabled = false;
+        _kimiRenderMsgs();
+    }
+}
+
+function _kimiInsert(text, mode) {
+    text = String(text || '').trim();
+    if (!text) { showToast('没有可用内容', 'warning'); return; }
+    if (mode === 'copy') {
+        navigator.clipboard && navigator.clipboard.writeText(text);
+        showToast('已复制'); return;
+    }
+    if (!_kimiRange) {
+        showToast('请先回到正文里选中一段文字（或点一下放置光标），再打开助手', 'warning');
+        return;
+    }
+    const range = _kimiRange;
+    if (mode === 'replace' && !range.collapsed) range.deleteContents();
+    else range.collapse(false);
+    range.insertNode(_textToFragment(text));
+    range.collapse(false);
+    showToast(mode === 'replace' ? '已替换，记得点“保存”' : '已插入，记得点“保存”');
 }
 
 /** 在当前光标处插入脚注 */

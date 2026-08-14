@@ -5,6 +5,7 @@ POST /skills/ch1/run     立即返回，后台开始跑
 GET  /skills/ch1/status  前端轮询，拿到 running / done(+data) / error
 """
 import asyncio
+import json
 import logging
 import re
 import sys
@@ -252,6 +253,111 @@ async def ai_compose(
     except Exception as e:
         logger.error(f"AI综合写作失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"AI处理失败：{e}")
+
+
+# ===== Kimi 聊天入口（多轮对话，前端“Kimi 助手”抽屉）=====
+_CHAT_SRC_CAP = 50000     # 每个素材最多取多少字（比一次性辅助宽松很多）
+_CHAT_OCR_PAGES = 12      # 上传扫描件默认识别多少页（视觉侧已分批，安全放大）
+_CHAT_CTX_CAP = 180000    # 历史+本轮合计字数上限，超了从最早的历史开始裁，防止超出模型窗口
+
+
+def _chat_system_prompt() -> str:
+    return (
+        f"你是{pack_service.material_label()}的中文写作助手兼顾问。可以自由对话、回答问题、按用户要求撰写或修改"
+        "申报材料相关内容。用户可能会附上【编辑区选中的文字】和【素材】（粘贴的文字/网页链接/上传文件的内容）作为参考，"
+        "请结合它们作答。语言用中文、正式专业；当用户要“写一段/改一段”正文时，直接给出可用的正文本身，"
+        "不要加“以下是”之类前后缀、不要用代码块包裹。素材仅作依据，甄别提炼、不要编造其中没有的关键数据。"
+    )
+
+
+def _trim_history(msgs: list, cap: int) -> list:
+    """按字数上限裁剪：保留 system(第0条) 和最后一条用户消息，超了就从最早的历史往后丢。"""
+    def size(ms):
+        return sum(len(m.get("content", "")) for m in ms)
+    if size(msgs) <= cap or len(msgs) <= 3:
+        return msgs
+    head, tail = msgs[:1], msgs[-1:]        # system + 本轮用户消息
+    middle = msgs[1:-1]                      # 历史
+    while middle and size(head + middle + tail) > cap:
+        middle = middle[1:]                  # 丢最早的一条历史
+    return head + middle + tail
+
+
+@router.post("/ai-chat")
+async def ai_chat(
+    history: str = Form("[]"),          # 之前的对话 [{role, content}]（JSON 字符串）
+    message: str = Form(""),            # 这轮用户输入
+    selected_text: str = Form(""),      # 编辑区选中的文字（可空，作参考上下文）
+    pasted_text: str = Form(""),
+    urls: str = Form(""),
+    files: list[UploadFile] = File(default=None),
+):
+    """Kimi 聊天入口：带着历史对话 + 本轮消息 + 本轮附件（粘贴/链接/上传文件）调 Kimi，返回回复。"""
+    msg_text = (message or "").strip()
+    has_attach = bool(pasted_text.strip() or urls.strip() or (files or []))
+    if not msg_text and not has_attach:
+        raise HTTPException(status_code=400, detail="请输入内容")
+    try:
+        hist = json.loads(history or "[]")
+        if not isinstance(hist, list):
+            hist = []
+    except Exception:
+        hist = []
+    # 在异步上下文里先把上传文件读成字节（UploadFile 不能带进线程后再读）
+    uploaded = []
+    for f in (files or []):
+        try:
+            uploaded.append((f.filename or "上传文件", await f.read()))
+        finally:
+            await f.close()
+
+    def _do():
+        import os
+        import tempfile
+        mat = []
+        if pasted_text.strip():
+            mat.append("【素材：粘贴的文字】\n" + pasted_text.strip()[:_CHAT_SRC_CAP])
+        for line in (urls or "").splitlines():
+            u = line.strip()
+            if u:
+                mat.append(f"【素材：网页 {u}】\n" + materials_client.fetch_url_text(u, limit=_CHAT_SRC_CAP))
+        for fname, data in uploaded:
+            suffix = os.path.splitext(fname)[1] or ".bin"
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            try:
+                tmp.write(data)
+                tmp.close()
+                txt = materials_client.extract_file_text(
+                    Path(tmp.name), query=msg_text,
+                    max_chars=_CHAT_SRC_CAP, ocr_pages=_CHAT_OCR_PAGES)
+                mat.append(f"【素材：文件 {fname}】\n{txt}")
+            finally:
+                try:
+                    os.unlink(tmp.name)
+                except OSError:
+                    pass
+
+        user_content = msg_text or "（见下方素材，请按需处理）"
+        if selected_text.strip():
+            user_content += "\n\n【编辑区选中的文字】\n" + selected_text.strip()
+        if mat:
+            user_content += "\n\n" + "\n\n".join(mat)
+
+        msgs = [{"role": "system", "content": _chat_system_prompt()}]
+        for h in hist:
+            role = h.get("role")
+            if role in ("user", "assistant"):
+                msgs.append({"role": role, "content": str(h.get("content", ""))})
+        msgs.append({"role": "user", "content": user_content})
+        msgs = _trim_history(msgs, _CHAT_CTX_CAP)
+        return chat(msgs, model=skill_runner.get_selected_model(), temperature=1.0)
+
+    try:
+        reply = await asyncio.to_thread(_do)
+        return {"status": "ok", "reply": (reply or "").strip()}
+    except Exception as e:
+        logger.error(f"Kimi 聊天失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Kimi 处理失败：{e}")
 
 
 @router.get("/diagram-templates")

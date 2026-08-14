@@ -475,6 +475,24 @@ const API = {
     },
 
     /**
+     * Kimi 聊天入口（多轮对话）：formData 里带 history/message/selected_text/pasted_text/urls/files
+     * @param {FormData} formData
+     * @returns {Promise<object>} {status, reply}
+     */
+    async aiChat(formData) {
+        // multipart 上传：不要手动设 Content-Type，交给浏览器带 boundary
+        const resp = await fetch(`${API_BASE}/skills/ai-chat`, {
+            method: 'POST', body: formData, headers: AuthToken.headers(),
+        });
+        if (resp.status === 401) { handleUnauthorized(); throw new Error('未登录或登录已过期'); }
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `请求失败: ${resp.status}`);
+        }
+        return resp.json();
+    },
+
+    /**
      * 获取画图模板列表
      * @returns {Promise<Array>} [{name, label, thumb}]
      */
