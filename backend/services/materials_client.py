@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 _TEXT_EXT = {".txt", ".md", ".csv", ".json"}
 _IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
-_MAX_TEXT = 20000     # 单个文档最多返回的字符数（避免撑爆上下文）
+_MAX_TEXT = 10000     # 单个文档最多返回的字符数（避免撑爆上下文；2026-08-13 由 20000 降半以控制多轮工具调用的累计 token 成本）
 _MAX_FILES = 300      # list 最多返回的文件数
 # 扫描件 OCR 控成本/时延：默认（未指定页码）只识别很少几页——大文件（审计报告等）绝不整篇 OCR，
 # 否则一次视觉请求塞十几张图会超时/触发过载。需要更多页时由调用方用 pages 参数点名要。

@@ -12,6 +12,12 @@ _APP_DIR = str(Path(__file__).parent.parent)
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
 
+# 业务日志开到 INFO：工具调用/生成过程等核实线索默认可见（默认 WARNING 会吞掉）
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
 # 确保 fastapi._compat模块可用（处理版本混乱问题）
 try:
     import site

@@ -950,7 +950,7 @@ def _fold_enumerated_sections(sections: list, subtitles: list = None) -> list:
 
 def get_chapter_content(n: int, subtitles: list = None,
                         template_tables: dict = None, table_start: int = 1,
-                        project_id: str = None) -> dict:
+                        project_id: str = None, foreign_titles: list = None) -> dict:
     """给网页编辑区：每个子标题一块可读富文本。
 
     subtitles（来自官方模板的本章小标题）如果给出，则以它为权威骨架：按模板顺序铺出
@@ -969,6 +969,15 @@ def get_chapter_content(n: int, subtitles: list = None,
     refs = loaded.get("refs", []) or []  # 本章生成时参考的材料清单（业务化展示）
     # 兜底：把误升级成 section 的编号项（“1.奥飞数据”等）折回其所属的模板小标题，锁定小标题结构
     saved = _fold_enumerated_sections(saved, subtitles)
+    # 串章修复：历史上前端切章竞态曾把别章编辑区误存进本章（目录里混入他章小标题）。
+    # 小标题精确等于“其他章节模板小标题”的 section 必是串章数据，剔除后本章自己的
+    # 小标题会在下面合并时按模板顺序补回空骨架，目录立即恢复正常。
+    if foreign_titles and saved:
+        ft = {(t or "").strip() for t in foreign_titles}
+        kept = [s for s in saved if (s.get("title") or "").strip() not in ft]
+        if len(kept) != len(saved):
+            logger.warning(f"ch{n} 剔除 {len(saved) - len(kept)} 个属于其他章节的小标题（串章误存数据修复）")
+            saved = kept
     # 财务表勾稽检查：只提示不阻断，失败时返回空列表（不影响预览）
     checks = table_check.check_sections(saved)
     # 上次生成不完整时的业务提示（重新生成成功后自动消失）
@@ -1015,9 +1024,19 @@ def get_chapter_structured(n: int, project_id: str = None) -> list:
 
 
 def save_chapter_content(n: int, html_sections: list, project_id: str = None,
-                         pack_id: str = None) -> None:
+                         pack_id: str = None, expected_subtitles: list = None) -> None:
     """网页保存：把编辑区 HTML 转回结构化 JSON（有序块）并落盘。
-    上次生成记录的参考材料清单（refs）原样保留，不因人手编辑而丢失。"""
+    上次生成记录的参考材料清单（refs）原样保留，不因人手编辑而丢失。
+
+    expected_subtitles（本章模板小标题）给出时做串章护栏：提交的小标题与本章模板小标题
+    毫无交集，说明是前端切章渲染空窗期把别章编辑区误存到本章（竞态），丢弃本次保存、
+    保护本章已有数据不被覆盖写坏。"""
+    if expected_subtitles:
+        tpl_titles = {(t or "").strip() for t in expected_subtitles}
+        got = {(s.get("title") or "").strip() for s in (html_sections or [])}
+        if tpl_titles and got and not (got & tpl_titles):
+            logger.warning(f"ch{n} 保存被拦截：提交小标题 {sorted(got)} 与本章模板小标题无交集，疑似跨章误存")
+            return
     title = chapters_for(pack_id).get(n, {}).get("title", "")
     structured = _html_sections_to_structured(html_sections, title)
     prev_refs = _load_json(n, project_id).get("refs")
@@ -1485,6 +1504,28 @@ def chapter_subtitles(n: int, template_path: str, pack_id: str = None) -> list:
     except Exception as e:
         logger.warning(f"读取第{n}章模板小标题失败: {e}")
         return []
+
+
+_ALL_SUBS_CACHE: dict = {}
+
+
+def all_chapters_subtitles(template_path: str, pack_id: str = None) -> dict:
+    """一次解析官方模板各章小标题 {章号: [小标题]}（按模板 mtime 缓存，重复调用零开销）。
+    供识别“某章已存数据里混入的他章小标题”（串章误存修复）用。"""
+    if not template_path:
+        return {}
+    try:
+        mtime = Path(template_path).stat().st_mtime
+    except OSError:
+        mtime = 0
+    key = (str(template_path), mtime, pack_id or "")
+    hit = _ALL_SUBS_CACHE.get(key)
+    if hit is not None:
+        return hit
+    out = {n: chapter_subtitles(n, template_path, pack_id)
+           for n in chapters_for(pack_id)}
+    _ALL_SUBS_CACHE[key] = out
+    return out
 
 
 def chapter_tables(n: int, template_path: str, pack_id: str = None) -> dict:

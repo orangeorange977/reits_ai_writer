@@ -68,6 +68,9 @@
     /* 侧边栏宽度 */
     --sidebar-width: 220px;
 
+    /* 依据预览右侧抽屉宽度 */
+    --drawer-w: min(720px, 55vw);
+
     /* 字体 */
     --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
@@ -108,6 +111,7 @@ body {
     left: 0;
     top: 0;
     z-index: 100;
+    transition: width 0.25s ease;
 }
 
 .sidebar-logo {
@@ -207,7 +211,46 @@ body {
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
+    transition: margin-right 0.3s ease, margin-left 0.25s ease;
 }
+
+/* 依据预览抽屉打开时，主内容区让出右侧空间（左右并列、各自滚动） */
+body.mat-drawer-open .main {
+    margin-right: var(--drawer-w);
+}
+
+/* ===== 侧栏一键收起 ===== */
+.sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin-right: 6px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+}
+.sidebar-toggle:hover {
+    background: var(--bg-active);
+    color: var(--primary);
+}
+.sidebar-toggle svg { transition: transform 0.25s ease; }
+body.sidebar-collapsed .sidebar { width: 68px; }
+body.sidebar-collapsed .main { margin-left: 68px; }
+body.sidebar-collapsed .logo-text,
+body.sidebar-collapsed .nav-text,
+body.sidebar-collapsed .version-info { display: none; }
+body.sidebar-collapsed .sidebar-logo { justify-content: center; padding: 20px 8px; }
+body.sidebar-collapsed .nav-item { justify-content: center; gap: 0; padding: 12px 0; }
+body.sidebar-collapsed .sidebar-footer { padding: 12px 10px; }
+body.sidebar-collapsed .sidebar-footer #btnLogout { font-size: 0 !important; }
+body.sidebar-collapsed .sidebar-footer #btnLogout::after { content: '⏻'; font-size: 14px; }
+body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 
 /* ===== 顶部栏 ===== */
 .topbar {
@@ -2992,25 +3035,33 @@ body {
     word-break: break-all;
 }
 
+/* 依据预览：右侧抽屉面板（不遮挡正文，左右各自独立滚动） */
 .mat-preview-overlay {
     position: fixed;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--drawer-w);
     z-index: 1100;
-    background: rgba(15, 30, 20, 0.55);
+    background: transparent;
     display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 4vh 4vw;
+    padding: 0;
 }
 .mat-preview-box {
     background: var(--bg-surface);
-    border-radius: 12px;
-    width: min(860px, 100%);
-    max-height: 88vh;
+    border-radius: 14px 0 0 14px;
+    width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    border-left: 1px solid var(--border);
+    box-shadow: -12px 0 32px rgba(43, 39, 36, 0.18);
     overflow: hidden;
+    animation: drawerIn 0.28s ease;
+}
+@keyframes drawerIn {
+    from { transform: translateX(48px); opacity: 0.4; }
+    to { transform: none; opacity: 1; }
 }
 .mat-preview-head {
     display: flex;

@@ -455,6 +455,7 @@ async function openMaterialPreview(path, quote, page) {
         document.body.appendChild(modal);
     }
     modal.style.display = 'flex';
+    document.body.classList.add('mat-drawer-open');  // 主内容区让位，左右并列各自滚动
     _matState = { path, quote, page: page || 0, mode: /\.pdf$/i.test(path || '') ? 'pages' : 'text', pagesState: null };
     const toggle = document.getElementById('matPreviewToggle');
     if (toggle) {
@@ -705,6 +706,7 @@ async function _renderTextPreview() {
 function closeMaterialPreview() {
     const modal = document.getElementById('matPreviewModal');
     if (modal) modal.style.display = 'none';
+    document.body.classList.remove('mat-drawer-open');
 }
 
 /** “摘要表：字段”→跳到摘要表编辑页，高亮定位到对应字段行 */
@@ -1630,6 +1632,8 @@ async function importSummaryExcel(input) {
 let _kimiTimer = null;
 let _previewOn = false;      // Word 预览默认关闭，由按钮开启
 let _editorChapter = 1;      // 当前编辑区所属章节号
+let _domChapter = null;      // 编辑区 DOM 实际展示的章节号：保存必须跟随它（切章渲染空窗期 _editorChapter 已指向新章而 DOM 还是旧章，跟错会把旧章内容串写进新章）
+let _renderSeq = 0;          // renderChapterEditor 序号：多次异步渲染交叠时只允许最新一次落 DOM，防 DOM 与章节号错配
 let _previewCache = {};      // 各章已生成的预览HTML缓存（内容没变时开关预览直接用，不重复写入）
 
 // 章节标题（与官方模板 Heading1 一字不差）
@@ -1661,6 +1665,7 @@ function toggleChapterPreview() {
  */
 async function renderChapterEditor(n) {
     _editorChapter = n;
+    const seq = ++_renderSeq;
     currentChapter = 'chapter' + n;
     const container = document.getElementById('chapterDetail');
     if (!container) return;
@@ -1670,6 +1675,7 @@ async function renderChapterEditor(n) {
     try {
         content = await API.getChapterContent(n);
     } catch (e) { /* 后端未就绪，按空处理 */ }
+    if (seq !== _renderSeq) return;   // 更新的章节渲染已接管：丢弃过期结果，避免旧 DOM 与新章节号错配导致串章保存
     // 本章已生成→同步刷新步骤条状态（兜底：覆盖跨设备/后台已生成的情况）
     if (content.source === 'ready') _markStepperDone(n);
     // 本章正在生成→显示生成中状态并接入轮询（覆盖“去看看”跳进来/切章进来的场景）
@@ -1776,6 +1782,7 @@ async function renderChapterEditor(n) {
     </div>`;
 
     container.innerHTML = html;
+    _domChapter = n;   // DOM 此刻起展示的是第 n 章：自动暂存/关页补存一律按它落盘
 
     _ensureFootnoteHandlers();
     _ensureTableToolbar();
@@ -1891,6 +1898,8 @@ function _pollChapterGeneration(n) {
  */
 /** 静默落盘编辑区内容（不弹提示、不刷预览）：手动保存/导出前自动保存/定期暂存 共用 */
 async function _persistChapter() {
+    const n = _domChapter;   // 按 DOM 实际所属章节保存（切章空窗期 _editorChapter 已切走、DOM 还是旧章，跟它会串章）
+    if (!n) return false;
     const editors = document.querySelectorAll('#chapterDetail .doc-editor');
     if (!editors.length) return false;
     const sections = Array.from(editors).map(ed => ({
@@ -1898,8 +1907,8 @@ async function _persistChapter() {
         title: ed.dataset.title || '',
         html: ed.innerHTML,
     }));
-    await API.saveChapterContent(_editorChapter, sections);
-    delete _previewCache[_editorChapter];   // 内容已改，缓存作废
+    await API.saveChapterContent(n, sections);
+    delete _previewCache[n];   // 内容已改，缓存作废
     return true;
 }
 
@@ -1950,12 +1959,14 @@ function _initAutosave() {
     }, 30000);
     const lastChance = () => {
         if (!_editorDirty) return;
+        const n = _domChapter;   // 同 _persistChapter：按 DOM 所属章节补存，防切章空窗串章
+        if (!n) return;
         const editors = document.querySelectorAll('#chapterDetail .doc-editor');
         if (!editors.length) return;
         const sections = Array.from(editors).map(ed => ({
             id: ed.dataset.secid || '', title: ed.dataset.title || '', html: ed.innerHTML,
         }));
-        fetch(`/api/skills/chapter/${_editorChapter}/save?project_id=${encodeURIComponent(currentProjectId || '')}`, {
+        fetch(`/api/skills/chapter/${n}/save?project_id=${encodeURIComponent(currentProjectId || '')}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...AuthToken.headers() },
             body: JSON.stringify({ sections }),
@@ -3155,4 +3166,15 @@ function bindGlobalEvents() {
 }
 
 // DOM加载完成后初始化
+/* 侧栏一键收起：状态存 localStorage，下次打开保持 */
+(function () {
+    const btn = document.getElementById('sidebarToggle');
+    if (!btn) return;
+    if (localStorage.getItem('reit_sidebar_collapsed') === '1') document.body.classList.add('sidebar-collapsed');
+    btn.addEventListener('click', () => {
+        const collapsed = document.body.classList.toggle('sidebar-collapsed');
+        localStorage.setItem('reit_sidebar_collapsed', collapsed ? '1' : '0');
+    });
+})();
+
 document.addEventListener('DOMContentLoaded', initApp);

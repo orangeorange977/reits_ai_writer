@@ -446,12 +446,16 @@ async def chapter_content(n: int, http_req: Request, template_path: str = "", pr
         subs = []
         tables = {}
         table_start = 1
+        foreign = []
         tpl = _resolve_template_path(template_path, pack_id)
         if tpl:
             subs = skill_runner.chapter_subtitles(n, tpl, pack_id)
             tables = skill_runner.chapter_tables(n, tpl, pack_id)
             table_start = skill_runner.chapter_table_start(n, tpl, pack_id)
-        return skill_runner.get_chapter_content(n, subs, tables, table_start, pid)
+            # 他章模板小标题集合：已存数据里命中它的 section 是串章误存，剔除修复目录
+            all_subs = skill_runner.all_chapters_subtitles(tpl, pack_id)
+            foreign = [t for m, ss in all_subs.items() if m != n for t in (ss or [])]
+        return skill_runner.get_chapter_content(n, subs, tables, table_start, pid, foreign)
 
     return await asyncio.to_thread(_do)
 
@@ -466,9 +470,12 @@ async def chapter_save(n: int, body: ChapterSaveBody, http_req: Request, project
     await _assert_project_access(project_id, _current_user_id(http_req))
     pack_id = await _project_pack_id(project_id)
     _valid_chapter(n, pack_id)
+    # 串章护栏：本章模板小标题——提交的小标题与之毫无交集时视为跨章误存、拒写
+    tpl = _resolve_template_path("", pack_id)
+    subs = await asyncio.to_thread(skill_runner.chapter_subtitles, n, tpl, pack_id) if tpl else []
     try:
         await asyncio.to_thread(
-            skill_runner.save_chapter_content, n, body.sections, project_id or None, pack_id)
+            skill_runner.save_chapter_content, n, body.sections, project_id or None, pack_id, subs)
         await touch_project_updated_at(project_id)   # 刷新项目“更新时间”
         return {"status": "ok", "message": "已保存"}
     except Exception as e:
@@ -529,6 +536,8 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
         sections = skill_runner.get_chapter_structured(n, pid)
         if not sections:
             return {"has_content": False, "html": "", "used_template": False}
+        # 串章修复：与编辑区同一剔除逻辑，他章小标题不进 Word
+        sections = _strip_foreign_sections(n, sections, pack_id)
         # JSON 健康门禁：写 Word 前清理畸形块，坏数据不再把整章预览打崩；
         # 门禁提示不缓存（内容修复后要立即消失）
         sections, gate_warnings = json_gate.check_and_clean(sections)
@@ -562,12 +571,28 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
         raise HTTPException(status_code=500, detail=f"生成预览失败：{e}")
 
 
+def _strip_foreign_sections(n: int, sections: list, pack_id) -> list:
+    """剔除已存数据里属于其他章节模板小标题的 section（串章误存修复）；
+    编辑区/预览/导出共用，保证各视图目录一致。"""
+    if not sections:
+        return sections
+    tpl = _resolve_template_path("", pack_id)
+    if not tpl:
+        return sections
+    all_subs = skill_runner.all_chapters_subtitles(tpl, pack_id)
+    ft = {(t or "").strip() for m, ss in all_subs.items() if m != n for t in (ss or [])}
+    if not ft:
+        return sections
+    return [s for s in sections if (s.get("title") or "").strip() not in ft]
+
+
 def _render_chapter_docx(n: int, pid, pack_id) -> bool:
     """把本章当前保存内容渲染进 Word 工作文件（与预览同一管线，只写文件不返回 HTML）；
     无有效内容返回 False。失败抛异常由调用方处理。"""
     sections = skill_runner.get_chapter_structured(n, pid)
     if not sections:
         return False
+    sections = _strip_foreign_sections(n, sections, pack_id)
     sections, _warns = json_gate.check_and_clean(sections)
     if not sections:
         return False
