@@ -530,6 +530,7 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
         wr = _load_web_render(pack_id)
         if tpl_resolved:
             wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"])
+            _install_cover_front(docx_path, pid)   # 规则：导出 Word 第一页=编辑好的封面（预览也同步，固化版本一致）
             html = wr.docx_to_preview_html(docx_path, cfg["title"], cfg["next"])
             # 内容变化重新渲染后固化为新的正式文档版本（项目名_日期_第n章_vN，历史保留；失败不阻断）
             skill_runner.snapshot_docx(n, pid)
@@ -569,6 +570,15 @@ def _strip_foreign_sections(n: int, sections: list, pack_id) -> list:
     return [s for s in sections if (s.get("title") or "").strip() not in ft]
 
 
+def _install_cover_front(docx_path, pid) -> None:
+    """封面置顶规则：把官方模板首页（格式文本页）替换为编辑好的封面。
+    失败不阻断导出（降级为原首页），仅记录日志。"""
+    try:
+        cover_service.install_cover_front_page(docx_path, pid)
+    except Exception as e:
+        logger.warning(f"封面置顶失败（保留官方首页）: {e}")
+
+
 def _render_chapter_docx(n: int, pid, pack_id) -> bool:
     """把本章当前保存内容渲染进 Word 工作文件（与预览同一管线，只写文件不返回 HTML）；
     无有效内容返回 False。失败抛异常由调用方处理。"""
@@ -585,6 +595,7 @@ def _render_chapter_docx(n: int, pid, pack_id) -> bool:
     tpl_resolved = _resolve_template_path("", pack_id)
     if tpl_resolved:
         wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"])
+        _install_cover_front(docx_path, pid)   # 规则：导出 Word 第一页=编辑好的封面
     else:
         wr.render_docx(sections, docx_path)
     return True

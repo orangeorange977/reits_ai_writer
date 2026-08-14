@@ -275,6 +275,56 @@ def render_cover_into(doc, project_id: str = None, add_page_break_after=True):
         doc.add_page_break()
 
 
+def has_custom_cover(project_id: str = None) -> bool:
+    """该项目是否有编辑过的封面（保存过日期/上传过 logo）。没有则导出时保留官方首页。"""
+    if _cover_config_path(project_id).exists():
+        return True
+    assets = _cover_assets_dir(project_id)
+    return assets.exists() and any(assets.iterdir())
+
+
+def install_cover_front_page(docx_path, project_id: str = None) -> bool:
+    """规则：导出 Word 的第一页必须是本项目编辑好的封面。
+    做法：官方模板首页（"…项目申报材料格式文本（2024年版）"）结束于第一个 pPr 含
+    w:sectPr 的分节段——删掉它之前的全部块，再把封面元素移到它之前（封面独占首节，
+    分节符即分页）。封面元素先在同文档尾部生成再移位，保证图片关系不丢。
+    未编辑过封面或找不到首页分节段时原样返回 False。"""
+    if not has_custom_cover(project_id):
+        return False
+    from docx import Document
+    from docx.oxml.ns import qn
+    doc = Document(str(docx_path))
+    body = doc.element.body
+    sect_p = None
+    for child in body.iterchildren():
+        if child.tag != qn("w:p"):
+            continue
+        pPr = child.find(qn("w:pPr"))
+        if pPr is not None and pPr.find(qn("w:sectPr")) is not None:
+            sect_p = child
+            break
+    if sect_p is None:
+        return False
+    # 1) 删除官方首页全部块（标题三行及前后空段），保留分节段本身
+    for child in list(body.iterchildren()):
+        if child is sect_p:
+            break
+        body.remove(child)
+    # 2) 在同文档尾部生成封面（不带尾部分页符，分节符负责翻页）
+    marker = doc.add_paragraph()
+    render_cover_into(doc, project_id, add_page_break_after=False)
+    # 3) 收集封面元素（到文档级 sectPr 为止，它是 body 末元素不能动）再整体前置
+    els = []
+    el = marker._element
+    while el is not None and el.tag != qn("w:sectPr"):
+        els.append(el)
+        el = el.getnext()
+    for e in els:
+        sect_p.addprevious(e)
+    doc.save(str(docx_path))
+    return True
+
+
 def build_cover_docx(out_path, project_id: str = None) -> str:
     """单独生成一份"只有封面"的 Word，返回路径。"""
     from docx import Document
