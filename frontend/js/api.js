@@ -456,34 +456,6 @@ const API = {
     },
 
     /**
-     * AI 辅助写作：把选中文字 + 指令交给 Kimi，返回处理后的文字
-     * @param {string} text 选中的原文（可空）
-     * @param {string} instruction 用户指令
-     * @returns {Promise<object>} {status, result}
-     */
-    async aiEdit(text, instruction) {
-        return this.post('/skills/ai-edit', { text, instruction });
-    },
-
-    /**
-     * AI 辅助写作（增强版）：指令 + 选中原文 + 素材（粘贴文字/网页链接/上传文件）→ Kimi 综合生成
-     * @param {FormData} formData 已装好 instruction/selected_text/pasted_text/urls/files 的表单
-     * @returns {Promise<object>} {status, result}
-     */
-    async aiCompose(formData) {
-        // multipart 上传：不要手动设 Content-Type，交给浏览器带 boundary
-        const resp = await fetch(`${API_BASE}/skills/ai-compose`, {
-            method: 'POST', body: formData, headers: AuthToken.headers(),
-        });
-        if (resp.status === 401) { handleUnauthorized(); throw new Error('未登录或登录已过期'); }
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `请求失败: ${resp.status}`);
-        }
-        return resp.json();
-    },
-
-    /**
      * Kimi 聊天入口（多轮对话）：formData 里带 history/message/selected_text/pasted_text/urls/files
      * @param {FormData} formData
      * @returns {Promise<object>} {status, reply}
