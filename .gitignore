@@ -17,3 +17,6 @@ server_*.log
 *.docx
 !backend/templates/official/*.docx
 !templates-packs/*/*.docx
+
+# 调试用临时脚本（不进仓库）
+.tmp_*
