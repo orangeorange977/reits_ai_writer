@@ -1,5 +1,6 @@
 # 编辑器 / 缓存 / 虚拟环境
 .vscode/
+.DS_Store
 __pycache__/
 *.pyc
 .venv/
