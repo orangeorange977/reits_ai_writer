@@ -3400,4 +3400,245 @@ function bindGlobalEvents() {
     });
 })();
 
+/* ===================== 封面编辑器 ===================== */
+let _coverReady = false;
+let _coverState = null;
+let _coverLogoUrls = {};   // role -> objectURL（无 cookie 鉴权，<img> 不能直接带 token，fetch blob 转换）
+let _coverUploadRole = null;
+
+// 4 个 logo 角色（顺序 = 封面从上到下 / 底部从左到右）
+const _COVER_ROLES = [
+    { key: 'issuer', label: '发行人', hint: '（原始权益人）', pos: '标题下方' },
+    { key: 'fund_manager', label: '基金管理人', hint: '', pos: '底部·左' },
+    { key: 'plan_manager', label: '专项计划管理人', hint: '（即资产支持证券管理人）', pos: '底部·中' },
+    { key: 'advisor', label: '财务顾问', hint: '', pos: '底部·右' },
+];
+
+function _coverEsc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function _ensureCoverModal() {
+    if (_coverReady) return;
+    _coverReady = true;
+    const style = document.createElement('style');
+    style.textContent = `
+      .cover-overlay{position:fixed;inset:0;background:rgba(20,30,45,.45);z-index:10000;display:none;align-items:center;justify-content:center;padding:24px;}
+      .cover-overlay.show{display:flex;}
+      .cover-modal{background:#fff;border-radius:12px;width:min(1000px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(20,30,45,.3);}
+      .cover-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #eef1f4;}
+      .cover-head .t{font-weight:600;font-size:15px;}
+      .cover-head .x{border:none;background:transparent;font-size:18px;cursor:pointer;color:#888;}
+      .cover-body{display:flex;flex:1;min-height:0;}
+      .cover-form{width:42%;overflow-y:auto;padding:16px 18px;border-right:1px solid #eef1f4;}
+      .cover-prev{flex:1;overflow-y:auto;padding:20px;background:#f6f7f9;}
+      .cover-sec{font-size:12px;font-weight:600;color:#555;margin:16px 0 6px;}
+      .cover-sec:first-child{margin-top:0;}
+      .cover-ro{background:#fbecec;border:1px solid #f2caca;border-radius:6px;padding:8px 10px;font-size:13px;color:#333;line-height:1.7;}
+      .cover-ro .tag{display:inline-block;font-size:11px;color:#c0392b;background:#fff;border:1px solid #f2caca;border-radius:4px;padding:0 5px;margin-right:6px;}
+      .cover-logo-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed #eef1f4;}
+      .cover-logo-thumb{width:76px;height:48px;border:1px solid #e2e6ea;border-radius:6px;display:flex;align-items:center;justify-content:center;background:#fffdf5;overflow:hidden;flex:none;}
+      .cover-logo-thumb img{max-width:100%;max-height:100%;}
+      .cover-logo-thumb .ph{font-size:11px;color:#c9b976;}
+      .cover-logo-meta{flex:1;min-width:0;}
+      .cover-logo-meta .nm{font-size:13px;font-weight:600;color:#222;}
+      .cover-logo-meta .ht{font-size:11px;color:#999;}
+      .cover-logo-acts button{font-size:12px;border:1px solid #dfe4ea;background:#fff;border-radius:6px;padding:3px 9px;cursor:pointer;margin-left:4px;}
+      .cover-logo-acts button:hover{background:#f2f6fb;border-color:#cdd8e3;}
+      .cover-date-in{width:100%;box-sizing:border-box;border:1.5px solid #333;border-radius:6px;padding:8px 10px;font-size:14px;}
+      .cover-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid #eef1f4;}
+      /* 预览：仿封面版式 */
+      .cv-page{background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.1);max-width:520px;margin:0 auto;padding:50px 40px;min-height:660px;}
+      .cv-title{text-align:center;font-weight:700;font-size:19px;line-height:2;color:#111;}
+      .cv-issuer{text-align:center;margin:26px 0 12px;min-height:40px;}
+      .cv-issuer img{max-width:230px;max-height:96px;}
+      .cv-oo-label{text-align:center;font-size:14px;color:#333;margin-top:6px;}
+      .cv-oo{text-align:center;font-size:14px;color:#333;line-height:2.1;}
+      .cv-date{text-align:center;font-size:14px;margin:18px 0;color:#333;min-height:20px;}
+      .cv-bottom{display:flex;justify-content:center;gap:18px;align-items:center;margin-top:44px;flex-wrap:wrap;}
+      .cv-bottom .slot{max-width:150px;text-align:center;}
+      .cv-bottom img{max-width:150px;max-height:60px;}
+      .cv-miss{color:#c9ccd1;font-size:12px;border:1px dashed #d7dbe0;border-radius:4px;padding:14px 10px;}
+    `;
+    document.head.appendChild(style);
+
+    const ov = document.createElement('div');
+    ov.className = 'cover-overlay';
+    ov.id = 'coverOverlay';
+    ov.innerHTML = `
+      <div class="cover-modal">
+        <div class="cover-head">
+          <span class="t">🖼 编辑封面</span>
+          <button class="x" id="coverClose" title="关闭">✕</button>
+        </div>
+        <div class="cover-body">
+          <div class="cover-form" id="coverForm"></div>
+          <div class="cover-prev"><div class="cv-page" id="coverPreview"></div></div>
+        </div>
+        <div class="cover-foot">
+          <button class="btn btn-ghost btn-sm" id="coverDownload">⬇ 下载封面Word</button>
+          <button class="btn btn-primary btn-sm" id="coverSave">💾 保存</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+
+    ov.querySelector('#coverClose').addEventListener('click', closeCoverEditor);
+    ov.addEventListener('click', (e) => { if (e.target === ov) closeCoverEditor(); });
+    ov.querySelector('#coverSave').addEventListener('click', _coverSave);
+    ov.querySelector('#coverDownload').addEventListener('click', _coverDownload);
+}
+
+async function openCoverEditor() {
+    _ensureCoverModal();
+    document.getElementById('coverOverlay').classList.add('show');
+    await _coverLoad();
+}
+
+function closeCoverEditor() {
+    const ov = document.getElementById('coverOverlay');
+    if (ov) ov.classList.remove('show');
+}
+
+async function _coverLoad() {
+    const form = document.getElementById('coverForm');
+    const prev = document.getElementById('coverPreview');
+    form.innerHTML = '<div style="color:#999;font-size:13px">加载中…</div>';
+    prev.innerHTML = '';
+    try {
+        _coverState = await API.getCover();
+    } catch (e) {
+        form.innerHTML = '<div style="color:#c0392b;font-size:13px">加载失败：' + _coverEsc(e.message) + '</div>';
+        return;
+    }
+    // logo 图片走 fetch blob → objectURL；释放上一轮的旧 URL
+    const old = _coverLogoUrls;
+    _coverLogoUrls = {};
+    for (const r of _COVER_ROLES) {
+        if (_coverState.logos[r.key] && _coverState.logos[r.key].has) {
+            try { _coverLogoUrls[r.key] = URL.createObjectURL(await API.coverLogoBlob(r.key)); } catch (e) { /* 失败显示占位 */ }
+        }
+    }
+    Object.values(old).forEach(u => { try { URL.revokeObjectURL(u); } catch (e) { /* 忽略 */ } });
+    _coverRenderForm();
+    _coverRenderPreview();
+}
+
+function _coverRenderForm() {
+    const s = _coverState;
+    const form = document.getElementById('coverForm');
+    const oo = (s.originators || []).map(x => _coverEsc(x)).join('<br>')
+        || '<span style="color:#999">（摘要表未填「原始权益人」）</span>';
+    let logoRows = '';
+    _COVER_ROLES.forEach(r => {
+        const has = s.logos[r.key] && s.logos[r.key].has;
+        const thumb = (has && _coverLogoUrls[r.key]) ? `<img src="${_coverLogoUrls[r.key]}">` : '<span class="ph">未上传</span>';
+        logoRows += `
+          <div class="cover-logo-row">
+            <div class="cover-logo-thumb">${thumb}</div>
+            <div class="cover-logo-meta">
+              <div class="nm">${_coverEsc(r.label)} <span class="ht">${_coverEsc(r.hint)}</span></div>
+              <div class="ht">封面位置：${_coverEsc(r.pos)}</div>
+            </div>
+            <div class="cover-logo-acts">
+              <button data-up="${r.key}">${has ? '替换' : '上传'}</button>
+              ${has ? `<button data-del="${r.key}">删除</button>` : ''}
+            </div>
+          </div>`;
+    });
+    const titleHtml = (s.title_lines || []).filter(Boolean).map(x => _coverEsc(x)).join('<br>')
+        || '<span style="color:#999">（摘要表未填「项目名称」）</span>';
+    form.innerHTML = `
+      <div class="cover-sec">🔴 标题（自动取自摘要表·不可编辑）</div>
+      <div class="cover-ro"><span class="tag">只读</span>${titleHtml}</div>
+      <div class="cover-sec">🔴 原始权益人（自动取自摘要表·不可编辑）</div>
+      <div class="cover-ro"><span class="tag">只读</span>${oo}</div>
+      <div class="cover-sec">🟡 Logo 图片（上传 PNG / JPG）</div>
+      ${logoRows}
+      <div class="cover-sec">⬛ 日期（请填写，如「2026 年 7 月」）</div>
+      <input type="text" class="cover-date-in" id="coverDateIn" placeholder="2026 年 7 月" value="${_coverEsc(s.date_text || '')}">
+      <input type="file" id="coverFileInput" accept=".png,.jpg,.jpeg" style="display:none">
+    `;
+    form.querySelector('#coverDateIn').addEventListener('input', (e) => {
+        _coverState.date_text = e.target.value;
+        _coverRenderPreview();
+    });
+    const fileIn = form.querySelector('#coverFileInput');
+    form.querySelectorAll('button[data-up]').forEach(b => {
+        b.addEventListener('click', () => { _coverUploadRole = b.dataset.up; fileIn.value = ''; fileIn.click(); });
+    });
+    form.querySelectorAll('button[data-del]').forEach(b => {
+        b.addEventListener('click', () => _coverDeleteLogo(b.dataset.del));
+    });
+    fileIn.addEventListener('change', _coverFilePicked);
+}
+
+async function _coverFilePicked(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file || !_coverUploadRole) return;
+    try {
+        showToast('上传中…');
+        await API.uploadCoverLogo(_coverUploadRole, file);
+        await _coverLoad();
+        showToast('已上传');
+    } catch (err) {
+        showToast('上传失败：' + err.message, 'error');
+    }
+}
+
+async function _coverDeleteLogo(role) {
+    try {
+        await API.deleteCoverLogo(role);
+        await _coverLoad();
+        showToast('已删除');
+    } catch (err) {
+        showToast('删除失败：' + err.message, 'error');
+    }
+}
+
+function _coverRenderPreview() {
+    const s = _coverState;
+    const prev = document.getElementById('coverPreview');
+    if (!s) return;
+    const titleHtml = (s.title_lines || []).filter(Boolean).map(x => _coverEsc(x)).join('<br>');
+    const issuerHas = s.logos.issuer && s.logos.issuer.has;
+    const issuer = (issuerHas && _coverLogoUrls.issuer)
+        ? `<img src="${_coverLogoUrls.issuer}">`
+        : '<div class="cv-miss">发行人 logo（待上传）</div>';
+    const ooLines = (s.originators || []).map(x => `<div>${_coverEsc(x)}</div>`).join('');
+    let bottom = '';
+    ['fund_manager', 'plan_manager', 'advisor'].forEach(k => {
+        const has = s.logos[k] && s.logos[k].has;
+        bottom += `<div class="slot">${(has && _coverLogoUrls[k])
+            ? `<img src="${_coverLogoUrls[k]}">`
+            : `<div class="cv-miss">${_coverEsc(s.logos[k].label)}<br>（待上传）</div>`}</div>`;
+    });
+    prev.innerHTML = `
+      <div class="cv-title">${titleHtml}</div>
+      <div class="cv-issuer">${issuer}</div>
+      <div class="cv-oo-label">原始权益人</div>
+      <div class="cv-oo">${ooLines}</div>
+      <div class="cv-date">${_coverEsc(s.date_text || '')}</div>
+      <div class="cv-bottom">${bottom}</div>
+    `;
+}
+
+async function _coverSave() {
+    try {
+        await API.saveCoverDate((_coverState && _coverState.date_text) || '');
+        closeCoverEditor();   // 保存成功后关闭弹窗
+        showToast('封面已保存');
+    } catch (err) {
+        showToast('保存失败：' + err.message, 'error');
+    }
+}
+
+async function _coverDownload() {
+    try { await API.saveCoverDate((_coverState && _coverState.date_text) || ''); } catch (e) { /* 日期保存失败不阻断下载 */ }
+    try {
+        await API.downloadCover();
+    } catch (err) {
+        showToast('下载失败：' + err.message, 'error');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', initApp);

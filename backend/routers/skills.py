@@ -18,11 +18,11 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from backend.config import NDRC_OFFICIAL_TEMPLATE, DEFAULT_PROJECT_ID, PROJECTS_DIR
+from backend.config import NDRC_OFFICIAL_TEMPLATE, DEFAULT_PROJECT_ID, PROJECTS_DIR, safe_project_id
 from backend.database.db import (get_project_pack_id, get_project_owner_id,
                                  upsert_generation_job, get_generation_job,
                                  touch_project_updated_at)
-from backend.services import skill_runner, summary_service, materials_client, pack_service, json_gate
+from backend.services import skill_runner, summary_service, materials_client, pack_service, json_gate, cover_service
 from backend.services.kimi_client import chat
 
 router = APIRouter(tags=["Skill执行"], prefix="/skills")
@@ -694,3 +694,90 @@ async def list_documents(http_req: Request, project_id: str = ""):
     # 章序在前、同章新版本在前
     docs.sort(key=lambda d: (d["chapter"], -d["version"]))
     return {"documents": docs}
+
+
+# ===== 封面（封面编辑：日期 + 四角色 logo；标题/原始权益人自动取自摘要表） =====
+
+class CoverDate(BaseModel):
+    date_text: str = ""
+
+
+@router.get("/cover")
+async def cover_get(http_req: Request, project_id: str = ""):
+    """封面编辑页所需状态：标题(自动)、原始权益人(自动)、日期(已存)、各 logo 是否已上传。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    try:
+        return {"status": "ok", "data": await asyncio.to_thread(cover_service.get_state, project_id or None)}
+    except Exception as e:
+        logger.error(f"获取封面状态失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取封面状态失败：{e}")
+
+
+@router.post("/cover/save")
+async def cover_save(data: CoverDate, http_req: Request, project_id: str = ""):
+    """保存用户填写的日期（标题/原始权益人分别来自摘要表与上传，不在此保存）。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    try:
+        await asyncio.to_thread(cover_service.save_date, data.date_text, project_id or None)
+        return {"status": "ok", "message": "已保存"}
+    except Exception as e:
+        logger.error(f"保存封面日期失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"保存失败：{e}")
+
+
+@router.post("/cover/logo/{role}")
+async def cover_upload_logo(role: str, http_req: Request, file: UploadFile = File(...), project_id: str = ""):
+    """上传某个角色的 logo（issuer/fund_manager/plan_manager/advisor）。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    if role not in cover_service.LOGO_ROLES:
+        raise HTTPException(status_code=400, detail=f"未知的 logo 角色：{role}")
+    data = await file.read()
+    await file.close()
+    if not data:
+        raise HTTPException(status_code=400, detail="文件为空")
+    try:
+        await asyncio.to_thread(cover_service.save_logo, role, file.filename or "logo.png", data, project_id or None)
+        return {"status": "ok", "message": "已上传"}
+    except Exception as e:
+        logger.error(f"上传 logo 失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"上传失败：{e}")
+
+
+@router.delete("/cover/logo/{role}")
+async def cover_delete_logo(role: str, http_req: Request, project_id: str = ""):
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    if role not in cover_service.LOGO_ROLES:
+        raise HTTPException(status_code=400, detail=f"未知的 logo 角色：{role}")
+    await asyncio.to_thread(cover_service.delete_logo, role, project_id or None)
+    return {"status": "ok", "message": "已删除"}
+
+
+@router.get("/cover/logo/{role}")
+async def cover_get_logo(role: str, http_req: Request, project_id: str = ""):
+    """读取某角色 logo 图片（供编辑页预览）。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    path = await asyncio.to_thread(cover_service.logo_path, role, project_id or None)
+    if path is None:
+        raise HTTPException(status_code=404, detail="尚未上传")
+    ext = path.suffix.lower()
+    media = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}.get(ext, "application/octet-stream")
+    return FileResponse(str(path), media_type=media)
+
+
+@router.get("/cover/download")
+async def cover_download(http_req: Request, project_id: str = ""):
+    """下载“只有封面”的 Word。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    out = PROJECTS_DIR / safe_project_id(project_id) / "_cover_preview.docx"
+    try:
+        state = await asyncio.to_thread(cover_service.get_state, project_id or None)
+        await asyncio.to_thread(cover_service.build_cover_docx, out, project_id or None)
+    except Exception as e:
+        logger.error(f"生成封面 Word 失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"生成封面失败：{e}")
+    fname = f"{(state.get('project_name') or '项目').strip()}_封面.docx"
+    return FileResponse(
+        str(out),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"},
+    )

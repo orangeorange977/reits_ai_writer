@@ -482,6 +482,79 @@ const API = {
         return r.templates || [];
     },
 
+    // ===== 封面 =====
+
+    /** 取封面状态：标题(自动)、原始权益人(自动)、日期、各 logo 是否已上传 */
+    async getCover() {
+        const r = await this.get('/skills/cover', { project_id: this._currentProjectId() });
+        return r.data;
+    },
+
+    /** 保存用户填写的封面日期 */
+    async saveCoverDate(dateText) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/cover/save?project_id=${pid}`, { date_text: dateText });
+    },
+
+    /** 上传某角色 logo（role: issuer/fund_manager/plan_manager/advisor） */
+    async uploadCoverLogo(role, file) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const pid = encodeURIComponent(this._currentProjectId());
+        const resp = await fetch(`${API_BASE}/skills/cover/logo/${role}?project_id=${pid}`, {
+            method: 'POST', body: fd, headers: AuthToken.headers(),
+        });
+        if (resp.status === 401) { handleUnauthorized(); throw new Error('未登录或登录已过期'); }
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `上传失败: ${resp.status}`);
+        }
+        return resp.json();
+    },
+
+    /** 删除某角色 logo */
+    async deleteCoverLogo(role) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        const resp = await fetch(`${API_BASE}/skills/cover/logo/${role}?project_id=${pid}`, {
+            method: 'DELETE', headers: AuthToken.headers(),
+        });
+        if (resp.status === 401) { handleUnauthorized(); throw new Error('未登录或登录已过期'); }
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `删除失败: ${resp.status}`);
+        }
+        return resp.json();
+    },
+
+    /** 取某角色 logo 图片 blob（无 cookie 鉴权，<img> 不能直接带 token，需 fetch 后转 objectURL） */
+    async coverLogoBlob(role) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        const resp = await fetch(`${API_BASE}/skills/cover/logo/${role}?project_id=${pid}`,
+            { headers: AuthToken.headers() });
+        if (resp.status === 401) { handleUnauthorized(); throw new Error('未登录或登录已过期'); }
+        if (!resp.ok) throw new Error(`取 logo 失败: ${resp.status}`);
+        return resp.blob();
+    },
+
+    /** 下载“只有封面”的 Word（fetch blob 方式，才能携带登录 token） */
+    async downloadCover() {
+        const pid = encodeURIComponent(this._currentProjectId());
+        const resp = await this.request(`/skills/cover/download?project_id=${pid}`, { _download: true });
+        const blob = await resp.blob();
+        let fname = '封面.docx';
+        const cd = resp.headers.get('content-disposition') || '';
+        const m = cd.match(/filename\*=UTF-8''([^;]+)/i);
+        if (m) { try { fname = decodeURIComponent(m[1]); } catch (e) { /* 保持默认名 */ } }
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = fname;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+    },
+
     /**
      * 获取单个画图模板的 draw.io XML
      * @param {string} name - 模板文件名（不含扩展名）

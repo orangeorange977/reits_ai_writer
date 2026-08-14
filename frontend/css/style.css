@@ -1186,6 +1186,12 @@ body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
     gap: var(--spacing-lg);
 }
 
+.ph-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .ph-icon {
     width: 48px;
     height: 48px;
