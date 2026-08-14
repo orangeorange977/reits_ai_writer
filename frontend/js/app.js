@@ -3172,10 +3172,10 @@ function openEditProject(projectId) {
     if (!m) {
         m = document.createElement('div');
         m.id = 'modalEditProject';
-        m.className = 'modal';
+        m.className = 'modal-overlay';
         m.innerHTML = `
-            <div class="modal-content" style="max-width:420px">
-                <div class="modal-header"><h3>项目改名</h3><button class="modal-close" onclick="closeModal('modalEditProject')">✕</button></div>
+            <div class="modal" style="width:440px">
+                <div class="modal-header"><span class="modal-title">项目改名</span><button class="modal-close" onclick="closeModal('modalEditProject')">✕</button></div>
                 <div class="modal-body">
                     <input type="text" id="editProjectName" class="form-input" maxlength="100" placeholder="请输入项目名称">
                 </div>
@@ -3185,6 +3185,7 @@ function openEditProject(projectId) {
                 </div>
             </div>`;
         document.body.appendChild(m);
+        m.addEventListener('click', (e) => { if (e.target === m) closeModal('modalEditProject'); });
         m.querySelector('#editProjectSave').addEventListener('click', async () => {
             const name = (document.getElementById('editProjectName').value || '').trim();
             if (!name) { showToast('项目名称不能为空', 'warning'); return; }
