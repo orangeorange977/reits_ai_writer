@@ -438,6 +438,7 @@ async function openMaterialPreview(path, quote, page) {
         modal.id = 'matPreviewModal';
         modal.className = 'mat-preview-overlay';
         modal.innerHTML = `
+            <div class="mat-resize" id="matResize" title="拖拽调整宽度"></div>
             <div class="mat-preview-box">
                 <div class="mat-preview-head">
                     <span class="mat-preview-title" id="matPreviewTitle">正在加载材料…</span>
@@ -453,7 +454,9 @@ async function openMaterialPreview(path, quote, page) {
             if (e.key === 'Escape' && modal.style.display === 'flex') closeMaterialPreview();
         });
         document.body.appendChild(modal);
+        _initMatResize(modal);
     }
+    if (_matDrawerW) document.documentElement.style.setProperty('--drawer-w', _matDrawerW + 'px');
     modal.style.display = 'flex';
     document.body.classList.add('mat-drawer-open');  // 主内容区让位，左右并列各自滚动
     _matState = { path, quote, page: page || 0, mode: /\.pdf$/i.test(path || '') ? 'pages' : 'text', pagesState: null };
@@ -707,6 +710,32 @@ function closeMaterialPreview() {
     const modal = document.getElementById('matPreviewModal');
     if (modal) modal.style.display = 'none';
     document.body.classList.remove('mat-drawer-open');
+}
+
+/** 依据预览抽屉左缘拖拽调宽：--drawer-w 同时控制抽屉宽与主内容让位，改一处两侧联动 */
+let _matDrawerW = null;
+function _initMatResize(modal) {
+    const handle = modal.querySelector('#matResize');
+    if (!handle) return;
+    let dragging = false;
+    handle.addEventListener('mousedown', (e) => {
+        dragging = true;
+        document.body.classList.add('mat-resizing');
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const right = modal.getBoundingClientRect().right;
+        let w = Math.round(right - e.clientX);
+        w = Math.max(320, Math.min(w, Math.round(window.innerWidth * 0.85)));
+        _matDrawerW = w;
+        document.documentElement.style.setProperty('--drawer-w', w + 'px');
+    });
+    document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.classList.remove('mat-resizing');
+    });
 }
 
 /** “摘要表：字段”→跳到摘要表编辑页，高亮定位到对应字段行 */

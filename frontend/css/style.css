@@ -219,6 +219,22 @@ body.mat-drawer-open .main {
     margin-right: var(--drawer-w);
 }
 
+/* 依据预览抽屉：左缘拖拽条，左右宽度可调 */
+.mat-resize {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 5;
+}
+.mat-resize:hover,
+body.mat-resizing .mat-resize { background: #4CAF50; opacity: .35; }
+body.mat-resizing { user-select: none; cursor: col-resize; }
+body.mat-resizing .main,
+body.mat-resizing .mat-preview-overlay { transition: none; }
+
 /* ===== 侧栏一键收起 ===== */
 .sidebar-toggle {
     display: flex;
