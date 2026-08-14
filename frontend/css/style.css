@@ -2771,3 +2771,52 @@ body.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
     0%, 100% { box-shadow: 0 6px 16px rgba(31, 122, 77, 0.4); transform: scale(1); }
     50% { box-shadow: 0 8px 26px rgba(31, 122, 77, 0.75); transform: scale(1.08); }
 }
+
+/* ====================================
+   字节风格对比区：系统概览页（2026-08-14）
+   借鉴 Semi/Arco：中性灰阶去绿染 + 线性图标 + 统一阶梯；绿色主题不变
+   ==================================== */
+.icn { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; vertical-align: -2px; }
+
+#page-overview {
+    --nd-t1: #1D2129;  /* 标题/正文 */
+    --nd-t2: #4E5969;  /* 次级文字 */
+    --nd-t3: #86909C;  /* 辅助文字 */
+    --nd-line: #E5E6EB; /* 发丝线 */
+    --nd-fill: #F7F8FA; /* 填充灰 */
+    --nd-hov: #F2F3F5;  /* 悬停灰 */
+}
+
+/* 横幅：更克制的渐变与按钮 */
+#page-overview .overview-hero { border-radius: 12px; background: linear-gradient(115deg, #43A047 0%, #5CB860 55%, #7BC67E 100%); box-shadow: none; }
+#page-overview .overview-hero h2 { font-size: 24px; font-weight: 600; letter-spacing: .2px; }
+#page-overview .overview-hero p { font-size: 13px; opacity: .85; }
+#page-overview .hero-btn-primary { background: #fff; color: #2E7D32; border: none; border-radius: 8px; font-weight: 600; }
+#page-overview .hero-btn-primary:hover { transform: none; box-shadow: 0 4px 12px rgba(0, 0, 0, .15); }
+#page-overview .hero-btn-ghost { background: transparent; border: 1px solid rgba(255, 255, 255, .5); border-radius: 8px; }
+#page-overview .hero-btn-ghost:hover { background: rgba(255, 255, 255, .16) !important; }
+
+/* 统计卡片：白底+发丝线+中性文字+扁平图标底 */
+#page-overview .stat-row .stat-card { background: #fff; border: 1px solid var(--nd-line); border-radius: 12px; padding: 18px 20px; box-shadow: none; }
+#page-overview .stat-card:hover { transform: none; border-color: #C9CDD4; box-shadow: 0 4px 12px rgba(29, 33, 41, .06); }
+#page-overview .stat-icon { width: 44px; height: 44px; border-radius: 10px; font-size: 0; }
+#page-overview .stat-icon .icn { width: 20px; height: 20px; }
+#page-overview .stat-icon.blue { background: #E8F5E9; color: #4CAF50; }
+#page-overview .stat-icon.orange { background: #FFF7E8; color: #FF7D00; }
+#page-overview .stat-icon.green { background: #E8FFEA; color: #00B42A; }
+#page-overview .stat-icon.purple { background: #F5E8FF; color: #722ED1; }
+#page-overview .stat-value { color: var(--nd-t1); font-size: 24px; font-weight: 600; }
+#page-overview .stat-label { color: var(--nd-t3); font-size: 12px; letter-spacing: 0; text-transform: none; }
+
+/* 项目列表卡片：发丝线+灰表头+干净表格 */
+#page-overview .card { border: 1px solid var(--nd-line); border-radius: 12px; box-shadow: none; }
+#page-overview .card-header h3 { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: var(--nd-t1); }
+#page-overview .card-header h3 .icn { color: var(--nd-t2); }
+#page-overview .data-table th { background: var(--nd-fill); color: var(--nd-t3); font-weight: 500; font-size: 12px; text-transform: none; letter-spacing: 0; border-bottom: 1px solid var(--nd-line); }
+#page-overview .data-table td { border-bottom: 1px solid var(--nd-hov); color: var(--nd-t1); font-size: 14px; }
+#page-overview .data-table tr:hover td { background: #FAFBFC; }
+#page-overview .badge { border-radius: 4px; font-size: 12px; font-weight: 400; letter-spacing: 0; }
+
+/* 页内按钮：统一圆角，悬停不跳 */
+#page-overview .btn { border-radius: 8px; }
+#page-overview .btn-primary:hover { transform: none; box-shadow: 0 2px 8px rgba(76, 175, 80, .35); }
