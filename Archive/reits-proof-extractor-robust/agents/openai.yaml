@@ -1,6 +1,0 @@
-interface:
-  display_name: "REITs材料稳健提取"
-  short_description: "专项提取法律、估价及第二章数据并通过全量验收"
-  default_prompt: "使用 $reits-proof-extractor-robust 全量提取这批REITs证明材料；法律意见书、房地产估价报告和第二章分别走专项通道，并通过严格交接门禁。"
-policy:
-  allow_implicit_invocation: true

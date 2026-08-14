@@ -20,3 +20,8 @@ server_*.log
 
 # 调试用临时脚本（不进仓库）
 .tmp_*
+
+# 本地运行日志与旧归档（不进仓库）
+server_*.log
+Archive/
+Archive.zip
