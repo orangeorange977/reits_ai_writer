@@ -39,7 +39,6 @@ from backend.config import APP_HOST, APP_PORT, CORS_ORIGINS, AI_RATE_LIMIT_PER_M
 from backend.database.db import init_database, load_preset_projects, ensure_admin_user
 from backend.routers import projects_router, folders_router
 from backend.routers.auth import router as auth_router
-from backend.routers.enhancements import router as enhancements_router
 from backend.routers.packs import router as packs_router
 from backend.routers.skills import router as skills_router
 from backend.services.auth import decode_token
@@ -142,7 +141,6 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 app.include_router(auth_router, prefix="/api")
 app.include_router(projects_router, prefix="/api")
 app.include_router(folders_router, prefix="/api")
-app.include_router(enhancements_router, prefix="/api")
 app.include_router(packs_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
 

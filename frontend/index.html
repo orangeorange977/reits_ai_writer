@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>REIT-AI 法律文件生成系统</title>
-    <link rel="stylesheet" href="/css/style.css?v=20260814h">
+    <link rel="stylesheet" href="/css/style.css?v=20260814i">
 </head>
 <body>
     <!-- 侧边栏 -->
@@ -210,28 +210,6 @@
                 <!-- 章节详情区域（内容由 renderChapterEditor 按所选章节动态渲染） -->
                 <div class="chapter-detail" id="chapterDetail">
                     <div class="text-muted text-sm" style="padding:24px;text-align:center">请在上方步骤条选择章节</div>
-                </div>
-
-                <!-- 增强功能折叠面板 -->
-                <div class="enhancements-panel" style="margin-top:24px">
-                    <div class="panel-header" onclick="togglePanel('enhancements')">
-                        <h3>⚡ 高级选项 - 增强功能</h3>
-                        <span class="toggle-icon">▼</span>
-                    </div>
-                    <div class="panel-body" id="enhancements-body" style="display:none;">
-                        <!-- 6个功能tab -->
-                        <div class="enhancement-tabs">
-                            <button class="tab-btn active" data-tab="glossary">释义表</button>
-                            <button class="tab-btn" data-tab="commitment">承诺函</button>
-                            <button class="tab-btn" data-tab="financial">财务数据</button>
-                            <button class="tab-btn" data-tab="inapplicable">不涉及</button>
-                            <button class="tab-btn" data-tab="querydate">基准日</button>
-                            <button class="tab-btn" data-tab="attachment">附件</button>
-                        </div>
-                        <div class="enhancement-content" id="enhancement-content">
-                            <!-- 动态渲染 -->
-                        </div>
-                    </div>
                 </div>
 
                 <!-- 底部操作栏 -->
@@ -489,7 +467,6 @@
     <script src="/js/components.js?v=20260814e"></script>
     <script src="/js/diagram.js?v=20260813c"></script>
     <script src="/js/app.js?v=20260814h"></script>
-    <script src="/js/enhancements.js?v=20260813c"></script>
 
     <style>
     /* 文件夹浏览器样式 */
