@@ -275,6 +275,7 @@ function _evalRenderScore(score, histCount) {
         </div>`;
     }).join('');
     const missing = (score.missing_points || []).map(m => `<li>${_escEval(m)}</li>`).join('');
+    const nobasis = (score.no_basis_points || []).map(m => `<li>${_escEval(m)}</li>`).join('');
     box.innerHTML = `
     <div class="card">
         <div class="card-header"><h3>AI 打分（${_escEval(score.created_at || '')}，模型 ${_escEval(score.model || '')}${histCount > 1 ? `，共${histCount}次记录` : ''}）</h3></div>
@@ -285,7 +286,8 @@ function _evalRenderScore(score, histCount) {
             </div>
             ${dims}
             ${score.summary ? `<div class="eval-summary"><b>总评：</b>${_escEval(score.summary)}</div>` : ''}
-            ${missing ? `<div class="eval-missing"><b>缺失要点：</b><ul>${missing}</ul></div>` : ''}
+            ${missing ? `<div class="eval-missing"><b>缺失要点（有据可依）：</b><ul>${missing}</ul></div>` : ''}
+            ${nobasis ? `<div class="eval-missing" style="color:var(--text-muted,#888)"><b>无依据要点（不计扣分）：</b><ul>${nobasis}</ul></div>` : ''}
         </div>
     </div>`;
 }
