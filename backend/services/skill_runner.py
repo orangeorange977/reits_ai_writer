@@ -283,10 +283,15 @@ def _section_blocks(sec: dict) -> list:
     return blocks
 
 
+def _cell_html(s) -> str:
+    """单元格文本转 HTML：值内 \n 显示为 <br>（与 Word 单元格内换行一致）。"""
+    return _esc_html(s).replace("\n", "<br>")
+
+
 def _kv_rows_html(rows):
     return "".join(
-        f"<tr><td>{_esc_html(r.get('label', ''))}</td>"
-        f"<td>{_esc_html(r.get('value', ''))}</td></tr>" for r in (rows or []))
+        f"<tr><td>{_cell_html(r.get('label', ''))}</td>"
+        f"<td>{_cell_html(r.get('value', ''))}</td></tr>" for r in (rows or []))
 
 
 def _grid_rows_html(headers, rows):
@@ -303,9 +308,9 @@ def _grid_rows_html(headers, rows):
                 rs = int(c.get("rowspan", 1) or 1)
                 attr = (f' colspan="{cs}"' if cs > 1 else "") + \
                        (f' rowspan="{rs}"' if rs > 1 else "")
-                cells += f"<td{attr}>{_esc_html(c.get('text', ''))}</td>"
+                cells += f"<td{attr}>{_cell_html(c.get('text', ''))}</td>"
             else:
-                cells += f"<td>{_esc_html(c)}</td>"
+                cells += f"<td>{_cell_html(c)}</td>"
         body += f"<tr>{cells}</tr>"
     return thead, body
 
@@ -996,8 +1001,8 @@ def get_chapter_content(n: int, subtitles: list = None,
     template_tables（来自官方模板的多列表骨架 {小标题:[grid,...]}）如果给出，则给每个
     小标题补上它下面的多列表（空表），编辑区即便还没生成也能看到并编辑这些表格。
 
-    table_start：本章第一张表在全篇里的表号（=模板中本章之前已有的表数+1），编辑区据此
-    把表标题里的编号占位（表#/表c…）显示成连续序号。
+    table_start：历史遗留参数（早期跨章连续表号用），表号已改为 表{章}-{序}
+    每章各自起排，不再依赖全篇偏移，保留签名兼容旧调用。
     """
     template_tables = template_tables or {}
     loaded = _load_json(n, project_id)
@@ -1038,7 +1043,7 @@ def get_chapter_content(n: int, subtitles: list = None,
                       for i, title in enumerate(subtitles, 1)]
             source = "template"
         return {"source": source,
-                "sections": _sections_to_html(_number_captions(struct, table_start)),
+                "sections": _sections_to_html(_number_captions(struct, n)),
                 "refs": refs,
                 "table_check": checks,
                 "generation_notice": notice}
@@ -1048,7 +1053,7 @@ def get_chapter_content(n: int, subtitles: list = None,
         return {"source": "none", "sections": [], "refs": refs,
                 "table_check": [], "generation_notice": notice}
     return {"source": "ready",
-            "sections": _sections_to_html(_number_captions(saved, table_start)),
+            "sections": _sections_to_html(_number_captions(saved, n)),
             "refs": refs,
             "table_check": checks,
             "generation_notice": notice}
@@ -1131,20 +1136,20 @@ def _output_contract(chapter_title: str) -> str:
         "   · kv：两列\"字段:值\"表（如表1）。label 与 SKILL.md 表格第一列**一字不差**。\n"
         "   · grid：多列表（列数≥3，如表2、表3~表10）。headers 与 SKILL.md 该表表头**一字不差、顺序一致**；"
         "rows 每行和 headers 等长。\n"
-        "3. **表号一律写占位符“表#”**（如“表#  项目公司基本信息”），不要自己填数字——最终序号由系统按"
-        "表格出现顺序自动排。\n"
-        "4. **SKILL.md 中出现的每一张表都必须输出**（哪怕暂无数据）：没数据的单元格填 \"\"，整表暂无数据也要"
+        "3. **表号一律写占位符“表#”**（如“表#  项目公司基本信息”），不要自己填数字——最终序号由系统自动排成“表{章号}-{序}”（如 表1-1、表1-2）。\n"
+        "4. **单元格内需要分多行写的内容用 \\n 换行**（如开竣工时间分两行、权属起止时间+剩余年限分两行），系统会在 Word 单元格内渲染成换行。\n"
+        "5. **SKILL.md 中出现的每一张表都必须输出**（哪怕暂无数据）：没数据的单元格填 \"\"，整表暂无数据也要"
         "输出 caption+headers；绝不能省略整张表或只用文字描述代替。\n"
-        "5. 值优先用“已保存的摘要表/释义/其他基本信息”里的真实值，其次 planning.md（引号标注要照抄的内容，"
+        "6. 值优先用“已保存的摘要表/释义/其他基本信息”里的真实值，其次 planning.md（引号标注要照抄的内容，"
         "文字照用、不要改写）；确实找不到依据的填 “【注：说明缺什么、建议去哪里核实】”，绝不编造数字。\n"
-        "6. SKILL.md 里用【】标注的占位都要替换成真实值；替换后不保留【】（除【注：】外）。语言用正式申报材料文体；"
+        "7. SKILL.md 里用【】标注的占位都要替换成真实值；替换后不保留【】（除【注：】外）。语言用正式申报材料文体；"
         "金额以“万元”为单位、保留两位小数。\n"
-        "7. 【JSON 合法性——最重要，违反会导致整份输出解析失败】任何字符串值内部**绝对不能出现未转义的"
+        "8. 【JSON 合法性——最重要，违反会导致整份输出解析失败】任何字符串值内部**绝对不能出现未转义的"
         "英文双引号 \"**。SKILL.md / planning.md 原文里那些用英文引号 \" \" 包裹或嵌套的句子，"
         "**输出时一律把这些引号改成中文引号“”**（例如原文 承诺：\"本公司…\" → 输出 承诺：“本公司…”），"
         "只改引号符号、不改里面的文字。字符串里也不要出现真实换行（用一段连续文本），"
         "如含反斜杠 \\ 需写成 \\\\。记住：值里面只允许中文引号“”‘’，不允许裸的英文 \"。\n"
-        "8. 【来源溯源：逐句引注】要求每一句正文都能追溯到出处，做法仿照论文引注：\n"
+        "9. 【来源溯源：逐句引注】要求每一句正文都能追溯到出处，做法仿照论文引注：\n"
         "   a) 每个块的正文里，**每个有实质内容的句子末尾**都标注引注号〈n〉（全角尖括号+数字，如〈1〉〈2〉）；"
         "引注号按“来源”编号：同一来源的多句话用同一个号；本块内从〈1〉起递增；表格块不用逐句标，在 src 里写明整表来源即可；\n"
         "   b) 块的 \"src\" 字段按引注号顺序列出每个号对应的来源，每条以“〈n〉”开头，条与条之间用“；”分隔，"
@@ -1162,7 +1167,7 @@ def _output_contract(chapter_title: str) -> str:
         "   · 模板固定表述/套话等无具体依据的内容：**不标引注号、src 里也不要写这类条目**（同“不涉及”的处理）；"
         "拿不准的内容在正文里用【注：…】标明缺什么、去哪核实，不要写“待核实”条目。\n"
         "   **绝不允许编造不存在的来源**——src 必须真实对应你实际参考过的材料；正文里的每个引注号都必须在 src 里有对应条目。\n"
-        "9. 【不涉及不挂依据】块的内容是“不涉及。”“不涉及”“无此类情形”“不适用”这类短不涉及表述时，\n"
+        "10. 【不涉及不挂依据】块的内容是“不涉及。”“不涉及”“无此类情形”“不适用”这类短不涉及表述时，\n"
         "   不要标引注号〈n〉、src 字段留空——“不涉及”本身就是结论，无需任何依据（不要写“固定表述”凑依据）。\n"
     )
 
@@ -1682,29 +1687,30 @@ def ensure_write_config(force: bool = False, pack_id: str = None) -> dict:
 _CAP_LEAD_RE = re.compile(r"^表(?:[#＃]|[0-9]+|[A-Za-z])")
 
 
-def _renumber_caption_text(cap: str, seq: int) -> str:
-    """把一个表标题字符串开头的'表X'占位换成'表{seq}'。"""
+def _renumber_caption_text(cap: str, seq: int, chapter_n=None) -> str:
+    """把一个表标题字符串开头的'表X'占位换成'表{章}-{seq}'（未给章号退回'表{seq}'）。"""
     if not cap:
         return cap
     stripped = cap.lstrip()
     m = _CAP_LEAD_RE.match(stripped)
     if not m:
         return cap
-    return cap[:len(cap) - len(stripped)] + f"表{seq}" + stripped[m.end():]
+    num = f"表{chapter_n}-{seq}" if chapter_n else f"表{seq}"
+    return cap[:len(cap) - len(stripped)] + num + stripped[m.end():]
 
 
-def _number_captions(sections: list, start_no: int) -> list:
-    """给编辑区：按 section 顺序、每节内按有序块顺序，把带 caption 的表格块编号占位
-    换成从 start_no 起的连续序号。"""
-    seq = start_no
+def _number_captions(sections: list, chapter_n) -> list:
+    """给编辑区：把带 caption 的表格块编号占位换成 表{章}-{序}，
+    每章各自从 1 起排（与最终 Word 编号一致）。"""
+    seq = 0
     out = []
     for s in sections:
         new_blocks = []
         for b in _section_blocks(s):
             if b.get("type") in ("kv", "grid") and b.get("caption"):
                 b = dict(b)
-                b["caption"] = _renumber_caption_text(b["caption"], seq)
                 seq += 1
+                b["caption"] = _renumber_caption_text(b["caption"], seq, chapter_n)
             new_blocks.append(b)
         s2 = dict(s)
         s2["blocks"] = new_blocks

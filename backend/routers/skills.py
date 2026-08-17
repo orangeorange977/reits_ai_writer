@@ -529,7 +529,8 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
                     "gate_warnings": gate_warnings}
         wr = _load_web_render(pack_id)
         if tpl_resolved:
-            wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"])
+            wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"],
+                                    chapter_n=n)
             _install_cover_front(docx_path, pid)   # 规则：导出 Word 第一页=编辑好的封面（预览也同步，固化版本一致）
             html = wr.docx_to_preview_html(docx_path, cfg["title"], cfg["next"])
             # 内容变化重新渲染后固化为新的正式文档版本（项目名_日期_第n章_vN，历史保留；失败不阻断）
@@ -594,7 +595,8 @@ def _render_chapter_docx(n: int, pid, pack_id) -> bool:
     wr = _load_web_render(pack_id)
     tpl_resolved = _resolve_template_path("", pack_id)
     if tpl_resolved:
-        wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"])
+        wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"],
+                                chapter_n=n)
         _install_cover_front(docx_path, pid)   # 规则：导出 Word 第一页=编辑好的封面
     else:
         wr.render_docx(sections, docx_path)

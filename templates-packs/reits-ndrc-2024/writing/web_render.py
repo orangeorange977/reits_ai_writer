@@ -722,6 +722,18 @@ def _replace_table(doc, old_table, new_table):
     old_table._tbl.getparent().remove(old_table._tbl)
 
 
+def _fill_cell_text(cell, txt):
+    """单元格写文本：值内 \n 渲染为单元格内换行（同段 add_break，保持单元格格式）。"""
+    cell.text = ""
+    p = cell.paragraphs[0]
+    parts = str(txt).split("\n")
+    for i, seg in enumerate(parts):
+        if i:
+            p.add_run().add_break()
+        _set_font(p.add_run(seg), _TABLE_PT)
+    _apply_cell_format(cell)
+
+
 def _create_kv_table(doc, kv_rows):
     """新建一张两列（字段:值）表并填好，返回 table。
     值为空的行为分节行（如"项目总体情况""子项目1"）：两列合并占一整行、居中，与定稿版式一致。"""
@@ -737,10 +749,7 @@ def _create_kv_table(doc, kv_rows):
             _apply_cell_format(m, WD_ALIGN_PARAGRAPH.CENTER)
         else:
             for ci, txt in enumerate((label, value)):
-                c = t.cell(ri, ci)
-                c.text = ""
-                _set_font(c.paragraphs[0].add_run(txt), _TABLE_PT)
-                _apply_cell_format(c)
+                _fill_cell_text(t.cell(ri, ci), txt)
     return t
 
 
@@ -846,8 +855,8 @@ def _para_is_caption_before_table(items, i):
     return j < len(items) and isinstance(items[j], Table)
 
 
-def _set_caption_number(para, n):
-    """把标题段开头的"表X"改成"表{n}"，保留该段原有字体/格式。"""
+def _set_caption_number(para, n, chapter_n=None):
+    """把标题段开头的“表X”改成“表{n}”（给了章号则为“表{章}-{n}”），保留该段原有字体/格式。"""
     if not para.runs:
         return
     full = "".join(r.text for r in para.runs)
@@ -856,19 +865,24 @@ def _set_caption_number(para, n):
     if not m:
         return
     lead_ws = full[:len(full) - len(stripped)]
-    para.runs[0].text = lead_ws + f"表{n}" + stripped[m.end():]
+    cap = f"表{chapter_n}-{n}" if chapter_n else f"表{n}"
+    para.runs[0].text = lead_ws + cap + stripped[m.end():]
     for r in para.runs[1:]:
         r.text = ""
 
 
-def _renumber_all_table_captions(doc):
-    """全篇最终重排：按表格出现的先后顺序，把所有表标题编号统一改成 表1、表2、表3…（确定性）。"""
+def _renumber_all_table_captions(doc, chapter_n=None, start_idx=None, end_idx=None):
+    """表标题按出现顺序重排为 表{章}-1、表{章}-2…（每章各自从 1 起排）。
+    给了 [start_idx, end_idx) 时只重排本章范围内的表（渲染产物含全模板，
+    他章的表不归本章管，保持原样）；未给章号时退回旧规则 表1、表2…。"""
     items = list(_iter_block_items(doc))
+    lo = start_idx if start_idx is not None else 0
+    hi = end_idx if end_idx is not None else len(items)
     counter = 0
     for i in range(len(items)):
-        if _para_is_caption_before_table(items, i):
+        if lo <= i < hi and _para_is_caption_before_table(items, i):
             counter += 1
-            _set_caption_number(items[i], counter)
+            _set_caption_number(items[i], counter, chapter_n)
     return counter
 
 
@@ -903,8 +917,23 @@ def _plan_orphans(sections, tmpl_heads):
     return orphans_before, pending
 
 
+def _chapter_range_idx(items, chapter_title, next_chapter_title):
+    """在最新块序列里按标题文本重新定位本章范围 [lo, hi)（增删后旧索引不可靠）。"""
+    lo, hi = None, len(items)
+    for k, b in enumerate(items):
+        if isinstance(b, Paragraph) and b.style is not None and (b.style.name or "").startswith("Heading"):
+            t = b.text.strip()
+            if t == chapter_title:
+                lo = k
+            elif lo is not None and next_chapter_title and t == next_chapter_title:
+                hi = k
+                break
+    return lo, hi
+
+
 def render_into_template(sections, template_path, out_path,
-                         chapter_title=_CHAPTER_TITLE, next_chapter_title=_NEXT_CHAPTER_TITLE):
+                         chapter_title=_CHAPTER_TITLE, next_chapter_title=_NEXT_CHAPTER_TITLE,
+                         chapter_n=None):
     """把某一章内容写入官方模板（定位规则：以模板里带格式的标题 Heading 为锚点）。
     对每个能和 reading section 对应上的模板小标题（（一）（二）…）：把该小标题到下一个 Heading
     之间的模板内容**整段删除**，再把 reading 该节的有序块（p/kv/grid）按序写到小标题正后面。
@@ -930,7 +959,7 @@ def render_into_template(sections, template_path, out_path,
             end_idx = k
             break
     if start_idx is None:
-        _renumber_all_table_captions(doc)
+        _renumber_all_table_captions(doc)  # 定位不到本章：退回旧的全篇顺序编号，不带章号
         doc.save(str(out_path))
         _inject_footnotes(out_path, collected_fn)
         return out_path
@@ -981,8 +1010,12 @@ def render_into_template(sections, template_path, out_path,
             for orph in orphans_end:
                 _append_orphan(doc, orph, fn_state, collected_fn)
 
-    # 最后一步：全篇表标题按出现顺序统一编号 表1、表2、表3…（含模板自带的和新插入的）
-    _renumber_all_table_captions(doc)
+    # 最后一步：本章范围内表标题按出现顺序统一编号 表{章}-1、表{章}-2…（含模板自带的和新插入的）；
+    # 按标题文本在最新序列里重新定位范围（前面增删过元素，旧索引已不可靠）
+    items_now = list(_iter_block_items(doc))
+    lo, hi = _chapter_range_idx(items_now, chapter_title, next_chapter_title)
+    if lo is not None:
+        _renumber_all_table_captions(doc, chapter_n, lo, hi)
 
     doc.save(str(out_path))
     _inject_footnotes(out_path, collected_fn)  # 追加真正的脚注到 footnotes.xml
