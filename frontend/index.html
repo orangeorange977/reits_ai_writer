@@ -50,6 +50,22 @@
                 </span>
                 <span class="nav-text">文档管理</span>
             </div>
+            <div class="nav-item" data-page="evaluation" onclick="navigate('evaluation')">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>
+                    </svg>
+                </span>
+                <span class="nav-text">对比评测</span>
+            </div>
+            <div class="nav-item" data-page="skills" onclick="navigate('skills')">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6"/>
+                    </svg>
+                </span>
+                <span class="nav-text">Skill 管理</span>
+            </div>
             <div class="nav-item" data-page="settings" onclick="navigate('settings')">
                 <span class="nav-icon">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -281,7 +297,42 @@
                 </div>
             </div>
 
-            <!-- ==================== 页面5：系统设置 ==================== -->
+            <!-- ==================== 页面5：对比评测 ==================== -->
+            <div class="page" id="page-evaluation">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><svg class="icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>标准答案对比与 AI 打分</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="eval-toolbar">
+                            <div class="eval-chips" id="evalChips"></div>
+                            <div class="eval-actions">
+                                <input type="file" id="evalStdFile" accept=".docx" style="display:none" onchange="evalUploadStandard(this)">
+                                <button class="btn btn-ghost btn-sm" id="evalUploadBtn" onclick="document.getElementById('evalStdFile').click()">上传标准答案</button>
+                                <button class="btn btn-ghost btn-sm" id="evalRemoveBtn" onclick="evalRemoveStandard()" style="display:none">移除标准答案</button>
+                                <button class="btn btn-primary btn-sm" id="evalCompareBtn" onclick="evalRunCompare()">逐节对比</button>
+                                <button class="btn btn-primary btn-sm" id="evalScoreBtn" onclick="evalRunScore()">AI 打分</button>
+                            </div>
+                        </div>
+                        <div class="text-muted text-sm" style="margin-top:6px">
+                            上传人工定稿的申报材料 docx（可整本上传，系统自动定位到所选章节），与 AI 生成稿逐小节对齐比对，并可调用当前所选大模型按评分维度打分。
+                        </div>
+                        <div id="evalStdInfo" class="eval-std-info" style="display:none"></div>
+                    </div>
+                </div>
+                <div id="evalScoreCard" style="display:none"></div>
+                <div id="evalCompareBox"></div>
+            </div>
+
+            <!-- ==================== 页面6：Skill 管理 ==================== -->
+            <div class="page" id="page-skills">
+                <div class="sk-layout">
+                    <div class="sk-list card" id="skList"></div>
+                    <div class="sk-main" id="skMain"></div>
+                </div>
+            </div>
+
+            <!-- ==================== 页面7：系统设置 ==================== -->
             <div class="page" id="page-settings">
                 <div class="card">
                     <div class="card-header"><h3><svg class="icn" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82V15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>系统设置</h3></div>
@@ -467,6 +518,8 @@
     <script src="/js/components.js?v=20260814f"></script>
     <script src="/js/diagram.js?v=20260813c"></script>
     <script src="/js/app.js?v=20260814i"></script>
+    <script src="/js/evaluation.js?v=20260814a"></script>
+    <script src="/js/skills_admin.js?v=20260817a"></script>
 
     <style>
     /* 文件夹浏览器样式 */

@@ -1559,7 +1559,7 @@ WRITE_CONFIG_PATH = DATA_SOURCE_BASE / "write_config.json"
 
 
 def _writing_skill_md(pack_id: str = None) -> Path:
-    return pack_service.pack_path("writing/SKILL.md", pack_id)
+    return pack_service.writing_skill_path(pack_id)
 
 
 _WRITE_CONFIG_KEYS = ("font", "body_pt", "table_pt", "footnote_pt",

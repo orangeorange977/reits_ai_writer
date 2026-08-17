@@ -7,6 +7,8 @@ const PAGE_TITLES = {
     'overview': '系统概览',
     'ndrc': '材料生成',
     'documents': '文档管理',
+    'evaluation': '对比评测',
+    'skills': 'Skill 管理',
     'settings': '系统设置'
 };
 
@@ -88,6 +90,16 @@ async function onPageEnter(pageId) {
         case 'documents':
             if (currentProjectId) {
                 await loadDocuments();
+            }
+            break;
+        case 'evaluation':
+            if (typeof evalPageEnter === 'function') {
+                evalPageEnter();
+            }
+            break;
+        case 'skills':
+            if (typeof skillsPageEnter === 'function') {
+                skillsPageEnter();
             }
             break;
         case 'settings':

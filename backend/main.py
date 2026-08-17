@@ -41,6 +41,7 @@ from backend.routers import projects_router, folders_router
 from backend.routers.auth import router as auth_router
 from backend.routers.packs import router as packs_router
 from backend.routers.skills import router as skills_router
+from backend.routers.evaluation import router as eval_router
 from backend.services.auth import decode_token
 
 # 创建FastAPI实例
@@ -86,6 +87,8 @@ def _is_ai_burst(path: str, method: str) -> bool:
     if method != "POST":
         return False
     if path in ("/api/skills/ai-edit", "/api/skills/ai-compose"):
+        return True
+    if path.startswith("/api/eval/score/"):
         return True
     return path.startswith("/api/skills/chapter/") and path.endswith("/run")
 
@@ -143,6 +146,7 @@ app.include_router(projects_router, prefix="/api")
 app.include_router(folders_router, prefix="/api")
 app.include_router(packs_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
+app.include_router(eval_router, prefix="/api")
 
 
 @app.get("/api/health")

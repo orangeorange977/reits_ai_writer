@@ -17,9 +17,16 @@ import logging
 import os
 from pathlib import Path
 
-from backend.config import PACKS_DIR
+from backend.config import PACKS_DIR, DATA_SOURCE_BASE
 
 logger = logging.getLogger(__name__)
+
+# ===== 用户修改覆盖层 =====
+# 代码包内的 skill 文本是“默认值”；用户在网页上修改后的版本存到数据卷的
+# skill_overrides/<pack_id>/<包内相对路径>，容器重建/重新发版不丢失，
+# 也不污染代码默认值（可随时重置回默认）。仅文本类 skill 适用，
+# web_render.py 等代码脚本不走覆盖层。
+OVERRIDES_DIR = DATA_SOURCE_BASE / "skill_overrides"
 
 
 class PackNotFoundError(Exception):
@@ -95,15 +102,41 @@ def pack_path(rel: str, pack_id: str = None) -> Path:
     return p
 
 
+def override_path(rel: str, pack_id: str = None) -> Path:
+    """用户修改覆盖件的存储路径（可能尚不存在）；同样防目录穿越。"""
+    pid = Path(pack_id or default_pack_id()).name
+    base = (OVERRIDES_DIR / pid).resolve()
+    p = (base / rel.replace("\\", "/")).resolve()
+    if not p.is_relative_to(base):
+        raise PackNotFoundError(f"非法覆盖路径：{rel}")
+    return p
+
+
+def skill_text_path(rel: str, pack_id: str = None) -> Path:
+    """文本类 skill 的生效路径：有用户覆盖件时优先覆盖件，否则代码包默认件。
+    读取链（生成/缓存失效判断）统一走这里，用户修改即时生效。"""
+    ov = override_path(rel, pack_id)
+    return ov if ov.exists() else pack_path(rel, pack_id)
+
+
+def is_overridden(rel: str, pack_id: str = None) -> bool:
+    return override_path(rel, pack_id).exists()
+
+
 def planning_path(pack_id: str = None) -> Path:
-    return pack_path("planning.md", pack_id)
+    return skill_text_path("planning.md", pack_id)
 
 
 def reading_path(n: int, pack_id: str = None) -> Path:
     ch = get_chapters(pack_id).get(int(n))
     if not ch:
         raise PackNotFoundError(f"模板包没有第 {n} 章")
-    return pack_path(ch["reading"], pack_id)
+    return skill_text_path(ch["reading"], pack_id)
+
+
+def writing_skill_path(pack_id: str = None) -> Path:
+    """写作/排版要求 writing/SKILL.md 的生效路径（走覆盖层）。"""
+    return skill_text_path("writing/SKILL.md", pack_id)
 
 
 def writing_script_dir(pack_id: str = None) -> Path:
