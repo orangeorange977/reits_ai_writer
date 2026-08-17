@@ -1684,7 +1684,8 @@ def ensure_write_config(force: bool = False, pack_id: str = None) -> dict:
 # 表标题编号占位：表# / 表c / 表3 等（表 后跟 #、单个字母、或一串数字）。编号不靠 Kimi 算，
 # 由代码按"表格出现顺序"统一排：编辑区用 _number_captions（起始号按模板前面已有几张表），
 # 最终 Word 由模板包内 web_render 全篇重排为准。
-_CAP_LEAD_RE = re.compile(r"^表(?:[#＃]|[0-9]+|[A-Za-z])")
+# 复合编号（如 表2-1）整体吃掉，避免重排后残留成"表2-1-1"
+_CAP_LEAD_RE = re.compile(r"^表(?:[#＃]|[0-9]+(?:[-－][0-9]+)*|[A-Za-z])")
 
 
 def _renumber_caption_text(cap: str, seq: int, chapter_n=None) -> str:

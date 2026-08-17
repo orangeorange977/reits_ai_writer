@@ -839,9 +839,10 @@ def _append_orphan(doc, sec, fn_state, collected):
     _insert_section_blocks_after(hp, _section_blocks(sec), fn_state, collected, doc)
 
 
-# 表标题里的编号占位：表# / 表c / 表3 / 表10 等（表 后面跟 #、单个字母、或一串数字）。
+# 表标题里的编号占位：表# / 表c / 表3 / 表10 / 表2-1 等（表 后面跟 #、单个字母、数字或
+# "数字-数字"复合编号）。复合编号整体吃掉，避免重排后残留成"表2-1-1"。
 # "表格""表格中"这种不会命中（表 后面不是 #/字母/数字）。
-_CAP_LEAD_RE = re.compile(r"^表(?:[#＃]|[0-9]+|[A-Za-z])")
+_CAP_LEAD_RE = re.compile(r"^表(?:[#＃]|[0-9]+(?:[-－][0-9]+)*|[A-Za-z])")
 
 
 def _para_is_caption_before_table(items, i):
@@ -884,6 +885,34 @@ def _renumber_all_table_captions(doc, chapter_n=None, start_idx=None, end_idx=No
             counter += 1
             _set_caption_number(items[i], counter, chapter_n)
     return counter
+
+
+def _chapter_table_fixups(items, lo, hi):
+    """本章范围内表格的定稿版式修补（按官方模板的固定表结构）：
+    - 首列含"中介机构类型"的行（如"1.中介机构类型"）：整行加粗，作为机构分组行；
+    - 首列为"二者关系"的行：标签后的多个值列合并成一格，关系写在一起。"""
+    for i in range(lo, hi):
+        b = items[i]
+        if not isinstance(b, Table):
+            continue
+        for row in b.rows:
+            cells = row.cells
+            if not cells:
+                continue
+            label = cells[0].text.strip()
+            if "中介机构类型" in label:
+                for c in cells:
+                    for p in c.paragraphs:
+                        for r in p.runs:
+                            r.bold = True
+                continue
+            if label == "二者关系" and len(cells) > 2:
+                vals = [cells[j].text.strip() for j in range(1, len(cells))]
+                uniq = list(dict.fromkeys(v for v in vals if v))
+                merged = cells[1]
+                for j in range(2, len(cells)):
+                    merged = merged.merge(cells[j])
+                _fill_cell_text(merged, "\n".join(uniq))
 
 
 def count_captions_before(template_path, chapter_title):
@@ -1016,6 +1045,7 @@ def render_into_template(sections, template_path, out_path,
     lo, hi = _chapter_range_idx(items_now, chapter_title, next_chapter_title)
     if lo is not None:
         _renumber_all_table_captions(doc, chapter_n, lo, hi)
+        _chapter_table_fixups(items_now, lo, hi)
 
     doc.save(str(out_path))
     _inject_footnotes(out_path, collected_fn)  # 追加真正的脚注到 footnotes.xml
