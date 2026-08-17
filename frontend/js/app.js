@@ -2919,17 +2919,6 @@ async function deleteDocument(chapter, version) {
     }
 }
 
-function switchDocTab(tab) {
-    document.querySelectorAll('#docTabBar .tab-item').forEach(item => {
-        item.classList.remove('active');
-    });
-    event.target.classList.add('active');
-    // 新管线文档列表无 tab 维度差异（无历史版本概念），统一重新拉取
-    if (currentProjectId) {
-        loadDocuments();
-    }
-}
-
 // ===== 项目创建 =====
 
 /**

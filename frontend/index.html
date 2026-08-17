@@ -249,13 +249,6 @@
 
             <!-- ==================== 页面3：文档管理 ====================（旧“章节编辑”页为旧视图假数据，已整页删除，新流程走 renderChapterEditor） -->
             <div class="page" id="page-documents">
-                <!-- 标签栏 -->
-                <div class="tab-bar" id="docTabBar">
-                    <div class="tab-item active" onclick="switchDocTab('all')">全部文档</div>
-                    <div class="tab-item" onclick="switchDocTab('generated')">已生成</div>
-                    <div class="tab-item" onclick="switchDocTab('history')">历史版本</div>
-                </div>
-
                 <div class="card">
                     <div class="card-header">
                         <h3><svg class="icn" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>已生成文档</h3>
@@ -281,18 +274,6 @@
                                 </tr>
                             </tbody>
                         </table>
-                    </div>
-                </div>
-
-                <!-- 历史版本对比（暂无版本历史 API，先隐藏） -->
-                <div class="card" style="margin-top:24px;display:none">
-                    <div class="card-header">
-                        <h3><svg class="icn" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>版本历史</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="timeline" id="docVersionTimeline">
-                            <div class="text-muted text-sm" style="padding:12px 0">暂无版本历史</div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -365,12 +346,6 @@
                                 border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg-card)">
                                 <div class="text-muted text-sm">暂无材料</div>
                             </div>
-                        </div>
-                        <div class="form-group">
-                            <label>后端API地址</label>
-                            <input type="text" class="form-input" style="width:100%;padding:8px 12px"
-                                value="/api" readonly>
-                            <div class="text-muted text-sm" style="margin-top:4px">前后端同源部署，无需配置</div>
                         </div>
                     </div>
                 </div>

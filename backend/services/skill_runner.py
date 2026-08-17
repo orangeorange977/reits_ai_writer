@@ -139,7 +139,9 @@ def snapshot_docx(n: int, project_id: str = None, src: Path = None, force: bool 
             new_h = _docx_body_hash(src)
             if new_h and new_h == _docx_body_hash(files[-1]):
                 return files[-1]  # 正文未变，沿用最新版
-        return _make_version(n, project_id, src, time.strftime("%Y%m%d"))
+        dest = _make_version(n, project_id, src, time.strftime("%Y%m%d"))
+        clear_doc_deleted(n, project_id)  # 又出新版本了，删除墓碑作废
+        return dest
     except Exception as e:
         logger.warning(f"ch{n} 固化正式文档版本失败（不影响预览）：{e}")
         return None
@@ -147,10 +149,14 @@ def snapshot_docx(n: int, project_id: str = None, src: Path = None, force: bool 
 
 def ensure_versioned(n: int, project_id: str = None):
     """老数据迁移：只有工作文件、还没有正式版本时，把它固化为 v1
-    （日期取文件的修改日）；已有版本则直接返回最新版。"""
+    （日期取文件的修改日）；已有版本则直接返回最新版。
+    注意：若该章版本被用户删光过（有墓碑标记），跳过迁移，
+    否则删除后一刷列表文档就“复活”了。"""
     files = versioned_docx_files(n, project_id)
     if files:
         return files[-1]
+    if is_doc_deleted(n, project_id):
+        return None
     work = chapter_docx_path(n, project_id)
     if not work.exists():
         return None
@@ -160,6 +166,36 @@ def ensure_versioned(n: int, project_id: str = None):
     except Exception as e:
         logger.warning(f"ch{n} 老文档迁移 v1 失败：{e}")
         return None
+
+
+# ===== 删除墓碑 =====
+# 用户把某章正式版本删光后落一个标记：列表/迁移不再从工作文件复活它；
+# 下次重新渲染出版本（snapshot_docx）时自动清除标记。仅影响列表可见性，
+# 不碰工作文件与其他章。
+
+
+def _doc_deleted_marker(n: int, project_id: str = None) -> Path:
+    return _project_dir(project_id) / "output" / f"ch{n}.doc_deleted"
+
+
+def mark_doc_deleted(n: int, project_id: str = None):
+    try:
+        p = _doc_deleted_marker(n, project_id)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(time.strftime("%Y-%m-%d %H:%M:%S"), encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"ch{n} 写删除墓碑失败：{e}")
+
+
+def is_doc_deleted(n: int, project_id: str = None) -> bool:
+    return _doc_deleted_marker(n, project_id).exists()
+
+
+def clear_doc_deleted(n: int, project_id: str = None):
+    try:
+        _doc_deleted_marker(n, project_id).unlink(missing_ok=True)
+    except Exception:
+        pass
 
 # 网页上选择的大模型（DeepSeek/Kimi，全局设置，持久化在 workspace 根；各章生成都用它，
 # 缺省用 DeepSeek 主力模型 deepseek-chat）

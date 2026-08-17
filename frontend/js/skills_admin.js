@@ -110,6 +110,7 @@ function _skRenderMain() {
                     <div class="sk-seg-item ${SK_MODE === 'edit' ? 'active' : ''}" onclick="skSetMode('edit')">编辑</div>
                 </div>
                 ${d.overridden ? '<button class="btn btn-ghost btn-sm" onclick="skReset()">重置为默认</button>' : ''}
+                ${_skTestRunBtn()}
                 <button class="btn btn-primary btn-sm" id="skSaveBtn" onclick="skSave()" style="${SK_MODE === 'edit' ? '' : 'display:none'}">保存修改</button>
             </div>
         </div>
@@ -127,6 +128,43 @@ function _skRenderMain() {
 }
 
 function skDirty() { SK_DIRTY = true; }
+
+// 仅各章写作要求支持测试运行（planning/排版要求是跨章共性，无单章运行入口）
+function _skTestRunBtn() {
+    const f = SK_FILES.find(x => x.rel === SK_CURRENT);
+    if (!f || f.kind !== 'chapter' || !f.n) return '';
+    return '<button class="btn btn-ghost btn-sm" onclick="skTestRun()" title="按当前 skill 重新生成本章并跳转查看结果">测试运行</button>';
+}
+
+/** 测试运行：按当前生效的 skill 重新生成该章，跳到申报材料页查看结果。
+ * 生成是异步的，申报材料页会自动接入轮询并显示全局生成横幅。 */
+async function skTestRun() {
+    const f = SK_FILES.find(x => x.rel === SK_CURRENT);
+    if (!f || !f.n) return;
+    const n = f.n;
+    // Skill 页不依赖项目上下文，先确保有当前项目（没有则取第一个）
+    if (!currentProjectId) {
+        try {
+            const ps = await API.getProjects();
+            const list = Array.isArray(ps) ? ps : (ps.projects || []);
+            if (list.length) currentProjectId = list[0].id;
+        } catch (e) { /* 下面统一提示 */ }
+    }
+    if (!currentProjectId) { showToast('请先在项目列表中创建项目', 'warning'); return; }
+    if (SK_DIRTY && !confirm('当前编辑尚未保存，测试运行仍按“已保存”的版本执行。确定继续？')) return;
+    if (!confirm(`将按当前生效的 skill 重新生成第${n}章，该章已生成内容会被覆盖。确定运行？`)) return;
+    try {
+        await API.runChapter(n);
+    } catch (e) {
+        if (!String(e.message).includes('正在生成')) {
+            showToast('启动失败: ' + e.message, 'error');
+            return;
+        }
+    }
+    navigate('ndrc');
+    await selectChapter(n);   // 渲染该章编辑视图并自动接入生成轮询
+    showToast(`第${n}章测试生成已启动，约需数分钟`, 'success');
+}
 
 async function skSave() {
     const ta = document.getElementById('skEditor');

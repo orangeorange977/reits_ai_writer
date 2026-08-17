@@ -670,6 +670,9 @@ async def delete_document(n: int, http_req: Request, project_id: str = "", versi
         target.unlink()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除失败：{e}")
+    # 版本删光了→落墓碑，防止列表接口的老数据迁移把工作文件复活成 v1
+    if not skill_runner.versioned_docx_files(n, project_id or None):
+        skill_runner.mark_doc_deleted(n, project_id or None)
     return {"status": "ok", "deleted": target.name}
 
 
