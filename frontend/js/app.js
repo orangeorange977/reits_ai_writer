@@ -1983,6 +1983,7 @@ function _initAutosave() {
     }
     setInterval(async () => {
         if (!_editorDirty || _autoSaving) return;
+        if (!AuthToken.get()) return;   // 登录态失效时不重试，避免 401 刷屏（重新登录后自动恢复）
         const pg = document.getElementById('page-ndrc');
         if (!pg || !pg.classList.contains('active')) return;
         _autoSaving = true;
@@ -2000,6 +2001,7 @@ function _initAutosave() {
     }, 30000);
     const lastChance = () => {
         if (!_editorDirty) return;
+        if (!AuthToken.get()) return;   // 登录态失效时不补存
         const n = _domChapter;   // 同 _persistChapter：按 DOM 所属章节补存，防切章空窗串章
         if (!n) return;
         const editors = document.querySelectorAll('#chapterDetail .doc-editor');
