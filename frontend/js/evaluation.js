@@ -240,12 +240,16 @@ async function evalRunScore() {
     const n = evalChapter;
     const btn = document.getElementById('evalScoreBtn');
     btn.disabled = true; btn.textContent = 'AI 评分中…';
+    showToast('AI 评分已启动，约需30-60秒，期间请勿切换页面…', 'info');
     try {
         const score = await _evalJson(
             `/eval/score/${n}?project_id=${encodeURIComponent(currentProjectId)}`, { method: 'POST' });
-        showToast(`评分完成：总分 ${score.total}`, 'success');
         const s = await _evalJson(`/eval/scores/${n}?project_id=${encodeURIComponent(currentProjectId)}`);
         _evalRenderScore(score, (s.scores || []).length);
+        // 打分卡同步刷新对比面板，并滚动到打分结果，避免“点了没反应”的观感
+        await _evalRefresh(false);
+        showToast(`评分完成：总分 ${score.total}`, 'success');
+        document.getElementById('evalScoreCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) {
         showToast(e.message, 'error');
     } finally {

@@ -26,6 +26,7 @@ _CN_NUM_MAP = {c: i + 1 for i, c in enumerate(_CN_NUM)}
 # 展示/打分时的文本截断，避免超长载荷
 _PANE_CAP = 2500      # 对比面板单侧最大字符
 _EXCERPT_CAP = 1200   # 喂给评分模型的单节摘要上限
+_CACHE_SCHEMA = 2     # 对比缓存结构版本：解析/过滤规则变化时+1，旧缓存自动作废
 
 
 def _bench_dir(pid: str) -> Path:
@@ -114,7 +115,7 @@ def parse_standard(pid: str, n: int) -> dict:
                 in_chapter = True
                 found_boundary = True
                 chapter_title = text
-                _new_section("")          # 章内正文先挂到空标题节
+                cur = None                # 空标题节延迟到首个正文段出现时再建，避免空行
                 continue
             elif in_chapter:
                 break                     # 下一章开始，本章结束
@@ -301,7 +302,8 @@ def compare_chapter(pid: str, n: int, force: bool = False) -> dict:
         try:
             cached = json.loads(cache.read_text(encoding="utf-8-sig"))
             if (cached.get("_meta", {}).get("std_mtime") == std_path.stat().st_mtime
-                    and cached.get("_meta", {}).get("gen_mtime") == gen_path.stat().st_mtime):
+                    and cached.get("_meta", {}).get("gen_mtime") == gen_path.stat().st_mtime
+                    and cached.get("_meta", {}).get("schema") == _CACHE_SCHEMA):
                 return cached
         except Exception:
             pass
@@ -309,6 +311,11 @@ def compare_chapter(pid: str, n: int, force: bool = False) -> dict:
     std = parse_standard(pid, n)
     gen_secs = load_generated(pid, n)
     std_secs = std["sections"]
+    # 过滤双侧空节（标题空且正文空）：不展示也不计入统计
+    def _nonempty(s):
+        return bool(str(s.get("title", "")).strip() or _norm(s.get("text", "")))
+    gen_secs = [s for s in gen_secs if _nonempty(s)]
+    std_secs = [s for s in std_secs if _nonempty(s)]
     rows = _align(gen_secs, std_secs)
 
     sections = []
@@ -348,6 +355,7 @@ def compare_chapter(pid: str, n: int, force: bool = False) -> dict:
         },
         "sections": sections,
         "_meta": {
+            "schema": _CACHE_SCHEMA,
             "std_mtime": std_path.stat().st_mtime,
             "gen_mtime": gen_path.stat().st_mtime,
             "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
