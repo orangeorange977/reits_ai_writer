@@ -18,9 +18,10 @@ _MAX_UPLOAD = 20 * 1024 * 1024   # 标准答案 docx 上限 20MB
 
 @router.get("/standards")
 async def list_standards(http_req: Request, project_id: str = ""):
-    """哪些章节已上传标准答案。"""
+    """哪些章节已上传标准答案、哪些章节已生成内容。"""
     await _assert_project_access(project_id, _current_user_id(http_req))
-    return {"chapters": eval_service.list_standards(project_id)}
+    return {"chapters": eval_service.list_standards(project_id),
+            "generated": eval_service.list_generated(project_id)}
 
 
 @router.post("/standard/{n}/upload")

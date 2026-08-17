@@ -2848,6 +2848,8 @@ h2 { letter-spacing: -0.015em; }
 .eval-chip.active { border-color: var(--primary, #0a84ff); color: var(--primary, #0a84ff); background: rgba(10, 132, 255, 0.06); }
 .eval-chip-n { font-weight: 600; }
 .eval-chip-badge { color: #34c759; font-weight: 600; }
+.eval-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: #34c759; flex: none; }
+.eval-chip-dot.off { background: #d1d1d6; }
 .eval-std-info { margin-top: 10px; }
 
 .eval-metrics { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }

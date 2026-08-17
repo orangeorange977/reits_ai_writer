@@ -167,6 +167,17 @@ def list_standards(pid: str) -> list:
     return sorted(out)
 
 
+def list_generated(pid: str) -> list:
+    """已生成内容（ch{n}.json 存在）的章节清单，供前端控制打分/对比入口。"""
+    d = PROJECTS_DIR / safe_project_id(pid)
+    out = []
+    for p in sorted(d.glob("ch*.json")):
+        m = re.match(r"ch(\d+)\.json", p.name)
+        if m:
+            out.append(int(m.group(1)))
+    return sorted(out)
+
+
 def delete_standard(pid: str, n: int) -> None:
     d = _bench_dir(pid)
     for name in (f"standard_ch{n}.docx", f"compare_ch{n}.json", f"scores_ch{n}.json"):
@@ -453,15 +464,25 @@ def score_chapter(pid: str, n: int) -> dict:
         + "\n\n===== 逐节对照 =====\n" + "\n".join(parts))
 
     model = get_selected_model()
-    raw = chat([
+    msgs = [
         {"role": "system", "content": _SCORE_SYSTEM},
         {"role": "user", "content": user_prompt},
-    ], model=model, temperature=0.2)
+    ]
+    raw = chat(msgs, model=model, temperature=0.2)
     try:
         score = _extract_json(raw)
-    except Exception as e:
-        logger.warning(f"ch{n} AI打分解析失败: {e}; raw={raw[:200]}")
-        raise ValueError("评分模型返回格式异常，请重试") from e
+    except Exception:
+        # 模型偶发空正文（推理类模型更常见）：追问一次，要求直接输出 JSON
+        logger.warning(f"ch{n} AI打分首次未返回有效JSON，追问一次; raw={str(raw)[:200]}")
+        msgs.append({"role": "assistant", "content": raw or ""})
+        msgs.append({"role": "user", "content": "请现在直接输出评分JSON对象本身"
+                                                "（只输出JSON，不要任何其他文字，不要空内容）。"})
+        raw = chat(msgs, model=model, temperature=0.2)
+        try:
+            score = _extract_json(raw)
+        except Exception as e:
+            logger.warning(f"ch{n} AI打分解析失败: {e}; raw={str(raw)[:200]}")
+            raise ValueError("评分模型返回格式异常，请重试一次或切换模型后再打分") from e
 
     total = score.get("total")
     if not isinstance(total, (int, float)):

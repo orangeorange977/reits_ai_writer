@@ -6,6 +6,7 @@
 // ===== 状态 =====
 let evalChapter = null;          // 当前选中章号
 let evalStandardChapters = [];   // 已上传标准答案的章号列表
+let evalGeneratedChapters = [];  // 已生成内容的章号列表
 const _expandedEvalSections = new Set();
 
 function _escEval(s) {
@@ -47,13 +48,17 @@ async function _evalLoadChapters() {
     if (!evalChapter || !chapters.find(c => c.n === evalChapter)) {
         evalChapter = chapters.length ? chapters[0].n : null;
     }
-    box.innerHTML = chapters.map(c => `
+    box.innerHTML = chapters.map(c => {
+        const gen = evalGeneratedChapters.includes(c.n);
+        return `
         <div class="eval-chip ${c.n === evalChapter ? 'active' : ''}"
-             onclick="evalSelectChapter(${c.n})">
+             onclick="evalSelectChapter(${c.n})" title="${gen ? '已生成' : '未生成'}">
             <span class="eval-chip-n">${_escEval(c.n)}</span>
             <span class="eval-chip-t">${_escEval(c.title)}</span>
+            <span class="eval-chip-dot ${gen ? '' : 'off'}"></span>
             <span class="eval-chip-badge" id="evalBadge${c.n}" style="display:none">✓</span>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 }
 
 function evalSelectChapter(n) {
@@ -71,40 +76,62 @@ async function _evalRefresh(showLoading) {
     try {
         const std = await _evalJson(`/eval/standards?project_id=${encodeURIComponent(currentProjectId)}`);
         evalStandardChapters = std.chapters || [];
+        evalGeneratedChapters = std.generated || [];
     } catch (e) {
         showToast(e.message, 'error');
         return;
     }
-    // 各章角标
+    // 各章角标（绿点=已生成，✓=已传标准答案）
+    _evalLoadChapters();
     evalStandardChapters.forEach(c => {
         const b = document.getElementById('evalBadge' + c);
         if (b) b.style.display = '';
     });
 
     const hasStd = evalStandardChapters.includes(n);
+    const gen = evalGeneratedChapters.includes(n);
     document.getElementById('evalRemoveBtn').style.display = hasStd ? '' : 'none';
     infoBox.style.display = hasStd ? '' : 'none';
     infoBox.innerHTML = hasStd
         ? `<span class="badge badge-success">第${n}章已上传标准答案</span>`
         : '';
 
-    // 已有打分：直接展示最近一次
-    const scoreBox = document.getElementById('evalScoreCard');
-    try {
-        const s = await _evalJson(`/eval/scores/${n}?project_id=${encodeURIComponent(currentProjectId)}`);
-        const list = s.scores || [];
-        if (list.length) {
-            _evalRenderScore(list[list.length - 1], list.length);
-        } else {
-            scoreBox.style.display = 'none';
-            scoreBox.innerHTML = '';
-        }
-    } catch (e) { /* 打分历史读失败不阻塞 */ }
+    // 入口状态：未生成的章不能对比/打分，避免“所有章节都能打分”的误导
+    const scoreBtn = document.getElementById('evalScoreBtn');
+    const cmpBtn = document.getElementById('evalCompareBtn');
+    cmpBtn.disabled = !gen;
+    if (!gen) {
+        scoreBtn.disabled = true; scoreBtn.textContent = '本章未生成';
+    } else {
+        scoreBtn.disabled = false; scoreBtn.textContent = 'AI 打分';
+    }
 
-    // 已有对比缓存：静默展示
+    // 打分卡：仅本章已生成且有历史时展示（带上章号标签）
+    const scoreBox = document.getElementById('evalScoreCard');
+    if (!gen) {
+        scoreBox.style.display = 'none';
+        scoreBox.innerHTML = '';
+    } else {
+        try {
+            const s = await _evalJson(`/eval/scores/${n}?project_id=${encodeURIComponent(currentProjectId)}`);
+            const list = s.scores || [];
+            if (list.length) {
+                _evalRenderScore(list[list.length - 1], list.length);
+            } else {
+                scoreBox.style.display = 'none';
+                scoreBox.innerHTML = '';
+            }
+        } catch (e) { /* 打分历史读失败不阻塞 */ }
+    }
+
+    // 对比面板
     const cmpBox = document.getElementById('evalCompareBox');
     if (!hasStd) {
         cmpBox.innerHTML = '<div class="card"><div class="card-body text-muted">尚未上传本章标准答案，上传后即可逐节对比。</div></div>';
+        return;
+    }
+    if (!gen) {
+        cmpBox.innerHTML = `<div class="card"><div class="card-body text-muted">第${n}章内容尚未生成，请先到章节生成页生成后再对比打分。</div></div>`;
         return;
     }
     if (showLoading) {
@@ -282,7 +309,7 @@ function _evalRenderScore(score, histCount) {
     const nobasis = (score.no_basis_points || []).map(m => `<li>${_escEval(m)}</li>`).join('');
     box.innerHTML = `
     <div class="card">
-        <div class="card-header"><h3>AI 打分（${_escEval(score.created_at || '')}，模型 ${_escEval(score.model || '')}${histCount > 1 ? `，共${histCount}次记录` : ''}）</h3></div>
+        <div class="card-header"><h3>AI 打分 · 第${_escEval(score.chapter || evalChapter || '')}章（${_escEval(score.created_at || '')}，模型 ${_escEval(score.model || '')}${histCount > 1 ? `，共${histCount}次记录` : ''}）</h3></div>
         <div class="card-body">
             <div class="eval-total" style="border-color:${_scoreColor(score.total)}">
                 <div class="eval-total-v" style="color:${_scoreColor(score.total)}">${score.total}</div>
