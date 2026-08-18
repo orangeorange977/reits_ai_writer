@@ -11,6 +11,7 @@ import difflib
 import json
 import logging
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -536,3 +537,40 @@ def get_scores(pid: str, n: int) -> list:
         return json.loads(p.read_text(encoding="utf-8-sig"))
     except Exception:
         return []
+
+
+# ===== AI 打分后台任务：启动即返回，切换页面不影响评分 =====
+_SCORE_TASKS = {}    # key=f"{pid}:{n}" -> {status, started_at, finished_at, error, total}
+_TASK_LOCK = threading.Lock()
+
+
+def start_score_task(pid: str, n: int) -> dict:
+    """后台线程跑第 n 章打分；同章已在跑则直接返回该任务，不重复启动。"""
+    key = f"{pid}:{n}"
+    with _TASK_LOCK:
+        t = _SCORE_TASKS.get(key)
+        if t and t.get("status") == "running":
+            return t
+        t = {"status": "running", "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+             "finished_at": None, "error": None, "total": None}
+        _SCORE_TASKS[key] = t
+
+    def _run():
+        try:
+            score = score_chapter(pid, n)
+            t["total"] = score.get("total")
+            t["status"] = "done"
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"ch{n} 后台评分失败: {e}")
+            t["error"] = str(e)
+            t["status"] = "failed"
+        finally:
+            t["finished_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    threading.Thread(target=_run, daemon=True, name=f"score-{key}").start()
+    return t
+
+
+def get_score_task(pid: str, n: int):
+    """第 n 章打分任务状态（未启动/服务重启后为 None）。"""
+    return _SCORE_TASKS.get(f"{pid}:{n}")

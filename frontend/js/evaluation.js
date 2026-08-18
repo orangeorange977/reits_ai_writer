@@ -8,6 +8,8 @@ let evalChapter = null;          // 当前选中章号
 let evalStandardChapters = [];   // 已上传标准答案的章号列表
 let evalGeneratedChapters = [];  // 已生成内容的章号列表
 let evalLastScore = null;        // 本章最近一次打分（含逐节语义相似度）
+const evalRunningTasks = new Set();  // 后台评分中的章号（切换页面不中断）
+let _evalPollTimer = null;
 const _expandedEvalSections = new Set();
 
 function _escEval(s) {
@@ -103,9 +105,17 @@ async function _evalRefresh(showLoading) {
     cmpBtn.disabled = !gen;
     if (!gen) {
         scoreBtn.disabled = true; scoreBtn.textContent = '本章未生成';
+    } else if (evalRunningTasks.has(n)) {
+        scoreBtn.disabled = true; scoreBtn.textContent = 'AI 评分中…';
     } else {
         scoreBtn.disabled = false; scoreBtn.textContent = 'AI 打分';
     }
+
+    // 重连后台评分任务：切页/刷新后仍能接上正在跑的任务
+    try {
+        const r = await _evalJson(`/eval/score_task/${n}?project_id=${encodeURIComponent(currentProjectId)}`);
+        if (r.task && r.task.status === 'running' && !evalRunningTasks.has(n)) _evalMarkRunning(n, true);
+    } catch (e) { /* 状态读取失败不阻塞 */ }
 
     // 打分卡：仅本章已生成且有历史时展示（带上章号标签）
     const scoreBox = document.getElementById('evalScoreCard');
@@ -278,25 +288,63 @@ function evalToggleSection(i) {
     evalRunCompare(false);   // 复用缓存，仅重渲染
 }
 
-// ===== AI 打分 =====
+// ===== AI 打分（后台任务 + 轮询，切换页面不影响评分） =====
 async function evalRunScore() {
     const n = evalChapter;
     const btn = document.getElementById('evalScoreBtn');
     btn.disabled = true; btn.textContent = 'AI 评分中…';
-    showToast('AI 评分已启动，约需30-60秒，期间请勿切换页面…', 'info');
     try {
-        const score = await _evalJson(
+        await _evalJson(
             `/eval/score/${n}?project_id=${encodeURIComponent(currentProjectId)}`, { method: 'POST' });
-        const s = await _evalJson(`/eval/scores/${n}?project_id=${encodeURIComponent(currentProjectId)}`);
-        _evalRenderScore(score, (s.scores || []).length);
-        // 打分卡同步刷新对比面板，并滚动到打分结果，避免“点了没反应”的观感
-        await _evalRefresh(false);
-        showToast(`评分完成：总分 ${score.total}`, 'success');
-        document.getElementById('evalScoreCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        showToast('AI 评分已在后台启动，可自由切换页面，完成后自动通知', 'info');
+        _evalMarkRunning(n, true);
     } catch (e) {
         showToast(e.message, 'error');
-    } finally {
-        btn.disabled = false; btn.textContent = 'AI 打分';
+        if (!evalRunningTasks.has(n)) { btn.disabled = false; btn.textContent = 'AI 打分'; }
+    }
+}
+
+/** 标记章号后台评分状态并同步按钮 */
+function _evalMarkRunning(n, on) {
+    if (on) evalRunningTasks.add(n); else evalRunningTasks.delete(n);
+    if (evalChapter === n) {
+        const btn = document.getElementById('evalScoreBtn');
+        if (btn && evalGeneratedChapters.includes(n)) {
+            btn.disabled = on;
+            btn.textContent = on ? 'AI 评分中…' : 'AI 打分';
+        }
+    }
+    _evalEnsurePoll();
+}
+
+function _evalEnsurePoll() {
+    if (evalRunningTasks.size && !_evalPollTimer) {
+        _evalPollTimer = setInterval(_evalPollTick, 4000);
+    } else if (!evalRunningTasks.size && _evalPollTimer) {
+        clearInterval(_evalPollTimer); _evalPollTimer = null;
+    }
+}
+
+async function _evalPollTick() {
+    for (const n of Array.from(evalRunningTasks)) {
+        let t = null;
+        try {
+            const r = await _evalJson(`/eval/score_task/${n}?project_id=${encodeURIComponent(currentProjectId)}`);
+            t = r.task;
+        } catch (e) { continue; }
+        if (!t) { _evalMarkRunning(n, false); continue; }   // 服务重启等导致任务丢失
+        if (t.status === 'running') continue;
+        _evalMarkRunning(n, false);
+        if (t.status === 'done') {
+            showToast(`第${n}章评分完成：总分 ${t.total}`, 'success');
+            if (currentPage === 'evaluation' && evalChapter === n) {
+                await _evalRefresh(false);
+                const card = document.getElementById('evalScoreCard');
+                if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        } else {
+            showToast(`第${n}章评分失败：${t.error || '未知错误'}`, 'error');
+        }
     }
 }
 

@@ -68,14 +68,20 @@ async def compare(n: int, http_req: Request, project_id: str = "", force: int = 
 
 @router.post("/score/{n}")
 async def score(n: int, http_req: Request, project_id: str = ""):
-    """AI 打分（耗时数十秒，按当前所选主模型计费）。"""
+    """AI 打分：后台任务启动即返回，前端轮询 /score_task 拿状态；切换页面不影响评分。"""
     await _assert_project_access(project_id, _current_user_id(http_req))
-    try:
-        return await asyncio.to_thread(eval_service.score_chapter, project_id, n)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+    if n not in eval_service.list_standards(project_id):
+        raise HTTPException(status_code=404, detail=f"第{n}章尚未上传标准答案")
+    if n not in eval_service.list_generated(project_id):
+        raise HTTPException(status_code=400, detail=f"第{n}章内容尚未生成，无法打分")
+    return {"task": eval_service.start_score_task(project_id, n)}
+
+
+@router.get("/score_task/{n}")
+async def score_task(n: int, http_req: Request, project_id: str = ""):
+    """打分后台任务状态：running/done/failed；未启动为 null。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    return {"task": eval_service.get_score_task(project_id, n)}
 
 
 @router.get("/scores/{n}")
