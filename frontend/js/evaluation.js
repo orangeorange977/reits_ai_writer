@@ -7,6 +7,7 @@
 let evalChapter = null;          // 当前选中章号
 let evalStandardChapters = [];   // 已上传标准答案的章号列表
 let evalGeneratedChapters = [];  // 已生成内容的章号列表
+let evalLastScore = null;        // 本章最近一次打分（含逐节语义相似度）
 const _expandedEvalSections = new Set();
 
 function _escEval(s) {
@@ -109,6 +110,7 @@ async function _evalRefresh(showLoading) {
     // 打分卡：仅本章已生成且有历史时展示（带上章号标签）
     const scoreBox = document.getElementById('evalScoreCard');
     if (!gen) {
+        evalLastScore = null;
         scoreBox.style.display = 'none';
         scoreBox.innerHTML = '';
     } else {
@@ -116,8 +118,10 @@ async function _evalRefresh(showLoading) {
             const s = await _evalJson(`/eval/scores/${n}?project_id=${encodeURIComponent(currentProjectId)}`);
             const list = s.scores || [];
             if (list.length) {
-                _evalRenderScore(list[list.length - 1], list.length);
+                evalLastScore = list[list.length - 1];
+                _evalRenderScore(evalLastScore, list.length);
             } else {
+                evalLastScore = null;
                 scoreBox.style.display = 'none';
                 scoreBox.innerHTML = '';
             }
@@ -206,15 +210,23 @@ function _simBadge(sim) {
 function _evalRenderCompare(cmp) {
     const box = document.getElementById('evalCompareBox');
     const s = cmp.summary || {};
+    // 最近一次打分的逐节语义相似度（按标题对齐）；未打分时回退到文本相似度
+    const aiByTitle = {};
+    ((evalLastScore && evalLastScore.sections) || []).forEach(x => {
+        if (x && x.title != null) aiByTitle[String(x.title).trim()] = x;
+    });
+    const _aiOf = sec => aiByTitle[(sec.gen_title || '').trim()] || aiByTitle[(sec.std_title || '').trim()];
     const rows = (cmp.sections || []).map((sec, i) => {
+        const ai = sec.status === 'matched' ? _aiOf(sec) : null;
+        const sim = ai ? Math.max(0, Math.min(100, Number(ai.sim) || 0)) / 100 : sec.similarity;
         const statusBadge = sec.status === 'matched'
-            ? _simBadge(sec.similarity)
+            ? _simBadge(sim)
             : (sec.status === 'std_only'
                 ? '<span class="badge badge-error">生成稿缺失</span>'
                 : '<span class="badge badge-extra">生成稿多出</span>');
         const simBar = sec.status === 'matched'
-            ? `<div class="sim-bar"><div class="sim-bar-fill" style="width:${Math.round(sec.similarity * 100)}%"></div></div>
-               <span class="text-sm text-muted">${Math.round(sec.similarity * 100)}%</span>`
+            ? `<div class="sim-bar"><div class="sim-bar-fill" style="width:${Math.round(sim * 100)}%"></div></div>
+               <span class="text-sm text-muted" title="${ai ? _escEval(ai.comment || '') : '文本相似度'}">${Math.round(sim * 100)}%${ai ? '·AI语义' : ''}</span>`
             : '';
         const open = _expandedEvalSections.has(i);
         const title = sec.status === 'std_only' ? sec.std_title : (sec.gen_title || sec.std_title || '（章内正文）');
@@ -239,6 +251,10 @@ function _evalRenderCompare(cmp) {
         </div>`;
     }).join('');
 
+    const matchedSecs = (cmp.sections || []).filter(x => x.status === 'matched');
+    const aiSims = matchedSecs.map(x => { const a = aiByTitle[(x.gen_title || '').trim()] || aiByTitle[(x.std_title || '').trim()]; return a ? Number(a.sim) : null; })
+        .filter(v => v != null && !isNaN(v));
+    const avgSim = aiSims.length ? (aiSims.reduce((a, b) => a + b, 0) / aiSims.length / 100) : (s.avg_similarity || 0);
     box.innerHTML = `
     <div class="card">
         <div class="card-header"><h3>逐节对比结果</h3>
@@ -247,7 +263,7 @@ function _evalRenderCompare(cmp) {
         <div class="card-body">
             <div class="eval-metrics">
                 <div class="eval-metric"><div class="eval-metric-v">${Math.round((s.coverage || 0) * 100)}%</div><div class="eval-metric-l">小节覆盖率（${s.matched}/${s.std_sections}）</div></div>
-                <div class="eval-metric"><div class="eval-metric-v">${Math.round((s.avg_similarity || 0) * 100)}%</div><div class="eval-metric-l">平均相似度</div></div>
+                <div class="eval-metric"><div class="eval-metric-v">${Math.round(avgSim * 100)}%</div><div class="eval-metric-l">平均相似度${aiSims.length ? '（AI语义）' : ''}</div></div>
                 <div class="eval-metric"><div class="eval-metric-v">${s.std_only || 0}</div><div class="eval-metric-l">缺失小节</div></div>
                 <div class="eval-metric"><div class="eval-metric-v">${s.gen_only || 0}</div><div class="eval-metric-l">多出小节</div></div>
             </div>
