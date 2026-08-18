@@ -960,19 +960,11 @@ def _chapter_range_idx(items, chapter_title, next_chapter_title):
     return lo, hi
 
 
-def render_into_template(sections, template_path, out_path,
-                         chapter_title=_CHAPTER_TITLE, next_chapter_title=_NEXT_CHAPTER_TITLE,
-                         chapter_n=None):
-    """把某一章内容写入官方模板（定位规则：以模板里带格式的标题 Heading 为锚点）。
-    对每个能和 reading section 对应上的模板小标题（（一）（二）…）：把该小标题到下一个 Heading
-    之间的模板内容**整段删除**，再把 reading 该节的有序块（p/kv/grid）按序写到小标题正后面。
-    reading 里"模板没有的新标题"按 JSON 顺序作为新标题插入；表格一律新建（方案A）；
-    最后全篇表标题按出现顺序统一编号。writing 只负责写入，删什么由 reading 决定输出什么来控制。"""
-    doc = Document(str(template_path))
+def _fill_chapter(doc, sections, chapter_title, next_chapter_title, chapter_n, fn_state, collected_fn):
+    """把一章内容就地填入 doc（render_into_template / render_book_into_template 共用）。
+    模板里定位不到该章大标题 → 返回 False、不做任何修改。"""
     sec_by_title = {s.get("title", "").strip(): s for s in sections}
     body_sec = sec_by_title.get(_BODY_SECTION_TITLE)
-    fn_state = [0]          # 脚注 id 计数（从 1 起，模板已占用 -1/0）
-    collected_fn = []       # [(fid, 脚注文本)]
 
     blocks = list(_iter_block_items(doc))
 
@@ -988,10 +980,7 @@ def render_into_template(sections, template_path, out_path,
             end_idx = k
             break
     if start_idx is None:
-        _renumber_all_table_captions(doc)  # 定位不到本章：退回旧的全篇顺序编号，不带章号
-        doc.save(str(out_path))
-        _inject_footnotes(out_path, collected_fn)
-        return out_path
+        return False
 
     next_chapter_blk = blocks[end_idx] if end_idx < len(blocks) else None
     # 本章内的小标题（Heading）下标；本章大标题在 start_idx
@@ -1046,9 +1035,42 @@ def render_into_template(sections, template_path, out_path,
     if lo is not None:
         _renumber_all_table_captions(doc, chapter_n, lo, hi)
         _chapter_table_fixups(items_now, lo, hi)
+    return True
 
+
+def render_into_template(sections, template_path, out_path,
+                         chapter_title=_CHAPTER_TITLE, next_chapter_title=_NEXT_CHAPTER_TITLE,
+                         chapter_n=None):
+    """把某一章内容写入官方模板（定位规则：以模板里带格式的标题 Heading 为锚点）。
+    对每个能和 reading section 对应上的模板小标题（（一）（二）…）：把该小标题到下一个 Heading
+    之间的模板内容**整段删除**，再把 reading 该节的有序块（p/kv/grid）按序写到小标题正后面。
+    reading 里"模板没有的新标题"按 JSON 顺序作为新标题插入；表格一律新建（方案A）；
+    最后全篇表标题按出现顺序统一编号。writing 只负责写入，删什么由 reading 决定输出什么来控制。"""
+    doc = Document(str(template_path))
+    fn_state = [0]          # 脚注 id 计数（从 1 起，模板已占用 -1/0）
+    collected_fn = []       # [(fid, 脚注文本)]
+    found = _fill_chapter(doc, sections, chapter_title, next_chapter_title, chapter_n, fn_state, collected_fn)
+    if not found:
+        _renumber_all_table_captions(doc)  # 定位不到本章：退回旧的全篇顺序编号，不带章号
     doc.save(str(out_path))
     _inject_footnotes(out_path, collected_fn)  # 追加真正的脚注到 footnotes.xml
+    return out_path
+
+
+def render_book_into_template(chapter_items, template_path, out_path):
+    """一次把多章内容写入官方模板（同一个 Document 会话、脚注统一编号）。
+    chapter_items：按章序排列的 {sections, chapter_title, next_chapter_title, chapter_n} 列表。
+    导出某章时同时填入其它已生成章节的最新内容 → 导出即最新整本。"""
+    doc = Document(str(template_path))
+    fn_state = [0]
+    collected_fn = []
+    for it in chapter_items:
+        _fill_chapter(doc, it.get("sections") or [],
+                      it.get("chapter_title") or _CHAPTER_TITLE,
+                      it.get("next_chapter_title") or _NEXT_CHAPTER_TITLE,
+                      it.get("chapter_n"), fn_state, collected_fn)
+    doc.save(str(out_path))
+    _inject_footnotes(out_path, collected_fn)
     return out_path
 
 

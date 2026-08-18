@@ -466,16 +466,22 @@ async def chapter_save(n: int, body: ChapterSaveBody, http_req: Request, project
         raise HTTPException(status_code=500, detail=f"保存失败：{e}")
 
 
-# 预览渲染缓存：{(pid, n): (signature, result)}。签名只取“会影响成稿的东西”——本章已保存内容(JSON)、
-# 模板文件、排版配置的修改时间。改 skill/planning 不会改变这三样，故不会触发重渲染；
-# 只有在编辑区保存(内容变)或重新生成时 JSON 变了，签名才变、才重跑。进程内单例、够用。
+# 预览渲染缓存：{(pid, n): (signature, result)}。签名只取“会影响成稿的东西”——各章已保存内容(JSON、
+# 整本渲染下任何一章变化都会影响成稿)、模板文件、排版配置的修改时间。改 skill/planning 不会改变这些，
+# 故不会触发重渲染；只有在编辑区保存(内容变)或重新生成时 JSON 变了，签名才变、才重跑。进程内单例、够用。
 _PREVIEW_CACHE: dict = {}
 
 
 def _preview_signature(n: int, template_path: str, project_id: str = "", pack_id=None) -> str:
     tpl = (template_path or "").strip()
     parts = [tpl]
-    srcs = [skill_runner.chapter_json_path(n, project_id or None), skill_runner.WRITE_CONFIG_PATH]
+    # 整本渲染：任一章的已保存内容都会进入成稿 → 签名纳入全部章节 JSON 的 mtime
+    try:
+        ch_ns = sorted(skill_runner.chapters_for(pack_id).keys())
+    except Exception:
+        ch_ns = [n]
+    srcs = [skill_runner.chapter_json_path(m, project_id or None) for m in ch_ns]
+    srcs.append(skill_runner.WRITE_CONFIG_PATH)
     if tpl:
         srcs.append(Path(tpl))
     try:
@@ -529,9 +535,8 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
                     "gate_warnings": gate_warnings}
         wr = _load_web_render(pack_id)
         if tpl_resolved:
-            wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"],
-                                    chapter_n=n)
-            _install_cover_front(docx_path, pid)   # 规则：导出 Word 第一页=编辑好的封面（预览也同步）
+            # 与导出同一管线：本章 + 其它已生成章节的最新内容一并填入模板
+            _render_chapter_docx(n, pid, pack_id)
             html = wr.docx_to_preview_html(docx_path, cfg["title"], cfg["next"])
             # 预览只渲染工作文件，不固化正式版本：正式版本仅由
             # “生成该文档”/“下载Word”等显式动作产出，避免“没点却多出新文档”
@@ -579,9 +584,28 @@ def _install_cover_front(docx_path, pid) -> None:
         logger.warning(f"封面置顶失败（保留官方首页）: {e}")
 
 
+def _collect_book_sections(n: int, pid, pack_id) -> list:
+    """收集全部已生成章节（含本章）的最新保存内容，按章序组装成整本渲染列表。
+    JSON 为空或清洗后无内容的章不进整本（模板保留原骨架文字）。"""
+    cfgs = skill_runner.chapters_for(pack_id)
+    items = []
+    for m in sorted(cfgs.keys()):
+        secs = skill_runner.get_chapter_structured(m, pid)
+        if not secs:
+            continue
+        secs = _strip_foreign_sections(m, secs, pack_id)
+        secs, _w = json_gate.check_and_clean(secs)
+        if not secs:
+            continue
+        c = cfgs[m]
+        items.append({"sections": secs, "chapter_title": c["title"],
+                      "next_chapter_title": c["next"], "chapter_n": m})
+    return items
+
+
 def _render_chapter_docx(n: int, pid, pack_id) -> bool:
-    """把本章当前保存内容渲染进 Word 工作文件（与预览同一管线，只写文件不返回 HTML）；
-    无有效内容返回 False。失败抛异常由调用方处理。"""
+    """把本章当前保存内容渲染进 Word 工作文件，同时填入其它已生成章节的最新内容
+    → 导出即最新整本（文件命名仍保持 第n章 口径不变）。无有效内容返回 False。失败抛异常由调用方处理。"""
     sections = skill_runner.get_chapter_structured(n, pid)
     if not sections:
         return False
@@ -594,8 +618,13 @@ def _render_chapter_docx(n: int, pid, pack_id) -> bool:
     wr = _load_web_render(pack_id)
     tpl_resolved = _resolve_template_path("", pack_id)
     if tpl_resolved:
-        wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"],
-                                chapter_n=n)
+        items = _collect_book_sections(n, pid, pack_id)
+        if not any(it["chapter_n"] == n for it in items):
+            # 保底：收集漏掉本章时用上面清洗好的内容补上，保证导出一定含本章
+            items.append({"sections": sections, "chapter_title": cfg["title"],
+                          "next_chapter_title": cfg["next"], "chapter_n": n})
+            items.sort(key=lambda x: x["chapter_n"])
+        wr.render_book_into_template(items, tpl_resolved, docx_path)
         _install_cover_front(docx_path, pid)   # 规则：导出 Word 第一页=编辑好的封面
     else:
         wr.render_docx(sections, docx_path)
