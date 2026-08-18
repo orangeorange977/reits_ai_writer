@@ -490,10 +490,14 @@ const API = {
         return r.data;
     },
 
-    /** 保存用户填写的封面日期 */
-    async saveCoverDate(dateText) {
+    /** 保存封面编辑页输入：日期 + 标题/原始权益人（默认自动取自摘要表，可编辑覆盖） */
+    async saveCover({ dateText, titleLines, originators }) {
         const pid = encodeURIComponent(this._currentProjectId());
-        return this.post(`/skills/cover/save?project_id=${pid}`, { date_text: dateText });
+        return this.post(`/skills/cover/save?project_id=${pid}`, {
+            date_text: dateText || '',
+            title_lines: titleLines || null,
+            originators: originators || null,
+        });
     },
 
     /** 上传某角色 logo（role: issuer/fund_manager/plan_manager/advisor） */

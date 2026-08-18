@@ -1332,16 +1332,24 @@ function renderChapterStepper() {
         }).catch(() => { /* 单章查不到不影响其他章 */ });
         // 刷新页面/重进后恢复“生成中”状态：橙色脉冲 + 全局横幅 + 继续轮询
         API.getChapterStatus(ch.n).then(st => {
-            if (st && st.status === 'running' && !_kimiTimer) {
-                _pollChapterGeneration(ch.n);
+            if (st && st.status === 'running') {
+                _markStepperRunning(ch.n);
+                _showGlobalGenBanner(ch.n);
+                if (!_kimiTimer) _pollChapterGeneration(ch.n);
             }
         }).catch(() => {});
     });
 }
 
+// “生成中”章号集合：步骤条状态的单一事实源。
+// 重新生成时旧内容仍在（content.source==='ready'），异步竞态下 _markStepperDone 可能
+// 晚于 _markStepperRunning 落盘把橙点染绿；生成中一律禁止标绿，轮询结束才移出集合。
+const _genRunning = new Set();
+
 /** 立即把第 n 章在步骤条上标记为“已生成”（✓ + 文案），
  * 避免生成完成后要切页重进步骤条才更新的“延迟”问题。 */
 function _markStepperDone(n) {
+    if (_genRunning.has(n)) return;   // 生成中：禁止旧内容 ready 覆盖橙色“生成中”
     const container = document.getElementById('chapterStepper');
     if (!container) return;
     const step = _stepperStepFor(container, n);
@@ -1356,6 +1364,7 @@ function _markStepperDone(n) {
 
 /** 把第 n 章在步骤条上标记为“生成中”（橙色圆圈 + 脉冲动画），一眼可见当前在生成哪章 */
 function _markStepperRunning(n) {
+    _genRunning.add(n);
     const container = document.getElementById('chapterStepper');
     if (!container) return;
     const step = _stepperStepFor(container, n);
@@ -1370,6 +1379,7 @@ function _markStepperRunning(n) {
 
 /** 生成失败/中断时把第 n 章步骤条恢复为待生成 */
 function _markStepperIdle(n) {
+    _genRunning.delete(n);
     const container = document.getElementById('chapterStepper');
     if (!container) return;
     const step = _stepperStepFor(container, n);
@@ -1914,6 +1924,7 @@ function _pollChapterGeneration(n) {
             clearInterval(_kimiTimer); _kimiTimer = null;
             delete _previewCache[n];   // 重新生成了，预览缓存作废
             _hideGlobalGenBanner();
+            _genRunning.delete(n);     // 先移出“生成中”集合，再标绿
             _markStepperDone(n);       // 步骤条立即变“✓ 已生成”，不再等切页
             if (_editorChapter === n) {
                 await renderChapterEditor(n);   // 只有正看着这章才重渲染，不打断用户看别的章
@@ -3437,8 +3448,8 @@ function _ensureCoverModal() {
       .cover-prev{flex:1;overflow-y:auto;padding:20px;background:#f6f7f9;}
       .cover-sec{font-size:12px;font-weight:600;color:#555;margin:16px 0 6px;}
       .cover-sec:first-child{margin-top:0;}
-      .cover-ro{background:#fbecec;border:1px solid #f2caca;border-radius:6px;padding:8px 10px;font-size:13px;color:#333;line-height:1.7;}
-      .cover-ro .tag{display:inline-block;font-size:11px;color:#c0392b;background:#fff;border:1px solid #f2caca;border-radius:4px;padding:0 5px;margin-right:6px;}
+      .cover-ta{width:100%;box-sizing:border-box;border:1.5px solid #333;border-radius:6px;padding:8px 10px;font-size:14px;line-height:1.7;resize:vertical;font-family:inherit;}
+      .cover-hint{font-size:11px;color:#999;margin:2px 0 4px;}
       .cover-logo-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed #eef1f4;}
       .cover-logo-thumb{width:76px;height:48px;border:1px solid #e2e6ea;border-radius:6px;display:flex;align-items:center;justify-content:center;background:#fffdf5;overflow:hidden;flex:none;}
       .cover-logo-thumb img{max-width:100%;max-height:100%;}
@@ -3529,8 +3540,7 @@ async function _coverLoad() {
 function _coverRenderForm() {
     const s = _coverState;
     const form = document.getElementById('coverForm');
-    const oo = (s.originators || []).map(x => _coverEsc(x)).join('<br>')
-        || '<span style="color:#999">（摘要表未填「原始权益人」）</span>';
+    const ooText = (s.originators || []).join('\n');
     let logoRows = '';
     _COVER_ROLES.forEach(r => {
         const has = s.logos[r.key] && s.logos[r.key].has;
@@ -3548,19 +3558,28 @@ function _coverRenderForm() {
             </div>
           </div>`;
     });
-    const titleHtml = (s.title_lines || []).filter(Boolean).map(x => _coverEsc(x)).join('<br>')
-        || '<span style="color:#999">（摘要表未填「项目名称」）</span>';
+    const titleText = (s.title_lines || []).join('\n');
     form.innerHTML = `
-      <div class="cover-sec">🔴 标题（自动取自摘要表·不可编辑）</div>
-      <div class="cover-ro"><span class="tag">只读</span>${titleHtml}</div>
-      <div class="cover-sec">🔴 原始权益人（自动取自摘要表·不可编辑）</div>
-      <div class="cover-ro"><span class="tag">只读</span>${oo}</div>
+      <div class="cover-sec">🔴 标题（默认取自摘要表·可编辑，每行一条）</div>
+      <textarea class="cover-ta" id="coverTitleIn" rows="3" placeholder="项目名称拆分行的标题">${_coverEsc(titleText)}</textarea>
+      <div class="cover-hint">${s.title_edited ? '已手动编辑；改回与摘要表一致并保存后自动恢复实时同步。' : '未编辑时实时同步摘要表「项目名称」。'}</div>
+      <div class="cover-sec">🔴 原始权益人（默认取自摘要表·可编辑，每行一家）</div>
+      <textarea class="cover-ta" id="coverOoIn" rows="2" placeholder="原始权益人名称，每行一家">${_coverEsc(ooText)}</textarea>
+      <div class="cover-hint">${s.originators_edited ? '已手动编辑；改回与摘要表一致并保存后自动恢复实时同步。' : '未编辑时实时同步摘要表「原始权益人」。'}</div>
       <div class="cover-sec">🟡 Logo 图片（上传 PNG / JPG）</div>
       ${logoRows}
       <div class="cover-sec">⬛ 日期（请填写，如「2026 年 7 月」）</div>
       <input type="text" class="cover-date-in" id="coverDateIn" placeholder="2026 年 7 月" value="${_coverEsc(s.date_text || '')}">
       <input type="file" id="coverFileInput" accept=".png,.jpg,.jpeg" style="display:none">
     `;
+    form.querySelector('#coverTitleIn').addEventListener('input', (e) => {
+        _coverState.title_lines = e.target.value.split('\n');
+        _coverRenderPreview();
+    });
+    form.querySelector('#coverOoIn').addEventListener('input', (e) => {
+        _coverState.originators = e.target.value.split('\n').map(x => x.trim()).filter(Boolean);
+        _coverRenderPreview();
+    });
     form.querySelector('#coverDateIn').addEventListener('input', (e) => {
         _coverState.date_text = e.target.value;
         _coverRenderPreview();
@@ -3625,9 +3644,18 @@ function _coverRenderPreview() {
     `;
 }
 
+function _coverPayload() {
+    const s = _coverState || {};
+    return {
+        dateText: s.date_text || '',
+        titleLines: s.title_lines || [],
+        originators: s.originators || [],
+    };
+}
+
 async function _coverSave() {
     try {
-        await API.saveCoverDate((_coverState && _coverState.date_text) || '');
+        await API.saveCover(_coverPayload());
         closeCoverEditor();   // 保存成功后关闭弹窗
         showToast('封面已保存');
     } catch (err) {
@@ -3636,7 +3664,7 @@ async function _coverSave() {
 }
 
 async function _coverDownload() {
-    try { await API.saveCoverDate((_coverState && _coverState.date_text) || ''); } catch (e) { /* 日期保存失败不阻断下载 */ }
+    try { await API.saveCover(_coverPayload()); } catch (e) { /* 保存失败不阻断下载 */ }
     try {
         await API.downloadCover();
     } catch (err) {

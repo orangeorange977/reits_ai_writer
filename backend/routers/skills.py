@@ -11,7 +11,7 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
@@ -740,15 +740,17 @@ async def list_documents(http_req: Request, project_id: str = ""):
     return {"documents": docs}
 
 
-# ===== 封面（封面编辑：日期 + 四角色 logo；标题/原始权益人自动取自摘要表） =====
+# ===== 封面（封面编辑：日期 + 四角色 logo；标题/原始权益人默认自动取自摘要表、可编辑覆盖） =====
 
-class CoverDate(BaseModel):
+class CoverSavePayload(BaseModel):
     date_text: str = ""
+    title_lines: Optional[List[str]] = None
+    originators: Optional[List[str]] = None
 
 
 @router.get("/cover")
 async def cover_get(http_req: Request, project_id: str = ""):
-    """封面编辑页所需状态：标题(自动)、原始权益人(自动)、日期(已存)、各 logo 是否已上传。"""
+    """封面编辑页所需状态：标题(生效值)、原始权益人(生效值)、日期(已存)、各 logo 是否已上传。"""
     await _assert_project_access(project_id, _current_user_id(http_req))
     try:
         return {"status": "ok", "data": await asyncio.to_thread(cover_service.get_state, project_id or None)}
@@ -758,11 +760,13 @@ async def cover_get(http_req: Request, project_id: str = ""):
 
 
 @router.post("/cover/save")
-async def cover_save(data: CoverDate, http_req: Request, project_id: str = ""):
-    """保存用户填写的日期（标题/原始权益人分别来自摘要表与上传，不在此保存）。"""
+async def cover_save(data: CoverSavePayload, http_req: Request, project_id: str = ""):
+    """保存封面编辑页输入：日期 + 标题/原始权益人覆盖值（与摘要表自动值一致时自动清除覆盖）。"""
     await _assert_project_access(project_id, _current_user_id(http_req))
     try:
-        await asyncio.to_thread(cover_service.save_date, data.date_text, project_id or None)
+        await asyncio.to_thread(
+            cover_service.save_cover, data.date_text, data.title_lines, data.originators, project_id or None
+        )
         return {"status": "ok", "message": "已保存"}
     except Exception as e:
         logger.error(f"保存封面日期失败: {e}", exc_info=True)

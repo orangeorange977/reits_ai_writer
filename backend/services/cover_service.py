@@ -6,9 +6,12 @@
 - 自动文本（项目名称、原始权益人）实时读该项目的 summary_saved.json，始终与摘要表一致，不落库。
 
 版式对应用户标注图：
-🔴 红色（自动取、不可编辑）：标题(项目名称，拆两行) + 原始权益人（多家，每行一个）
+🔴 红色（默认自动取自摘要表、用户可编辑覆盖）：标题(项目名称，拆两行) + 原始权益人（多家，每行一个）
 🟡 黄色（用户上传图片）：顶部发行人 logo + 底部一排三家机构 logo
 ⬛ 黑色（用户填写）：日期
+
+覆盖值存 cover_saved.json 的 title_override / originators_override；
+与摘要表自动值一致时不落覆盖值，保持与摘要表实时同步。
 """
 import json
 import re
@@ -75,6 +78,31 @@ def save_date(date_text: str, project_id: str = None) -> None:
     _save_config(cfg, project_id)
 
 
+def _norm_lines(vals) -> list:
+    """规整行列表：去首尾空白、去空行。"""
+    return [str(x).strip() for x in (vals or []) if str(x).strip()]
+
+
+def save_cover(date_text: str, title_lines=None, originators=None, project_id: str = None) -> None:
+    """保存封面编辑页全部用户输入：日期 + 标题/原始权益人覆盖值。
+
+    title_lines / originators 为 None 表示本次不改动对应覆盖值；
+    与摘要表自动值一致时清除覆盖值（恢复实时同步）。"""
+    cfg = _load_config(project_id)
+    cfg["date_text"] = (date_text or "").strip()
+    if title_lines is not None:
+        if _norm_lines(title_lines) == _norm_lines(_auto_title_lines(project_id)):
+            cfg.pop("title_override", None)
+        else:
+            cfg["title_override"] = _norm_lines(title_lines)
+    if originators is not None:
+        if _norm_lines(originators) == _norm_lines(_auto_originators(project_id)):
+            cfg.pop("originators_override", None)
+        else:
+            cfg["originators_override"] = _norm_lines(originators)
+    _save_config(cfg, project_id)
+
+
 def logo_path(role: str, project_id: str = None):
     """返回该角色 logo 的实际文件路径（存在则返回 Path，否则 None）。"""
     if role not in LOGO_ROLES:
@@ -133,8 +161,8 @@ def _summary_value(label: str, project_id: str = None) -> str:
     return ""
 
 
-def title_lines(project_id: str = None) -> list:
-    """标题拆行：['奥飞数据中心', '基础设施领域不动产投资信托基金（REITs）', '项目申报材料']。
+def _auto_title_lines(project_id: str = None) -> list:
+    """标题拆行（自动值）：['奥飞数据中心', '基础设施领域不动产投资信托基金（REITs）', '项目申报材料']。
     取自摘要表"项目名称"，在"基础设施"处拆成两行，末行为固定后缀。"""
     name = _summary_value("项目名称", project_id)
     if not name:
@@ -145,12 +173,28 @@ def title_lines(project_id: str = None) -> list:
     return [name, "", _TITLE_TAIL]
 
 
-def originator_names(project_id: str = None) -> list:
-    """原始权益人拆成多家（每行一个）。取自摘要表"原始权益人"。"""
+def _auto_originators(project_id: str = None) -> list:
+    """原始权益人拆成多家（每行一个，自动值）。取自摘要表"原始权益人"。"""
     raw = _summary_value("原始权益人", project_id)
     if not raw:
         return []
     return [x.strip() for x in re.split(r"[、,，;；/\n]+", raw) if x.strip()]
+
+
+def title_lines(project_id: str = None) -> list:
+    """生效标题行：用户编辑保存过覆盖值时用覆盖值，否则自动取自摘要表。"""
+    ov = _load_config(project_id).get("title_override")
+    if isinstance(ov, list):
+        return _norm_lines(ov)
+    return _auto_title_lines(project_id)
+
+
+def originator_names(project_id: str = None) -> list:
+    """生效原始权益人列表：用户编辑保存过覆盖值时用覆盖值，否则自动取自摘要表。"""
+    ov = _load_config(project_id).get("originators_override")
+    if isinstance(ov, list):
+        return _norm_lines(ov)
+    return _auto_originators(project_id)
 
 
 def get_state(project_id: str = None) -> dict:
@@ -164,10 +208,12 @@ def get_state(project_id: str = None) -> dict:
         }
     return {
         "title_lines": title_lines(project_id),
+        "title_edited": isinstance(cfg.get("title_override"), list),
         "project_name": _summary_value("项目名称", project_id),
         "base_date": _summary_value("申报基准日", project_id),
         "industry": _summary_value("行业领域", project_id),
         "originators": originator_names(project_id),
+        "originators_edited": isinstance(cfg.get("originators_override"), list),
         "date_text": cfg.get("date_text", ""),
         "logos": logos,
     }
