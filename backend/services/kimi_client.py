@@ -72,14 +72,17 @@ def _create(client: OpenAI, **kwargs):
     raise last_err
 
 
-def chat(messages: list[dict], model: str = None, temperature: float = 1.0) -> str:
-    """最基础的对话调用：传入messages（OpenAI格式），返回模型回复的文本。"""
+def chat(messages: list[dict], model: str = None, temperature: float = 1.0,
+         max_tokens: int = None) -> str:
+    """最基础的对话调用：传入messages（OpenAI格式），返回模型回复的文本。
+    max_tokens 仅对 DeepSeek 生效：推理类模型的思考会占用输出预算，
+    需要较长推理链的任务（如评分）应显式调大。"""
     model = model or MOONSHOT_MODEL
     client = get_client(model)
     extra = {}
     if _is_deepseek(model):
         temperature = min(temperature, 1.0)  # DeepSeek 的 temperature 上限 1.0
-        extra["max_tokens"] = 8192           # 默认 4096 会把长章节 JSON 截断
+        extra["max_tokens"] = max_tokens or 8192   # 默认 4096 会把长章节 JSON 截断
     resp = _create(
         client,
         model=model,

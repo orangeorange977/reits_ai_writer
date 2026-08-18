@@ -25,7 +25,7 @@ _CN_NUM_MAP = {c: i + 1 for i, c in enumerate(_CN_NUM)}
 
 # 展示/打分时的文本截断，避免超长载荷
 _PANE_CAP = 2500      # 对比面板单侧最大字符
-_EXCERPT_CAP = 1200   # 喂给评分模型的单节摘要上限
+_EXCERPT_CAP = 3000   # 喂给评分模型的单节摘要上限（过低会把长节后文误判为缺失）
 _CACHE_SCHEMA = 2     # 对比缓存结构版本：解析/过滤规则变化时+1，旧缓存自动作废
 
 
@@ -378,7 +378,7 @@ def compare_chapter(pid: str, n: int, force: bool = False) -> dict:
 
 # ---------------------------------------------------------------- AI 打分
 
-_SRC_CAP = 800    # 每节喂给评分模型的依据清单字符上限
+_SRC_CAP = 1500    # 每节喂给评分模型的依据清单字符上限
 _SKILL_CAP = 9000  # 章skill文本喂给评分模型的上限（判断“skill是否有描述”）
 
 _SCORE_SYSTEM = (
@@ -392,9 +392,17 @@ _SCORE_SYSTEM = (
     "标准答案中的要点若既不在【生成稿依据】里、【本章skill】也没有描述（如依赖未上传的外部材料、"
     "人工线下补充的内容），归为“无依据要点”：列入 no_basis_points，**不得计入任何扣分**，"
     "也不得因为生成稿缺了它们而压低分数。\n"
+    "**合规标注不扣分**：生成稿中按 skill 要求写的【注：…】/（待定）/（待补充）等缺失标注属于合规行为——"
+    "信息在依据中查不到时，标注缺失正是 skill 要求的正确做法，不得在表述规范度、内容覆盖度中因此扣分；"
+    "只有“依据里明明有、却标成缺失或写错”的情况才扣分。\n"
     "**比对口径**：文字内容按**语义等价**判断——意思一致即可，措辞/句式不同不算差异、不算缺失；"
     "数字类关键要素（金额、日期、比例、面积、数量、年限、文号、证照编号等）要求**完全一致**，"
     "哪怕一位小数、一个单位的差别都算错误，要在 comment 中指出具体哪处数字不一致。\n"
+    "**评分刻度（宽松校准，避免过度扣分）**：90-100=达到申报定稿水平、可直接使用；"
+    "80-89=有据要点齐全、仅个别措辞需润色；70-79=有据要点基本覆盖、个别数字/要素待补；"
+    "60-69=部分有据内容缺失需补写；60以下=有据部分大面积缺失或编造。"
+    "打分先看生成稿“做对了多少”（有据部分的覆盖率与数字准确率），"
+    "不得因无依据要点或合规缺失标注把分数压低。\n"
     "请按以下维度给生成稿打分（各维度0-100，权重见括号，均只考有据可依的部分）：\n"
     "1. 内容覆盖度（30%）：标准答案中有据可依的小节、要点、表格在生成稿中是否齐全；"
     "缺失的有据要点在 missing_points 列出（每条注明依据出处）；\n"
@@ -468,7 +476,7 @@ def score_chapter(pid: str, n: int) -> dict:
         {"role": "system", "content": _SCORE_SYSTEM},
         {"role": "user", "content": user_prompt},
     ]
-    raw = chat(msgs, model=model, temperature=0.2)
+    raw = chat(msgs, model=model, temperature=0.2, max_tokens=16384)
     try:
         score = _extract_json(raw)
     except Exception:
@@ -477,7 +485,7 @@ def score_chapter(pid: str, n: int) -> dict:
         msgs.append({"role": "assistant", "content": raw or ""})
         msgs.append({"role": "user", "content": "请现在直接输出评分JSON对象本身"
                                                 "（只输出JSON，不要任何其他文字，不要空内容）。"})
-        raw = chat(msgs, model=model, temperature=0.2)
+        raw = chat(msgs, model=model, temperature=0.2, max_tokens=16384)
         try:
             score = _extract_json(raw)
         except Exception as e:
