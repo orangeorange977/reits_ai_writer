@@ -531,16 +531,15 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
         if tpl_resolved:
             wr.render_into_template(sections, tpl_resolved, docx_path, cfg["title"], cfg["next"],
                                     chapter_n=n)
-            _install_cover_front(docx_path, pid)   # 规则：导出 Word 第一页=编辑好的封面（预览也同步，固化版本一致）
+            _install_cover_front(docx_path, pid)   # 规则：导出 Word 第一页=编辑好的封面（预览也同步）
             html = wr.docx_to_preview_html(docx_path, cfg["title"], cfg["next"])
-            # 内容变化重新渲染后固化为新的正式文档版本（项目名_日期_第n章_vN，历史保留；失败不阻断）
-            skill_runner.snapshot_docx(n, pid)
+            # 预览只渲染工作文件，不固化正式版本：正式版本仅由
+            # “生成该文档”/“下载Word”等显式动作产出，避免“没点却多出新文档”
             return {"has_content": True, "html": html, "used_template": True,
                     "gate_warnings": gate_warnings}
         # 回退：没有有效模板路径时，独立生成一份
         wr.render_docx(sections, docx_path)
         html = wr.render_preview_html(sections)
-        skill_runner.snapshot_docx(n, pid)
         return {"has_content": True, "html": html, "used_template": False,
                 "gate_warnings": gate_warnings}
 
