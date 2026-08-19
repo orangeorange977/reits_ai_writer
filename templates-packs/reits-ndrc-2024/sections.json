@@ -1,0 +1,20 @@
+{
+  "sections": [
+    {
+      "id": "1.1",
+      "title": "（一）项目概况",
+      "chapter_n": 1,
+      "chapter_title": "一、项目基本情况",
+      "skill": "section-skills/reits-section-1-1",
+      "methodology": "01 第一章第一节 项目概况（业务方法论模拟稿）.docx"
+    },
+    {
+      "id": "2.3",
+      "title": "（三）发起人（原始权益人）情况",
+      "chapter_n": 2,
+      "chapter_title": "二、参与主体情况",
+      "skill": "section-skills/reits-section-2-3",
+      "methodology": "02 第二章第三节 发起人（原始权益人）情况（业务方法论模拟稿）.docx"
+    }
+  ]
+}

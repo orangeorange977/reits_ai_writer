@@ -507,6 +507,144 @@ def score_chapter(pid: str, n: int) -> dict:
     return score
 
 
+def _safe_section_key(section_title: str) -> str:
+    """标准答案/生成稿的小节标题当文件名片段用；只保留数字和字母，中文标题整体做短哈希，
+    避免标题本身出现在文件名里踩到操作系统的路径合法性或长度限制。"""
+    import hashlib
+    return hashlib.sha1(section_title.strip().encode("utf-8")).hexdigest()[:12]
+
+
+def compare_section(pid: str, n: int, section_title: str, force: bool = False) -> dict:
+    """从整章对比结果里筛出业务只关心的这一节——复用整章的对齐/相似度计算，不重新实现；
+    business 反馈按小节做对比测评，不想每次都看整章其余小节的噪音。"""
+    comp = compare_chapter(pid, n, force)
+    rows = [s for s in comp["sections"]
+            if (s.get("gen_title") or s.get("std_title") or "").strip() == section_title.strip()]
+    if not rows:
+        raise FileNotFoundError(f"第{n}章的对比结果里找不到小节“{section_title}”，请先确认已生成/已上传标准答案")
+    matched = sum(1 for r in rows if r["status"] == "matched")
+    sims = [r["similarity"] for r in rows if r["status"] == "matched"]
+    return {
+        "chapter": n, "chapter_title": comp["chapter_title"], "section_title": section_title,
+        "summary": {
+            "std_sections": sum(1 for r in rows if r["status"] in ("matched", "std_only")),
+            "gen_sections": sum(1 for r in rows if r["status"] in ("matched", "gen_only")),
+            "matched": matched,
+            "gen_only": sum(1 for r in rows if r["status"] == "gen_only"),
+            "std_only": sum(1 for r in rows if r["status"] == "std_only"),
+            "coverage": 1.0 if matched else 0.0,
+            "avg_similarity": round(sum(sims) / len(sims), 3) if sims else 0.0,
+        },
+        "sections": rows,
+    }
+
+
+def _section_skill_text(n: int, section_title: str) -> str:
+    """小节级 Know-how 优先于整章 skill——已配置小节级生产线的节，打分该用它自己的
+    SKILL.md，不是整章那份笼统的写作要求。"""
+    try:
+        from backend.services import section_skill_service, pack_service
+        for config in section_skill_service._registry(None):
+            if config.get("chapter_n") == n and config.get("title", "").strip() == section_title.strip():
+                rel = f"{config['skill']}/SKILL.md"
+                return pack_service.skill_text_path(rel, None).read_text(encoding="utf-8")[:_SKILL_CAP]
+    except Exception as e:
+        logger.warning(f"读取小节 Know-how 失败（回退整章skill）: {e}")
+    try:
+        from backend.services import pack_service
+        return pack_service.reading_path(n).read_text(encoding="utf-8")[:_SKILL_CAP]
+    except Exception:
+        return ""
+
+
+def score_section(pid: str, n: int, section_title: str) -> dict:
+    """只把这一节的生成稿/标准答案/依据/Know-how 喂给评分模型，不带整章其余小节——
+    公平性原则和整章打分一致，范围收窄到一节。"""
+    from backend.services.kimi_client import chat
+    from backend.services.skill_runner import get_selected_model
+
+    comp = compare_section(pid, n, section_title)
+    src_by_title = {}
+    try:
+        for g in load_generated(pid, n):
+            if g.get("srcs"):
+                src_by_title[g["title"]] = "\n".join(g["srcs"])[:_SRC_CAP]
+    except FileNotFoundError:
+        pass
+    skill_text = _section_skill_text(n, section_title)
+
+    parts = []
+    for s in comp["sections"]:
+        srcs = src_by_title.get(s.get("gen_title") or "", "")
+        src_line = f"【生成稿依据】\n{srcs}\n" if srcs else "【生成稿依据】（本节无引注来源）\n"
+        if s["status"] == "matched":
+            parts.append(
+                f"### 小节（生成稿标题）{s['gen_title']}\n"
+                f"【生成稿】\n{s['gen_text'][:_EXCERPT_CAP]}\n"
+                f"【标准答案】\n{s['std_text'][:_EXCERPT_CAP]}\n" + src_line)
+        elif s["status"] == "std_only":
+            parts.append(f"### 小节 {s['std_title']}\n【生成稿】（缺失）\n"
+                         f"【标准答案】\n{s['std_text'][:_EXCERPT_CAP]}\n")
+        else:
+            parts.append(f"### 小节 {s['gen_title']}\n【生成稿】（标准答案无此节）\n"
+                         f"{s['gen_text'][:_EXCERPT_CAP]}\n" + src_line)
+    user_prompt = (
+        f"以下是第{n}章“{section_title}”这一节的对照（只这一节，不是整章）。"
+        "请严格按系统要求（尤其是公平性总原则）输出评分JSON。\n\n"
+        + "===== 本节 Know-how（写作要求，判断要点是否被 Know-how 描述）=====\n" + (skill_text or "（未取到）")
+        + "\n\n===== 本节对照 =====\n" + "\n".join(parts))
+
+    model = get_selected_model()
+    msgs = [{"role": "system", "content": _SCORE_SYSTEM}, {"role": "user", "content": user_prompt}]
+    raw = chat(msgs, model=model, temperature=0.2)
+    try:
+        score = _extract_json(raw)
+    except Exception:
+        logger.warning(f"ch{n}/{section_title} AI打分首次未返回有效JSON，追问一次; raw={str(raw)[:200]}")
+        msgs.append({"role": "assistant", "content": raw or ""})
+        msgs.append({"role": "user", "content": "请现在直接输出评分JSON对象本身"
+                                                "（只输出JSON，不要任何其他文字，不要空内容）。"})
+        raw = chat(msgs, model=model, temperature=0.2)
+        try:
+            score = _extract_json(raw)
+        except Exception as e:
+            logger.warning(f"ch{n}/{section_title} AI打分解析失败: {e}; raw={str(raw)[:200]}")
+            raise ValueError("评分模型返回格式异常，请重试一次或切换模型后再打分") from e
+
+    total = score.get("total")
+    if not isinstance(total, (int, float)):
+        dims = score.get("dimensions") or []
+        total = sum(float(d.get("score", 0)) * float(d.get("weight", 0.25)) for d in dims)
+    score["total"] = round(float(total), 1)
+    score["model"] = model
+    score["chapter"] = n
+    score["section_title"] = section_title
+    score["created_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    d = _bench_dir(pid)
+    hist_path = d / f"scores_ch{n}_sec_{_safe_section_key(section_title)}.json"
+    hist = []
+    if hist_path.exists():
+        try:
+            hist = json.loads(hist_path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            hist = []
+    hist.append(score)
+    hist = hist[-20:]
+    hist_path.write_text(json.dumps(hist, ensure_ascii=False), encoding="utf-8")
+    return score
+
+
+def get_section_scores(pid: str, n: int, section_title: str) -> list:
+    p = _bench_dir(pid) / f"scores_ch{n}_sec_{_safe_section_key(section_title)}.json"
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return []
+
+
 def get_scores(pid: str, n: int) -> list:
     p = _bench_dir(pid) / f"scores_ch{n}.json"
     if not p.exists():

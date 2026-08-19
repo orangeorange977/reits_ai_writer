@@ -2,7 +2,8 @@
 
 给 Kimi 两个能力：列目录、抽取某个文件的文本。全部限定在"申报材料根目录"内，
 带路径穿越防护（不会读到根目录以外）。文本类文件（PDF文字层/Word/Excel/纯文本）能读；
-扫描件（无文字层的 PDF/图片）读不出正文，会如实说明——那部分需要后续 OCR/视觉能力。
+扫描件优先走视觉模型，未配置时回退本地 tesseract。章节生成现由 document_pipeline_service
+优先复用“一份文件一个 Markdown”，本模块主要作为首次解析和兼容兜底。
 """
 import logging
 import os
@@ -732,9 +733,30 @@ def _read_pdf(p: Path, pages: str = "", query: str = "", anchor: str = "",
 
 def _read_docx(p: Path, max_chars: int = None) -> str:
     import docx
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    from docx.oxml.table import CT_Tbl
+    from docx.oxml.text.paragraph import CT_P
     mc = int(max_chars) if max_chars else _MAX_TEXT
     d = docx.Document(str(p))
-    text = "\n".join(par.text for par in d.paragraphs)
+    # doc.paragraphs 不包含表格文字，而摘要表/项目概况恰好全部在表格中。
+    # 按正文 XML 顺序同时输出段落和表格，字段级依据才能在预览抽屉中被定位核对。
+    lines = []
+    for child in d.element.body.iterchildren():
+        if isinstance(child, CT_P):
+            value = Paragraph(child, d).text.strip()
+            if value:
+                lines.append(value)
+        elif isinstance(child, CT_Tbl):
+            table = Table(child, d)
+            for row in table.rows:
+                values = []
+                for cell in row.cells:
+                    parts = [par.text.strip() for par in cell.paragraphs if par.text.strip()]
+                    values.append(" / ".join(parts))
+                if any(values):
+                    lines.append("\t".join(values))
+    text = "\n".join(lines)
     return text[:mc] if text.strip() else "（Word 文档无文字内容）"
 
 

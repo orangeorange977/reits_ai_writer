@@ -537,10 +537,30 @@ async def preview_material(project_id: int, http_req: Request, path: str = ""):
     return {"filename": fp.name, "path": path, "text": (text or "")[:120000]}
 
 
+def _resolve_preview_target(total: int, cited_page: int = 0,
+                            detected_page: Optional[int] = None) -> Optional[int]:
+    """Choose the page shown by the material drawer.
+
+    A page persisted with field evidence is authoritative.  Full-document quote
+    search is only a fallback when extraction did not produce a page.  This avoids
+    a repeated number in a long financial report (for example page 80) overriding
+    the cited financial-statement page (for example page 8).
+    """
+    total = max(0, int(total or 0))
+    if total <= 0:
+        return None
+    if int(cited_page or 0) > 0:
+        return max(1, min(int(cited_page), total))
+    if int(detected_page or 0) > 0:
+        return max(1, min(int(detected_page), total))
+    return None
+
+
 @router.get("/projects/{project_id}/materials/preview-pages")
 async def preview_material_pages(project_id: int, http_req: Request, path: str = "",
                                  start: int = 1, count: int = 3, quote: str = "",
-                                 hl_page: int = 0, hl_box: str = ""):
+                                 hl_page: int = 0, hl_box: str = "",
+                                 page_hint: int = 0):
     """PDF 按页渲染成图片（仿 Word/WPS 原版观感），分页懒加载。
     quote 非空且 PDF 有文字层时，顺带返回摘录所在页 hit_page（忽略空白匹配）。"""
     await _assert_project_owned(project_id, _current_user_id(http_req))
@@ -593,24 +613,29 @@ async def preview_material_pages(project_id: int, http_req: Request, path: str =
         weak = False
         ftoks = None
         wtoks = None
-        hit = _quote_page_hit(doc, n, quote) if (quote or "").strip() and has_text else None
-        if not hit and (quote or "").strip() and has_text:
-            fr = materials_client.fuzzy_quote_page_hit(doc, n, quote)
-            if fr:
-                hit, ftoks = fr
-                fuzzy = True
-        if not hit and (quote or "").strip() and has_text:
-            # 概括性摘录兜底：AI 改写概括无逐字原文时，按主题词重叠取最相关页，
-            # 并记住命中的主题词，供下面画框（弱命中也尽量框出最相关段落）
-            wt = materials_client.weak_topic_tokens(quote)
-            best_w = None
-            for i in range(n):
-                m = materials_client.weak_topic_match(materials_client.norm_q(doc[i].get_text()), wt)
-                if m and (best_w is None or len(m) > len(best_w[1])):
-                    best_w = (i + 1, m)
-            if best_w:
-                hit, fuzzy, weak = best_w[0], True, True
-                wtoks = best_w[1]
+        # Extraction provenance already knows the physical PDF page.  Never let a
+        # second, document-wide fuzzy search replace that page with a later duplicate.
+        hit = _resolve_preview_target(n, page_hint)
+        if not hit:
+            detected = _quote_page_hit(doc, n, quote) if (quote or "").strip() and has_text else None
+            hit = _resolve_preview_target(n, 0, detected)
+            if not hit and (quote or "").strip() and has_text:
+                fr = materials_client.fuzzy_quote_page_hit(doc, n, quote)
+                if fr:
+                    hit, ftoks = fr
+                    fuzzy = True
+            if not hit and (quote or "").strip() and has_text:
+                # 概括性摘录兜底：AI 改写概括无逐字原文时，按主题词重叠取最相关页，
+                # 并记住命中的主题词，供下面画框（弱命中也尽量框出最相关段落）
+                wt = materials_client.weak_topic_tokens(quote)
+                best_w = None
+                for i in range(n):
+                    m = materials_client.weak_topic_match(materials_client.norm_q(doc[i].get_text()), wt)
+                    if m and (best_w is None or len(m) > len(best_w[1])):
+                        best_w = (i + 1, m)
+                if best_w:
+                    hit, fuzzy, weak = best_w[0], True, True
+                    wtoks = best_w[1]
         if hit and weak:
             hit_box = _text_highlight_box(doc, hit - 1, quote, wtoks)
         elif hit:

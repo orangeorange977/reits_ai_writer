@@ -1,0 +1,20 @@
+{
+  "section_id": "2.3",
+  "source_methodology": "02 第二章第三节 发起人（原始权益人）情况（业务方法论模拟稿）.docx",
+  "version": "V1.0",
+  "field_rules": [
+    {"id": "originator.legal_representative", "source": "originator_license", "strategy": "document_label", "target": "法定代表人"},
+    {"id": "originator.actual_controller", "source": "tianyancha", "strategy": "external_company_lookup", "target": "实际控制人"},
+    {"id": "originator.established_date", "source": "originator_license", "strategy": "document_label", "target": "成立日期"},
+    {"id": "originator.registered_capital", "source": "originator_license", "strategy": "document_label", "target": "注册资本"},
+    {"id": "originator.registered_address", "source": "originator_license", "strategy": "document_label", "target": "住所"},
+    {"id": "originator.main_business", "source": "tianyancha", "strategy": "external_company_lookup", "target": "企业画像"},
+    {"id": "originator.issued_reits", "source": "web_search", "strategy": "external_public_search", "target": "已发行基础设施REITs情况"},
+    {"id": "originator.returned_projects", "source": "web_search", "strategy": "external_public_search", "target": "最近12个月退回情况"},
+    {"id": "finance.*", "source": "audit_reports", "strategy": "financial_statement", "target": "合并财务报表及附注"},
+    {"id": "compliance.*", "source": "originator_commitment", "strategy": "document_conclusion", "target": "承诺正文和落款"},
+    {"id": "credit.*", "source": "originator_credit", "strategy": "document_conclusion", "target": "实际网站、日期和命中结果"}
+  ],
+  "conflict_policy": "keep_candidates_and_explain_selection",
+  "missing_policy": "keep_placeholder_never_use_example"
+}

@@ -10,6 +10,7 @@ import logging
 import re
 import shutil
 import time
+from copy import deepcopy
 from pathlib import Path
 from html.parser import HTMLParser
 
@@ -17,6 +18,7 @@ from backend.config import (DATA_SOURCE_BASE, PROJECTS_DIR, safe_project_id,
                             DEEPSEEK_MODEL)
 from backend.services.kimi_client import chat, chat_with_tools, _is_deepseek
 from backend.services import summary_service, tianyancha_client, materials_client, read_ledger
+from backend.services import data_foundation_service, document_pipeline_service, manual_input_service
 from backend.services import pack_service, table_check
 
 logger = logging.getLogger(__name__)
@@ -586,6 +588,59 @@ def _save_json(n: int, data: dict, project_id: str = None) -> None:
     path = chapter_json_path(n, project_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def upsert_structured_section(n: int, section: dict, project_id: str = None,
+                              refs=None, pack_id: str = None) -> dict:
+    """把数据底座生成的一个二级小节确定性写入章节 JSON，其余小节原样保留。"""
+    data = _load_json(n, project_id)
+    sections = list(data.get("sections") or [])
+    title = str(section.get("title", "")).strip()
+    replaced = False
+    for idx, current in enumerate(sections):
+        if str(current.get("title", "")).strip() == title:
+            sections[idx] = deepcopy(section)
+            replaced = True
+            break
+    if not replaced:
+        sections.append(deepcopy(section))
+    # 新项目只有一个底座小节时，不能让它排在模板第一项；按官方模板二级标题重新排序。
+    try:
+        template = pack_service.template_docx(pack_id)
+        order = chapter_subtitles(n, str(template), pack_id) if template.exists() else []
+        if not order and template.exists():
+            # web_render 的可选依赖未安装时仍可只靠 python-docx 读取 Heading 2。
+            from docx import Document
+            cfg = chapters_for(pack_id)[n]
+            inside = False
+            for paragraph in Document(str(template)).paragraphs:
+                text = paragraph.text.strip()
+                if text == cfg["title"]:
+                    inside = True
+                    continue
+                if inside and cfg.get("next") and text == cfg["next"]:
+                    break
+                style = (paragraph.style.name if paragraph.style else "") or ""
+                if inside and style.lower().replace(" ", "") in {"heading2", "标题2"} and text:
+                    order.append(text)
+        rank = {str(title).strip(): idx for idx, title in enumerate(order)}
+        if rank:
+            existing = {str(s.get("title", "")).strip(): s for s in sections}
+            ordered = []
+            for idx, subtitle in enumerate(order, 1):
+                key = str(subtitle).strip()
+                ordered.append(existing.pop(key, {"id": str(idx), "title": subtitle, "blocks": []}))
+            ordered.extend(existing.values())
+            sections = ordered
+    except Exception as exc:
+        logger.warning("ch%s 数据底座小节按模板排序失败（保留原顺序）：%s", n, exc)
+    result = {
+        "chapter": chapters_for(pack_id).get(n, {}).get("title", data.get("chapter", "")),
+        "sections": sections,
+        "refs": list(dict.fromkeys((data.get("refs") or []) + (refs or []))),
+    }
+    _save_json(n, result, project_id)
+    return result
 
 
 # 真条目边界：“；”后跟新来源前缀（申报材料/摘要表/天眼查/网络/planning/固定表述/同上/待核实）或引注号〈n〉。
@@ -1273,14 +1328,21 @@ _MAT_TOOL_NAMES = {t["function"]["name"] for t in _MAT_TOOLS}
 _WEB_SEARCH_TOOL = {"type": "builtin_function", "function": {"name": "$web_search"}}
 
 
-def _make_materials_executor(root):
+def _make_materials_executor(root, project_id: str = None):
     def _exec(name: str, args: dict) -> str:
         if name == "list_materials":
             return materials_client.list_materials(root, args.get("keyword", ""))
         if name == "read_document":
-            return materials_client.read_document(
-                root, args.get("path", ""), args.get("pages", ""),
-                args.get("query", ""), args.get("anchor", ""))
+            path = args.get("path", "")
+            try:
+                return document_pipeline_service.read_for_generation(
+                    project_id, path, args.get("pages", ""),
+                    args.get("anchor", ""), args.get("query", ""))
+            except Exception as exc:
+                logger.warning("复用底稿 Markdown 失败，回退原文件读取 %s：%s", path, exc)
+                return materials_client.read_document(
+                    root, path, args.get("pages", ""),
+                    args.get("query", ""), args.get("anchor", ""))
         return f"（未知工具 {name}）"
     return _exec
 
@@ -1301,12 +1363,16 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
     planning = _read_text(pack_service.planning_path(pack_id))
     skill_md = _read_text(pack_service.reading_path(n, pack_id))
     saved_summary = _format_saved_summary(project_id)
+    foundation_context = data_foundation_service.prompt_context(project_id, n, pack_id)
+    manual_input_context = manual_input_service.prompt_context(project_id) if n in (1, 2) else ""
 
     # 本章参考材料清单（业务化表述，供编辑区展示，不暴露工具调用等技术细节）
     refs = ["写作总纲（planning.md）",
             f"本章写作要求（{cfg['title']}）"]
     if saved_summary.strip():
         refs.append("已核对保存的摘要表 / 释义 / 其他基本信息")
+    if foundation_context.strip():
+        refs.append("数据中间层（含来源、抽取规则、冲突与业务覆盖）")
 
     def _add_ref(label: str):
         if label and label not in refs:
@@ -1335,6 +1401,12 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
         "你的任务是严格按 SKILL.md 的结构，优先用'已保存的摘要表/释义/其他基本信息'里的真实值"
         "把本章填好；这三部分里没有的，再看 planning.md。"
     )
+    if foundation_context:
+        system_prompt += (
+            "\n\n本项目另有经过规则化抽取的数据中间层。中间层中的字段值及缺失状态优先于自由检索；"
+            "不得使用业务方法论的#示例#补齐缺失项。第一章第一节的项目概况表必须整表直接复制，"
+            "第二章第三节缺少营业执照、财务报表、承诺函或信用查询底稿时必须留空/提示，不能猜测。"
+        )
     if tianyancha_client.is_enabled():
         system_prompt += (
             "\n\n你还配有天眼查企业数据查询工具。涉及参与主体（发起人/原始权益人/项目公司/基金管理人/"
@@ -1351,18 +1423,21 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
         )
     if mat_root is not None:
         system_prompt += (
-            "\n\n你还能读取本项目的**申报材料/证明材料**文件。凡是 SKILL.md 里说“阅读X号文件下的…”、"
+            "\n\n你还能读取本项目的**申报材料/证明材料**。read_document 优先返回已经形成的“一份文件一个 Markdown”"
+            "知识库结果，同一底稿不会因章节不同而重复解析；Markdown 中的 `page` 标记就是原 PDF 页码。"
+            "凡是 SKILL.md 里说“阅读X号文件下的…”、"
             "“查看承诺函落款日期”、“该承诺函文件全称”、“审计报告”“信用记录”“营业执照”等需要看具体文件的地方，"
             "都要去读文件、据实填写，不要直接标“待补充”：先用 list_materials(keyword=…) 按关键词"
             "（如“承诺函”“营业执照”“审计”，或文件夹编号“4”）找到文件相对路径，再用 read_document(path=…) 读其文本。"
             "**文件名本身就是“文件全称”**；承诺函的**落款日期在其正文里**。"
-            "read_document 会自动识别扫描件/图片（营业执照、承诺函等）里的文字，扫描件也要读、据实填。\n"
+            "扫描页若已本地 OCR/视觉精读，会在 Markdown 中直接返回；若仍显示“尚未识别”，只能标注待核对，"
+            "不能绕过知识库在每一章重复整份 OCR。\n"
             "读文件时**带着目标读**，别整篇通读：\n"
             "· 取财务数据（从审计报告/财务报表里找三张合并报表）→ **首选 anchor 关键词定位**："
             "read_document(path=…, anchor=\"资产负债表\")，工具会直接跳到该页并返回它及随后几页——"
             "利润表、现金流量表通常紧随其后，一次就锁定三张表，且有文字层时根本不用 OCR。\n"
-            "· 若返回提示“没找到该关键词/是扫描件”：再用 pages 定点读，且**扫描件一次别要太多页（≤8，分批小步读）**，"
-            "配合 query 指明要找的科目（如 query=\"资产总计 负债合计 营业总收入 净利润 经营活动现金流量净额\"）。\n"
+            "· 若关键词没命中，可用 pages 定点读取已形成的页级 Markdown，并配合 query 指明要找的科目。"
+            "若目标页仍是待识别占位，必须留待数据工作台补全，不得在本章临时重复 OCR。\n"
             "· 承诺函落款日期/审计意见等零散项 → 用 query 直接点名（如 query=\"落款日期和落款单位\"），只回相关内容。\n"
             "**绝不要把几十页审计报告整篇 OCR。** 扫描件表格数字 OCR 可能读错，拿不准的数字标"
             "“【注：OCR识别，请人工核对】”；识别不出或缺关键项才标“【注：…，请人工核对】”，绝不编造。"
@@ -1394,6 +1469,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
     user_prompt = (
         f"# 全局总纲 planning.md\n\n{planning}\n\n"
         f"# 已保存的摘要表/释义/其他基本信息（用户已核对，优先以此为准）\n\n{saved_summary}\n\n"
+        f"{manual_input_context}\n\n{foundation_context}\n\n"
         f"# 本章（{cfg['title']}）写作要求\n\n{skill_md}\n\n"
         f"# 输出要求\n{_output_contract(cfg['title'])}"
         f"{subtitle_rule}"
@@ -1411,7 +1487,7 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
     mat_exec = None
     if mat_root is not None:
         tools += _MAT_TOOLS
-        mat_exec = _make_materials_executor(mat_root)
+        mat_exec = _make_materials_executor(mat_root, project_id)
         # 重跑覆盖：本次生成前清掉本章旧阅读台账（失败不阻断）
         read_ledger.reset_chapter(project_id, n)
 
@@ -1483,6 +1559,21 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
     # 锁定小标题结构＝模板：把 Kimi 误当成 section 的编号项（“1.奥飞数据”等）折回其所属模板小标题
     if isinstance(data, dict) and data.get("sections"):
         data["sections"] = _fold_enumerated_sections(data["sections"], subtitles)
+        # 两份业务方法论已编译成确定性数据底座：AI 可写整章，但这两个小节最终由底座覆盖，
+        # 保证“项目概况整表直接复制”和“缺底稿不从示例回填”不受模型随机性影响。
+        foundation = data_foundation_service.load_foundation(project_id, pack_id=pack_id)
+        section_id = "1.1" if n == 1 else ("2.3" if n == 2 else "")
+        draft = ((foundation or {}).get("drafts") or {}).get(section_id)
+        if draft:
+            target_title = str(draft.get("title", "")).strip()
+            replaced = False
+            for idx, current in enumerate(data["sections"]):
+                if str(current.get("title", "")).strip() == target_title:
+                    data["sections"][idx] = deepcopy(draft)
+                    replaced = True
+                    break
+            if not replaced:
+                data["sections"].append(deepcopy(draft))
     # 参考材料清单随章节落盘，编辑区据此展示“本章生成参考了哪些材料”
     if isinstance(data, dict):
         data["refs"] = refs

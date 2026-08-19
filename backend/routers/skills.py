@@ -4,6 +4,8 @@
 POST /skills/ch1/run     立即返回，后台开始跑
 GET  /skills/ch1/status  前端轮询，拿到 running / done(+data) / error
 """
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -23,6 +25,10 @@ from backend.database.db import (get_project_pack_id, get_project_owner_id,
                                  upsert_generation_job, get_generation_job,
                                  touch_project_updated_at)
 from backend.services import skill_runner, summary_service, materials_client, pack_service, json_gate, cover_service
+from backend.services import data_foundation_service, manual_input_service
+from backend.services import document_pipeline_service
+from backend.services import report_audit_service
+from backend.services import section_skill_service, section_recompile_service
 from backend.services.kimi_client import chat
 
 router = APIRouter(tags=["Skill执行"], prefix="/skills")
@@ -310,11 +316,652 @@ async def import_summary_excel(file: UploadFile = File(...)):
         logger.error(f"解析上传的 Excel 失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"解析 Excel 失败：{e}")
 
+
+# ===== 字段级数据底座 + 审核层（业务方法论 1.1 / 2.3） =====
+
+def _foundation_required_paths(data: dict | None) -> list[str]:
+    return [
+        item.get("path", "")
+        for item in (data or {}).get("sources", [])
+        if item.get("required") and item.get("status") == "located" and item.get("path")
+    ]
+
+
+class DocumentBuildBody(BaseModel):
+    paths: list[str] = []
+    required_only: bool = False
+    full_ocr: bool = False
+    force: bool = False
+
+
+class DocumentRefineBody(BaseModel):
+    path: str
+    pages: list[int]
+    instruction: str = ""
+
+
+@router.get("/manual-inputs")
+async def get_manual_inputs(http_req: Request, project_id: str = ""):
+    """读取两份业务手填 Word；该数据与 AI 抽取中间层分开保存。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    try:
+        data = await asyncio.to_thread(
+            manual_input_service.load_manual_inputs, project_id or None, True)
+        return {"status": "ok", "data": data}
+    except Exception as e:
+        logger.error("读取人工输入失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"读取人工输入失败：{e}")
+
+
+@router.post("/manual-inputs/refresh")
+async def refresh_manual_inputs(http_req: Request, project_id: str = ""):
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    try:
+        data = await asyncio.to_thread(
+            manual_input_service.build_manual_inputs, project_id or None)
+        await touch_project_updated_at(project_id)
+        return {"status": "ok", "data": data}
+    except Exception as e:
+        logger.error("刷新人工输入失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"刷新人工输入失败：{e}")
+
+
+@router.get("/document-library")
+async def list_document_library(http_req: Request, project_id: str = ""):
+    """底稿知识库：一份源文件对应一个业务可读 Markdown。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    foundation = await asyncio.to_thread(
+        data_foundation_service.load_foundation, project_id or None, pack_id)
+    rows = await asyncio.to_thread(
+        document_pipeline_service.list_documents,
+        project_id or None,
+        _foundation_required_paths(foundation),
+    )
+    return {"status": "ok", "documents": rows}
+
+
+@router.post("/document-library/build")
+async def build_document_library(body: DocumentBuildBody, http_req: Request,
+                                 project_id: str = ""):
+    """构建底稿 Markdown；默认覆盖全目录，可选仅处理 Know-how 命中材料。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    paths = [str(p).strip() for p in body.paths if str(p).strip()]
+    if body.required_only and not paths:
+        foundation = await asyncio.to_thread(
+            data_foundation_service.load_foundation, project_id or None, pack_id)
+        if not foundation:
+            foundation = await asyncio.to_thread(
+                data_foundation_service.build_foundation, project_id or None, pack_id)
+        paths = _foundation_required_paths(foundation)
+    if body.required_only and not paths:
+        raise HTTPException(status_code=400, detail="尚未定位到 Know-how 要求的底稿，请先上传材料并刷新规则")
+    try:
+        result = await asyncio.to_thread(
+            document_pipeline_service.build_project,
+            project_id or None,
+            paths or None,
+            body.full_ocr,
+            body.force,
+        )
+        await touch_project_updated_at(project_id)
+        return {"status": "ok", **result}
+    except Exception as e:
+        logger.error("构建底稿知识库失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"构建底稿知识库失败：{e}")
+
+
+@router.get("/document-library/document")
+async def get_document_markdown(http_req: Request, path: str, project_id: str = ""):
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    try:
+        data = await asyncio.to_thread(
+            document_pipeline_service.get_document, project_id or None, path)
+        return {"status": "ok", **data}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取底稿 Markdown 失败：{e}")
+
+
+@router.post("/document-library/refine")
+async def refine_document_pages(body: DocumentRefineBody, http_req: Request,
+                                project_id: str = ""):
+    """Know-how 指定页视觉精读；无视觉模型配置时自动回退本地 OCR。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    if not body.pages:
+        raise HTTPException(status_code=400, detail="请至少选择一页")
+    try:
+        data = await asyncio.to_thread(
+            document_pipeline_service.refine_pdf_pages,
+            project_id or None,
+            body.path,
+            body.pages,
+            body.instruction,
+        )
+        await touch_project_updated_at(project_id)
+        return {"status": "ok", **data}
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("底稿指定页精读失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"底稿指定页精读失败：{e}")
+
+
+@router.get("/document-library/page-image")
+async def get_document_page_image(http_req: Request, path: str, page: int,
+                                  project_id: str = ""):
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    try:
+        image = await asyncio.to_thread(
+            document_pipeline_service.ensure_page_image,
+            project_id or None,
+            path,
+            page,
+        )
+        return FileResponse(str(image), media_type="image/png", filename=image.name)
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class FoundationUpdateBody(BaseModel):
+    updates: list = []
+
+
+class FoundationRuleUpdateBody(BaseModel):
+    updates: list = []
+
+
+class FoundationExtractBody(BaseModel):
+    force: bool = False
+
+
+class FoundationFileReextractBody(BaseModel):
+    update: dict
+
+
+class ReportAuditBody(BaseModel):
+    scope: str = "report"
+    chapter_n: int = 0
+    section_title: str = ""
+    use_ai: bool = True
+
+
+@router.get("/report-audit")
+async def get_report_audit(http_req: Request, project_id: str = ""):
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    return {"status": "ok", "data": await asyncio.to_thread(
+        report_audit_service.load_audit, project_id or None)}
+
+
+@router.post("/report-audit/run")
+async def run_report_audit(body: ReportAuditBody, http_req: Request,
+                           project_id: str = ""):
+    """审核生成报告；发现问题只提示，不阻止保存或 Word 导出。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    try:
+        if body.scope == "chapter" or body.section_title:
+            if body.chapter_n < 1:
+                raise HTTPException(status_code=400, detail="请选择要审核的章节")
+            data = await asyncio.to_thread(
+                report_audit_service.audit_chapter,
+                project_id or None, body.chapter_n, body.use_ai, body.section_title, pack_id)
+        else:
+            data = await asyncio.to_thread(
+                report_audit_service.audit_report, project_id or None, body.use_ai, pack_id)
+        await touch_project_updated_at(project_id)
+        return {"status": "ok", "data": data, "blocking": False}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("报告审核失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"报告审核失败：{e}")
+
+
+@router.post("/report-audit/whole-report")
+async def run_whole_report_audit(http_req: Request, project_id: str = ""):
+    """跨小节一致性校验：全部小节写完后运行一次，只找跨节矛盾，由 report-audit/SKILL.md
+    的 Know-how 驱动。与小节审核并列，同样只提示不阻断导出。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    try:
+        data = await asyncio.to_thread(
+            report_audit_service.audit_whole_report, project_id or None, pack_id)
+        await touch_project_updated_at(project_id)
+        return {"status": "ok", "data": data, "blocking": False}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("全文一致性校验失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"全文一致性校验失败：{e}")
+
+
+@router.get("/data-foundation")
+async def get_data_foundation(http_req: Request, project_id: str = ""):
+    """读取当前项目的数据底座。首次未构建时仅返回规则版本，不静默触发耗时抽取。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    try:
+        data = await asyncio.to_thread(
+            data_foundation_service.load_foundation, project_id or None, pack_id)
+        if data:
+            return {"status": "ok", "exists": True, "data": data}
+        rules = await asyncio.to_thread(data_foundation_service.load_rules, pack_id, project_id or None)
+        return {
+            "status": "ok",
+            "exists": False,
+            "data": None,
+            "rule_version": rules.get("rule_version", ""),
+            "methodology_sources": rules.get("methodology_sources", []),
+        }
+    except Exception as e:
+        logger.error("读取数据底座失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"读取数据底座失败：{e}")
+
+
+@router.get("/data-foundation/rules")
+async def get_data_foundation_rules(http_req: Request, project_id: str = ""):
+    """Return project-effective editable extraction rules."""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    rules = await asyncio.to_thread(
+        data_foundation_service.load_rules, pack_id, project_id or None)
+    return {"status": "ok", "data": rules}
+
+
+@router.put("/data-foundation/rules")
+async def update_data_foundation_rules(body: FoundationRuleUpdateBody, http_req: Request,
+                                       project_id: str = ""):
+    """Save reusable Know-how rules; project-only disabled flags remain project scoped."""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    project_updates = [item for item in body.updates
+                       if isinstance(item, dict) and set(item).issubset({"id", "disabled"})]
+    shared_updates = [item for item in body.updates if item not in project_updates]
+    if project_updates:
+        await asyncio.to_thread(
+            data_foundation_service.save_rule_overrides,
+            project_id or None, project_updates, pack_id)
+    rules = await asyncio.to_thread(
+        data_foundation_service.save_shared_rule_updates,
+        shared_updates, pack_id, "business_rule_edit") if shared_updates else await asyncio.to_thread(
+            data_foundation_service.load_rules, pack_id, project_id or None)
+    await touch_project_updated_at(project_id)
+    return {"status": "ok", "data": rules,
+            "message": "通用 Know-how 抽取规则已保存；对同模板的其他项目同样生效"}
+
+
+_foundation_file_reextracting: set[str] = set()
+
+
+@router.post("/data-foundation/rules/reextract-file")
+async def update_rule_and_reextract_file(body: FoundationFileReextractBody, http_req: Request,
+                                         project_id: str = ""):
+    """Persist one reusable rule revision, rediscover its runtime file, then re-extract its file scope."""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pid = _norm_pid(project_id)
+    field_id = str((body.update or {}).get("id", "")).strip()
+    if not field_id:
+        raise HTTPException(status_code=400, detail="缺少要修改的字段 ID")
+    if (_foundation_extract_jobs.get(pid, {}).get("status") == "running"
+            or pid in _foundation_file_reextracting):
+        raise HTTPException(status_code=409, detail="当前项目正在执行数据提取，请完成后再试")
+    pack_id = await _project_pack_id(project_id)
+    _foundation_file_reextracting.add(pid)
+    try:
+        await asyncio.to_thread(
+            data_foundation_service.save_shared_rule_updates,
+            [body.update], pack_id, "save_and_reextract_project_scope")
+        result = await asyncio.to_thread(
+            data_foundation_service.reextract_file_for_field,
+            pid or None, field_id, pack_id)
+        await touch_project_updated_at(project_id)
+        run = result.get("run") or {}
+        target = run.get("target_path") or run.get("target_role") or "当前来源"
+        return {
+            "status": "ok", "data": result.get("data"), "run": run,
+            "message": f"规则修订已记录；已重新提取 {target} 关联的 {len(run.get('affected_field_ids') or [])} 个字段",
+        }
+    except (KeyError, FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"规则已保存，但无法按文件重提取：{exc}")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=f"规则已保存，但按文件重提取失败：{exc}")
+    finally:
+        _foundation_file_reextracting.discard(pid)
+
+
+@router.post("/data-foundation/build")
+async def build_data_foundation(http_req: Request, project_id: str = ""):
+    """按业务规则刷新字段快照；保留人工修订，来源值改变时自动把审核状态退回待审。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    try:
+        data = await asyncio.to_thread(
+            data_foundation_service.build_foundation, project_id or None, pack_id)
+        await touch_project_updated_at(project_id)
+        return {"status": "ok", "data": data}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("构建数据底座失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"构建数据底座失败：{e}")
+
+
+@router.post("/data-foundation/deep-extract")
+async def deep_extract_data_foundation(http_req: Request, project_id: str = ""):
+    """专项读取营业执照、运营承诺函和信用报告；不对百页财报做整份 OCR。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    try:
+        data = await asyncio.to_thread(
+            data_foundation_service.deep_extract_foundation, project_id or None, pack_id)
+        await touch_project_updated_at(project_id)
+        return {"status": "ok", "data": data}
+    except Exception as e:
+        logger.error("专项提取数据底座失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"专项提取失败：{e}")
+
+
+_foundation_extract_jobs: dict[str, dict] = {}
+_foundation_extract_tasks: dict[str, asyncio.Task] = {}
+
+
+async def _run_foundation_extraction(project_id: str, pack_id: str | None, force: bool):
+    pid = _norm_pid(project_id)
+
+    def progress(stage: str, percent: int, message: str):
+        _foundation_extract_jobs[pid] = {
+            "status": "running", "stage": stage, "percent": percent,
+            "message": message, "error": None,
+        }
+
+    try:
+        progress("manual_inputs", 5, "读取两份业务人工输入")
+        await asyncio.to_thread(manual_input_service.build_manual_inputs, pid or None)
+        progress("rules", 12, "按当前可编辑规则定位底稿")
+        foundation = await asyncio.to_thread(
+            data_foundation_service.build_foundation, pid or None, pack_id)
+        required = _foundation_required_paths(foundation)
+        progress("documents", 20, f"构建 {len(required)} 份目标底稿 Markdown")
+        if required:
+            await asyncio.to_thread(
+                document_pipeline_service.build_project,
+                pid or None, required, False, force)
+        progress("documents", 35, "从营业执照、承诺函、信用报告和财报关键页提取事实")
+        await asyncio.to_thread(
+            data_foundation_service.deep_extract_foundation, pid or None, pack_id, force)
+        progress("rules", 76, "按可编辑规则合并执行其余底稿字段提取")
+        await asyncio.to_thread(
+            data_foundation_service.extract_rule_driven_fields, pid or None, pack_id, force)
+        progress("external", 86, "调用天眼查并联网搜索公开信息")
+        data = await asyncio.to_thread(
+            data_foundation_service.extract_external_foundation, pid or None, pack_id, force)
+        progress("documents", 92, "为项目目录其余材料建立一文件一 Markdown 底稿")
+        await asyncio.to_thread(
+            document_pipeline_service.build_project,
+            pid or None, None, False, force)
+        _foundation_extract_jobs[pid] = {
+            "status": "done", "stage": "completed", "percent": 100,
+            "message": "数据提取完成，可检查规则、来源和字段后按章批量生成或按小节精修",
+            "error": None, "data": data,
+        }
+        await touch_project_updated_at(pid)
+    except Exception as exc:
+        logger.error("项目数据提取失败: %s", exc, exc_info=True)
+        _foundation_extract_jobs[pid] = {
+            "status": "error", "stage": "failed", "percent": 0,
+            "message": "数据提取失败", "error": str(exc),
+        }
+
+
+@router.post("/data-foundation/extract")
+async def start_data_foundation_extraction(body: FoundationExtractBody, http_req: Request,
+                                           project_id: str = ""):
+    """User-triggered full extraction. Uploading files alone never starts AI/OCR/external calls."""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pid = _norm_pid(project_id)
+    current = _foundation_extract_jobs.get(pid, {})
+    if current.get("status") == "running":
+        raise HTTPException(status_code=409, detail="当前项目正在提取数据")
+    pack_id = await _project_pack_id(project_id)
+    _foundation_extract_jobs[pid] = {
+        "status": "running", "stage": "queued", "percent": 1,
+        "message": "已进入提取队列", "error": None,
+    }
+    _foundation_extract_tasks[pid] = asyncio.create_task(
+        _run_foundation_extraction(pid, pack_id, body.force))
+    return {"status": "started", "message": "数据提取已启动"}
+
+
+@router.get("/data-foundation/extract-status")
+async def data_foundation_extraction_status(http_req: Request, project_id: str = ""):
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    return _foundation_extract_jobs.get(
+        _norm_pid(project_id),
+        {"status": "idle", "stage": "idle", "percent": 0,
+         "message": "上传文件后点击“提取数据”开始", "error": None},
+    )
+
+
+@router.put("/data-foundation")
+async def update_data_foundation(body: FoundationUpdateBody, http_req: Request,
+                                 project_id: str = ""):
+    """批量保存字段修订和逐字段审核结论。值、来源快照、审核记录分开保存。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    try:
+        data = await asyncio.to_thread(
+            data_foundation_service.update_foundation,
+            project_id or None, body.updates, pack_id)
+        await touch_project_updated_at(project_id)
+        return {"status": "ok", "data": data}
+    except Exception as e:
+        logger.error("保存数据底座审核结果失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"保存失败：{e}")
+
+
+@router.post("/data-foundation/apply-drafts")
+async def apply_data_foundation_drafts(http_req: Request, project_id: str = ""):
+    """把 1.1 和 2.3 的确定性草稿写入对应章节，其余二级小节不受影响。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    try:
+        data = await asyncio.to_thread(
+            data_foundation_service.load_foundation, project_id or None, pack_id)
+        if not data:
+            data = await asyncio.to_thread(
+                data_foundation_service.build_foundation, project_id or None, pack_id)
+        drafts = data.get("drafts") or {}
+        mapping = {"1.1": 1, "2.3": 2}
+        applied = []
+        for section_id, chapter_n in mapping.items():
+            section = drafts.get(section_id)
+            if not section:
+                continue
+            await asyncio.to_thread(
+                skill_runner.upsert_structured_section,
+                chapter_n, section, project_id or None,
+                ["字段级数据底座", f"业务方法论规则 {section_id}"], pack_id)
+            applied.append(section_id)
+        if applied:
+            audit_key = (str(project_id or DEFAULT_PROJECT_ID), "drafts")
+            _audit_tasks[audit_key] = asyncio.create_task(
+                _auto_audit_drafts(project_id or None, drafts, applied, pack_id))
+        await touch_project_updated_at(project_id)
+        return {"status": "ok", "applied": applied, "audit_status": "running" if applied else "idle",
+                "message": "两节草稿已写入第一章和第二章，报告审核已在后台启动"}
+    except Exception as e:
+        logger.error("写入数据底座草稿失败: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"写入草稿失败：{e}")
+
+
+# ===== 小节级 Skill 生产线（新前端唯一生成入口） =====
+
+@router.get("/sections")
+async def list_skill_sections(http_req: Request, project_id: str = ""):
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    rows = await asyncio.to_thread(
+        section_skill_service.list_sections, project_id or None, pack_id)
+    return {"status": "ok", "sections": rows}
+
+
+@router.get("/sections/all")
+async def list_all_skill_sections(http_req: Request, project_id: str = ""):
+    """全部官方二级小节（含尚无 Know-how 的），供申报材料页/Know-how 页展示项目全貌。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    rows = await asyncio.to_thread(
+        section_skill_service.list_all_official_sections, project_id or None, pack_id)
+    return {"status": "ok", "sections": rows}
+
+
+@router.post("/sections/chapter/{chapter_n}/generate")
+async def generate_skill_chapter(chapter_n: int, http_req: Request,
+                                 project_id: str = ""):
+    """一次生成本章所有已配置的小节 Skill；未配置小节只报告跳过。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    try:
+        data = await asyncio.to_thread(
+            section_skill_service.generate_chapter_sections,
+            project_id or None, chapter_n, pack_id)
+        if data["generated_total"]:
+            audit_key = (_norm_pid(project_id), f"section-chapter-{chapter_n}")
+            _audit_tasks[audit_key] = asyncio.create_task(
+                _auto_audit_chapter(project_id or None, chapter_n, pack_id))
+            await touch_project_updated_at(project_id)
+        message = (
+            f"第{chapter_n}章已生成 {data['generated_total']} 个小节"
+            f"，失败 {data['failed_total']} 个"
+            f"，跳过 {data['skipped_total']} 个未配置小节"
+        )
+        return {"status": "ok" if not data["failed_total"] else "partial",
+                "data": data, "audit_status": "running" if data["generated_total"] else "idle",
+                "message": message}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/sections/{section_id}/content")
+async def get_skill_section_content(section_id: str, http_req: Request,
+                                    project_id: str = ""):
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    try:
+        data = await asyncio.to_thread(
+            section_skill_service.get_section_content,
+            project_id or None, section_id, pack_id)
+        return {"status": "ok", "data": data}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+def _require_admin_role(http_req: Request):
+    user = getattr(http_req.state, "user", None) or {}
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可编译 Know-how 规则")
+
+
+class RecompileBody(BaseModel):
+    know_how_text: str = ""
+
+
+class RecompileApplyBody(BaseModel):
+    payload: dict
+
+
+@router.post("/sections/{section_id}/recompile")
+async def recompile_section(section_id: str, body: RecompileBody, http_req: Request,
+                            project_id: str = ""):
+    """AI 把该小节的 Know-how 原文编译为抽取规则/生成模板/审核清单预览；只预览，不写入任何文件。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    _require_admin_role(http_req)
+    pack_id = await _project_pack_id(project_id)
+    know_how_text = body.know_how_text
+    if not know_how_text.strip():
+        skill_dir = f"section-skills/reits-section-{section_id.replace('.', '-')}/SKILL.md"
+        try:
+            know_how_text = await asyncio.to_thread(
+                lambda: pack_service.skill_text_path(skill_dir, pack_id).read_text(encoding="utf-8"))
+        except Exception:
+            know_how_text = ""
+    result = await asyncio.to_thread(
+        section_recompile_service.recompile, section_id, know_how_text, pack_id)
+    return {"status": "ok", **result}
+
+
+@router.post("/sections/{section_id}/recompile/apply")
+async def apply_recompiled_section(section_id: str, body: RecompileApplyBody, http_req: Request,
+                                   project_id: str = ""):
+    """业务确认预览无误后应用：只替换该小节自身的规则，其余小节不受影响。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    _require_admin_role(http_req)
+    pack_id = await _project_pack_id(project_id)
+    try:
+        rules = await asyncio.to_thread(
+            section_recompile_service.apply_compiled, section_id, body.payload, pack_id)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"status": "ok", "rule_version": rules.get("rule_version", "")}
+
+
+@router.post("/sections/{section_id}/generate")
+async def generate_skill_section(section_id: str, http_req: Request,
+                                 project_id: str = ""):
+    """Generate exactly one business section from its Skill and current foundation."""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    try:
+        data = await asyncio.to_thread(
+            section_skill_service.generate_section,
+            project_id or None, section_id, pack_id)
+        config = data["config"]
+        audit_key = (_norm_pid(project_id), f"section-{section_id}")
+        _audit_tasks[audit_key] = asyncio.create_task(asyncio.to_thread(
+            report_audit_service.audit_chapter,
+            project_id or None, config["chapter_n"], True, config["title"], pack_id))
+        await touch_project_updated_at(project_id)
+        return {"status": "ok", "data": data,
+                "message": f"{config['title']}已生成，其他小节未改动"}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
 # 各章生成任务状态：内存字典供本进程实时轮询，同时落 DB generation_jobs 表
 # （步骤 3.5：重启后已完成任务仍可见，多 worker 部署的状态共享基础），按 (project_id, 章节号) 存
 _jobs = {}    # (pid, n) -> {"status","data","error"}
 # 后台 task 的强引用：asyncio 只对 task 持弱引用，不保存会被 GC 掉，导致状态卡在 running
 _tasks = {}   # (pid, n) -> asyncio.Task
+_audit_tasks = {}  # (pid, scope) -> asyncio.Task；审核不阻塞生成/导出
+
+
+async def _auto_audit_drafts(project_id: str | None, drafts: dict, section_ids: list[str],
+                             pack_id: str | None = None):
+    mapping = {"1.1": 1, "2.3": 2}
+    try:
+        for section_id in section_ids:
+            section = drafts.get(section_id) or {}
+            await asyncio.to_thread(
+                report_audit_service.audit_chapter,
+                project_id, mapping[section_id], True, section.get("title", ""), pack_id)
+    except Exception as exc:
+        logger.warning("自动小节审核失败（不影响生成/导出）：%s", exc)
+
+
+async def _auto_audit_chapter(project_id: str | None, chapter_n: int, pack_id: str | None = None):
+    try:
+        await asyncio.to_thread(
+            report_audit_service.audit_chapter, project_id, chapter_n, True, "", pack_id)
+    except Exception as exc:
+        logger.warning("第%s章自动审核失败（不影响生成/导出）：%s", chapter_n, exc)
 
 
 def _norm_pid(project_id: str = "") -> str:
@@ -352,6 +999,9 @@ async def _run_chapter_job_with_subs(key, n: int, subtitles: list,
             project_id or None, pack_id)
         _jobs[key] = {"status": "done", "data": result, "error": None}
         await _save_job_to_db(key, _jobs[key])
+        audit_key = (key[0], f"chapter-{n}")
+        _audit_tasks[audit_key] = asyncio.create_task(
+            _auto_audit_chapter(project_id or None, n, pack_id))
         logger.info(f"第{n}章 skill 执行完成（项目 {project_id or '默认'}，模板包 {pack_id or '默认'}）")
     except Exception as e:
         logger.error(f"第{n}章 skill 执行失败: {e}", exc_info=True)
@@ -553,6 +1203,83 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
         return {"status": "ok", **result}
     except Exception as e:
         logger.error(f"生成第{n}章预览失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"生成预览失败：{e}")
+
+
+_DOC_H1_STYLE = 'font-family:"方正黑体_GBK", SimHei, 黑体, sans-serif;font-size:15pt'
+_DOC_H2_STYLE = 'font-family:"方正楷体_GBK", KaiTi, 楷体, STKaiti, serif;font-size:15pt'
+_DOC_P_STYLE = 'text-align:justify;font-family:"方正仿宋_GBK", FangSong, 仿宋, STFangsong, serif;font-size:15pt'
+
+
+def _render_section_standalone_html(chapter_title: str, section: dict) -> str:
+    """只这一节的 Word 排版预览，不经过官方整章模板——那条流水线是"往一份含全部小标题
+    的模板里填内容"，喂给它一个小节时，同章其它还没写的小标题会带着官方模板本身的填写
+    说明原样留在输出里，看起来像"缺了很多"，其实是模板机制决定的，不是这个小节的问题。
+    这里直接从小节自己的 blocks 拼 HTML，样式对齐模板预览用的字体/字号，但只有这一节。"""
+    from html import escape as _e
+
+    parts = [
+        '<div class="doc-page">',
+        f'<h2 class="doc-h1" style="{_DOC_H1_STYLE}">{_e(chapter_title)}</h2>',
+        f'<h3 class="doc-h2" style="{_DOC_H2_STYLE}">{_e(section.get("title", ""))}</h3>',
+    ]
+    for block in section.get("blocks", []) or []:
+        kind = block.get("type")
+        if kind == "p":
+            text = _e(str(block.get("text", ""))).replace("\n", "<br>")
+            parts.append(f'<p class="doc-prev-p" style="{_DOC_P_STYLE}">{text}</p>')
+        elif kind == "kv":
+            if block.get("caption"):
+                parts.append(f'<p class="doc-prev-p" style="{_DOC_P_STYLE}"><b>{_e(block["caption"])}</b></p>')
+            rows_html = "".join(
+                f'<tr><td>{_e(str(r.get("label", "")))}</td><td>{_e(str(r.get("value", "")))}</td></tr>'
+                for r in block.get("rows", []) or []
+            )
+            parts.append(f'<table class="doc-prev-table"><tbody>{rows_html}</tbody></table>')
+        elif kind == "grid":
+            if block.get("caption"):
+                parts.append(f'<p class="doc-prev-p" style="{_DOC_P_STYLE}"><b>{_e(block["caption"])}</b></p>')
+            headers = "".join(f'<th>{_e(str(h))}</th>' for h in block.get("headers", []) or [])
+            rows_html = "".join(
+                "<tr>" + "".join(f'<td>{_e(str(c))}</td>' for c in row) + "</tr>"
+                for row in block.get("rows", []) or []
+            )
+            parts.append(f'<table class="doc-prev-table"><thead><tr>{headers}</tr></thead><tbody>{rows_html}</tbody></table>')
+    parts.append("</div>")
+    return "".join(parts)
+
+
+@router.get("/sections/{section_id}/preview")
+async def section_word_preview(section_id: str, http_req: Request, project_id: str = ""):
+    """小节自己的 Word 排版预览——只这一节，不混进同章其它（可能还没配置/没生成的）小节，
+    也不经过整章官方模板填写流水线（原因见 _render_section_standalone_html）。整章合并下载
+    是另一件事，见"下载本章 Word" / /chapter/{n}/download。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    pid = project_id or None
+    try:
+        config = section_skill_service.get_section(section_id, pack_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    n = config["chapter_n"]
+    cfg = skill_runner.chapters_for(pack_id)[n]
+
+    def _do():
+        sections = skill_runner.get_chapter_structured(n, pid)
+        matched = [s for s in sections if str(s.get("title", "")).strip() == config["title"].strip()]
+        if not matched:
+            return {"has_content": False, "html": ""}
+        cleaned, gate_warnings = json_gate.check_and_clean(matched)
+        if not cleaned:
+            return {"has_content": False, "html": "", "gate_warnings": gate_warnings}
+        html = _render_section_standalone_html(cfg["title"], cleaned[0])
+        return {"has_content": True, "html": html, "gate_warnings": gate_warnings}
+
+    try:
+        result = await asyncio.to_thread(_do)
+        return {"status": "ok", **result}
+    except Exception as e:
+        logger.error(f"生成小节 {section_id} 预览失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"生成预览失败：{e}")
 
 

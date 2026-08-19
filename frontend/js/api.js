@@ -259,10 +259,11 @@ const API = {
      * PDF 按页原版预览（仿 Word/WPS 观感）：返回指定页范围的页面图片
      * @returns {Promise<object>} {total, pages:[{page, img}], hit_page}
      */
-    async previewMaterialPages(path, start, count, quote, hlPage, hlBox) {
+    async previewMaterialPages(path, start, count, quote, hlPage, hlBox, pageHint) {
         const pid = encodeURIComponent(this._currentProjectId());
         const params = { path, start, count, quote: quote || '' };
         if (hlPage) { params.hl_page = hlPage; params.hl_box = hlBox || ''; }
+        if (pageHint) params.page_hint = pageHint;
         return this.get(`/projects/${pid}/materials/preview-pages`, params);
     },
 
@@ -371,6 +372,10 @@ const API = {
         return this.get(`/skills/chapter/${n}/preview`, { project_id: this._currentProjectId() });
     },
 
+    async getSectionPreview(sectionId) {
+        return this.get(`/skills/sections/${encodeURIComponent(sectionId)}/preview`, { project_id: this._currentProjectId() });
+    },
+
     /**
      * 生成第 n 章新版本 Word（只生成不下载，工具栏“生成该文档”用）
      * @returns {Promise<object>} {status, filename}
@@ -436,6 +441,130 @@ const API = {
     async saveSummary(data) {
         const pid = encodeURIComponent(this._currentProjectId());
         return this.post(`/skills/summary/save?project_id=${pid}`, data);
+    },
+
+    // ===== 字段级数据底座与审核层 =====
+
+    async getDataFoundation() {
+        return this.get('/skills/data-foundation', { project_id: this._currentProjectId() });
+    },
+
+    async buildDataFoundation() {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/data-foundation/build?project_id=${pid}`);
+    },
+
+    async deepExtractDataFoundation() {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/data-foundation/deep-extract?project_id=${pid}`);
+    },
+
+    async startDataExtraction(force = false) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/data-foundation/extract?project_id=${pid}`, { force });
+    },
+
+    async getDataExtractionStatus() {
+        return this.get('/skills/data-foundation/extract-status', { project_id: this._currentProjectId() });
+    },
+
+    async getDataFoundationRules() {
+        return this.get('/skills/data-foundation/rules', { project_id: this._currentProjectId() });
+    },
+
+    async updateDataFoundationRules(updates) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.put(`/skills/data-foundation/rules?project_id=${pid}`, { updates });
+    },
+
+    async updateRuleAndReextractFile(update) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/data-foundation/rules/reextract-file?project_id=${pid}`, { update });
+    },
+
+    async listSkillSections() {
+        return this.get('/skills/sections', { project_id: this._currentProjectId() });
+    },
+
+    async listAllSkillSections() {
+        return this.get('/skills/sections/all', { project_id: this._currentProjectId() });
+    },
+
+    async getSkillSection(sectionId) {
+        return this.get(`/skills/sections/${encodeURIComponent(sectionId)}/content`, { project_id: this._currentProjectId() });
+    },
+
+    async generateSkillSection(sectionId) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/sections/${encodeURIComponent(sectionId)}/generate?project_id=${pid}`);
+    },
+
+    async generateSkillChapter(chapterN) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/sections/chapter/${encodeURIComponent(chapterN)}/generate?project_id=${pid}`);
+    },
+
+    async recompileSection(sectionId, knowHowText) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/sections/${encodeURIComponent(sectionId)}/recompile?project_id=${pid}`,
+            { know_how_text: knowHowText || '' });
+    },
+
+    async applyRecompiledSection(sectionId, payload) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/sections/${encodeURIComponent(sectionId)}/recompile/apply?project_id=${pid}`,
+            { payload });
+    },
+
+    async updateDataFoundation(updates) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.put(`/skills/data-foundation?project_id=${pid}`, { updates });
+    },
+
+    async applyDataFoundationDrafts() {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/data-foundation/apply-drafts?project_id=${pid}`);
+    },
+
+    async getManualInputs() {
+        return this.get('/skills/manual-inputs', { project_id: this._currentProjectId() });
+    },
+
+    async refreshManualInputs() {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/manual-inputs/refresh?project_id=${pid}`);
+    },
+
+    async getDocumentLibrary() {
+        return this.get('/skills/document-library', { project_id: this._currentProjectId() });
+    },
+
+    async buildDocumentLibrary(body = {}) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/document-library/build?project_id=${pid}`, body);
+    },
+
+    async getDocumentMarkdown(path) {
+        return this.get('/skills/document-library/document', { project_id: this._currentProjectId(), path });
+    },
+
+    async refineDocumentPages(path, pages, instruction) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/document-library/refine?project_id=${pid}`, { path, pages, instruction: instruction || '' });
+    },
+
+    async getReportAudit() {
+        return this.get('/skills/report-audit', { project_id: this._currentProjectId() });
+    },
+
+    async runReportAudit(body = {}) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/report-audit/run?project_id=${pid}`, body);
+    },
+
+    async runWholeReportAudit() {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/report-audit/whole-report?project_id=${pid}`);
     },
 
     /**

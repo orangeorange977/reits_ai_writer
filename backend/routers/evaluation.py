@@ -83,3 +83,41 @@ async def scores(n: int, http_req: Request, project_id: str = ""):
     """打分历史（最新在最后）。"""
     await _assert_project_access(project_id, _current_user_id(http_req))
     return {"scores": eval_service.get_scores(project_id, n)}
+
+
+# ---------------------------------------------------------------- 小节级（不是整章）
+# 标准答案仍按整章 docx 上传——里面本来就含各小节，逐节对齐已经是整章对比的内部实现；
+# 这里只是把结果/打分范围收窄到业务关心的那一节，复用同一份对齐与相似度计算。
+
+@router.get("/compare/{n}/section")
+async def compare_section(n: int, http_req: Request, project_id: str = "",
+                          section_title: str = "", force: int = 0):
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    if not section_title.strip():
+        raise HTTPException(status_code=400, detail="缺少 section_title")
+    try:
+        return await asyncio.to_thread(
+            eval_service.compare_section, project_id, n, section_title, bool(force))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/score/{n}/section")
+async def score_section(n: int, http_req: Request, project_id: str = "", section_title: str = ""):
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    if not section_title.strip():
+        raise HTTPException(status_code=400, detail="缺少 section_title")
+    try:
+        return await asyncio.to_thread(eval_service.score_section, project_id, n, section_title)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.get("/scores/{n}/section")
+async def section_scores(n: int, http_req: Request, project_id: str = "", section_title: str = ""):
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    if not section_title.strip():
+        raise HTTPException(status_code=400, detail="缺少 section_title")
+    return {"scores": eval_service.get_section_scores(project_id, n, section_title)}

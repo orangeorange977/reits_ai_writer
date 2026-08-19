@@ -14,6 +14,7 @@ import base64
 import json
 import logging
 import random
+import re
 import time
 
 from openai import (OpenAI, RateLimitError, InternalServerError,
@@ -43,18 +44,21 @@ def get_client(model: str = None) -> OpenAI:
             raise RuntimeError(
                 "未配置 DEEPSEEK_API_KEY，请在项目根目录的 .env 文件里设置后重启服务"
             )
-        return OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+        return OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, max_retries=0)
     if not MOONSHOT_API_KEY:
         raise RuntimeError(
             "未配置 MOONSHOT_API_KEY，请在项目根目录的 .env 文件里设置后重启服务"
         )
-    return OpenAI(api_key=MOONSHOT_API_KEY, base_url=MOONSHOT_BASE_URL)
+    # SDK 自带重试关闭，由本模块 _create 统一控制；否则单次 90 秒超时会在 SDK
+    # 内部再重试两次，外层无法感知，视觉任务一次可能卡 4～8 分钟。
+    return OpenAI(api_key=MOONSHOT_API_KEY, base_url=MOONSHOT_BASE_URL, max_retries=0)
 
 
 def _create(client: OpenAI, **kwargs):
     """调用 chat.completions.create，遇到临时性错误（过载/限流/5xx/超时）自动指数退避重试。"""
     last_err = None
-    for attempt in range(_MAX_RETRIES + 1):
+    max_retries = int(kwargs.pop("_max_retries", _MAX_RETRIES))
+    for attempt in range(max_retries + 1):
         try:
             return client.chat.completions.create(**kwargs)
         except _RETRYABLE as e:
@@ -64,10 +68,10 @@ def _create(client: OpenAI, **kwargs):
             if getattr(e, "status_code", None) not in (429, 500, 502, 503, 504):
                 raise
             last_err = e
-        if attempt < _MAX_RETRIES:
+        if attempt < max_retries:
             delay = _BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
             logger.warning(f"[Kimi] 接口临时错误（{type(last_err).__name__}），"
-                           f"{delay:.1f}s 后第 {attempt + 1}/{_MAX_RETRIES} 次重试")
+                           f"{delay:.1f}s 后第 {attempt + 1}/{max_retries} 次重试")
             time.sleep(delay)
     raise last_err
 
@@ -121,8 +125,68 @@ def ocr_images(images: list, model: str = None, instruction: str = "") -> str:
         model=MOONSHOT_VISION_MODEL or MOONSHOT_MODEL,  # 视觉识别固定走 Moonshot（kimi-k3 支持读图）
         messages=[{"role": "user", "content": content}],
         temperature=1.0,   # kimi-k3 要求 temperature=1.0
+        timeout=90.0,
+        _max_retries=0,
     )
     return resp.choices[0].message.content or ""
+
+
+def vision_page_markdown(image: bytes, instruction: str = "") -> str:
+    """把单页扫描件精读成可替换页级缓存的完整 Markdown。
+
+    与 ``ocr_images(..., instruction=...)`` 不同，这里即使给了业务关注点也必须返回整页，
+    关注点只用于提醒模型提高相关表格/字段的识别精度，避免中间层丢掉上下文。
+    """
+    if not image:
+        return ""
+    client = get_client(MOONSHOT_MODEL)
+    focus = (instruction or "").strip()
+    prompt = (
+        "请把这一页底稿完整转写为 Markdown。必须保留标题、正文层级、表格全部行列、"
+        "金额正负号、千分位、小数、日期、单位、脚注和盖章/落款文字；不要总结，不要改写，"
+        "无法辨认的单元格写【无法辨认】，不要猜测。表格请输出为 Markdown 表格。"
+    )
+    if focus:
+        prompt += f"业务特别关注：{focus}。请在完整转写的前提下重点核对这些内容。"
+    b64 = base64.b64encode(image).decode("ascii")
+    resp = _create(
+        client,
+        model=MOONSHOT_VISION_MODEL or MOONSHOT_MODEL,
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+        ]}],
+        temperature=1.0,
+        timeout=90.0,
+        _max_retries=0,
+    )
+    return resp.choices[0].message.content or ""
+
+
+def vision_extract_json(images: list[bytes], instruction: str) -> dict:
+    """Read selected evidence pages and return strict JSON for a caller-defined schema."""
+    if not images:
+        return {}
+    client = get_client(MOONSHOT_MODEL)
+    content = [{"type": "text", "text": (
+        f"{instruction}\n"
+        "只根据图片中能明确辨认的内容填写。无法确认的值必须使用空字符串，严禁猜测。"
+        "金额保留图片原单位和完整数字。只输出一个合法 JSON 对象，不要代码块、解释或前后缀。"
+    )}]
+    for image in images:
+        b64 = base64.b64encode(image).decode("ascii")
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+    resp = _create(
+        client,
+        model=MOONSHOT_VISION_MODEL or MOONSHOT_MODEL,
+        messages=[{"role": "user", "content": content}],
+        temperature=1.0,
+        timeout=90.0,
+        _max_retries=0,
+    )
+    raw = (resp.choices[0].message.content or "").strip()
+    raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.I)
+    return json.loads(raw)
 
 
 def chat_with_tools(messages: list[dict], tools: list, tool_executor,
@@ -160,12 +224,22 @@ def chat_with_tools(messages: list[dict], tools: list, tool_executor,
             content = msg.content or ""
             if content.strip():
                 return content
-            # 模型没调用工具却又没给正文（偶发空回复）：明确要求它现在直接给出最终结果
+            # Built-in web search occasionally finishes with an empty assistant
+            # message.  Never append that empty standalone assistant message:
+            # Moonshot rejects it on the next request.  Make one tool-free final
+            # answer call from the valid history instead.
             logger.warning(f"[chat_with_tools] 第{i+1}轮返回空正文且无工具调用，追问一次要求直接输出")
-            msgs.append({"role": "assistant", "content": ""})
-            msgs.append({"role": "user",
-                         "content": "请现在直接输出最终结果本身（严格符合前面要求的 JSON），"
-                                    "不要再调用任何工具，不要输出空内容或解释。"})
+            final_messages = msgs + [{
+                "role": "user",
+                "content": "请现在直接基于已经取得的搜索结果输出最终结果本身（严格符合前面要求的 JSON），"
+                           "不要再调用任何工具，不要输出空内容或解释。",
+            }]
+            final_resp = _create(
+                client, model=model, messages=final_messages,
+                temperature=temperature, **extra)
+            final_content = final_resp.choices[0].message.content or ""
+            if final_content.strip():
+                return final_content
             continue
 
         # 记录助手这轮的工具调用请求
@@ -220,3 +294,31 @@ def chat_with_tools(messages: list[dict], tools: list, tool_executor,
             return content
         logger.warning("[chat_with_tools] 强制输出仍为空，重试")
     return ""
+
+
+def web_search_json(query: str, output_instruction: str) -> dict:
+    """Run one evidence-oriented Moonshot web search and return strict JSON.
+
+    The returned object must include source URLs supplied by the model/search tool;
+    callers should persist the raw object as provenance rather than only the answer.
+    """
+    messages = [
+        {"role": "system", "content": (
+            "你是企业公开信息检索员。必须先调用联网搜索，只采用公司官网、交易所、国家发展改革委、"
+            "证监会等权威来源。无法确认时写空值，不得把未搜索到推断为不存在。"
+        )},
+        {"role": "user", "content": (
+            f"检索问题：{query}\n\n{output_instruction}\n"
+            "只输出合法 JSON 对象，不要代码块。sources 必须是数组，每项包含 title、url、published_at、quote。"
+        )},
+    ]
+    raw = chat_with_tools(
+        messages,
+        [{"type": "builtin_function", "function": {"name": "$web_search"}}],
+        lambda _name, _args: "",
+        model=MOONSHOT_MODEL,
+        temperature=1.0,
+        max_rounds=4,
+    )
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=re.I)
+    return json.loads(cleaned)

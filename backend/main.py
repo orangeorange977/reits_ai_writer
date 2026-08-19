@@ -88,9 +88,17 @@ def _is_ai_burst(path: str, method: str) -> bool:
         return False
     if path in ("/api/skills/ai-edit", "/api/skills/ai-compose"):
         return True
+    if path in (
+        "/api/skills/document-library/refine",
+        "/api/skills/data-foundation/deep-extract",
+        "/api/skills/data-foundation/extract",
+        "/api/skills/report-audit/run",
+    ):
+        return True
     if path.startswith("/api/eval/score/"):
         return True
-    return path.startswith("/api/skills/chapter/") and path.endswith("/run")
+    return ((path.startswith("/api/skills/chapter/") and path.endswith("/run")) or
+            (path.startswith("/api/skills/sections/") and path.endswith("/generate")))
 
 
 @app.middleware("http")

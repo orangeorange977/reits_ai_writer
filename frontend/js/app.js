@@ -6,6 +6,7 @@
 const PAGE_TITLES = {
     'overview': '系统概览',
     'ndrc': '材料生成',
+    'knowhow': 'Know-how',
     'documents': '文档管理',
     'evaluation': '对比评测',
     'skills': 'Skill 管理',
@@ -69,9 +70,63 @@ function navigate(pageId) {
     }
 
     currentPage = pageId;
+    _refreshTopbarProjectSwitcher();
 
     // 页面切换后加载对应数据
     onPageEnter(pageId);
+}
+
+/** 顶栏项目切换器：所有项目相关页面（申报材料/数据提取/Know-how/Skill 管理/文档管理/
+ * 对比评测）共用同一个 currentProjectId，之前只能回系统概览才能换项目——这里补一个随
+ * 处可见的切换入口，不用来回跳转。 */
+function _refreshTopbarProjectSwitcher() {
+    const sel = document.getElementById('topbarProjectSwitcher');
+    if (!sel) return;
+    const projects = _projectsCache || [];
+    if (!projects.length || currentPage === 'overview') { sel.style.display = 'none'; return; }
+    sel.style.display = '';
+    sel.innerHTML = projects.map(p =>
+        `<option value="${_escHtmlAttr(p.id)}" ${String(p.id) === String(currentProjectId) ? 'selected' : ''}>${_escHtmlAttr(p.name || ('项目 ' + p.id))}</option>`
+    ).join('');
+}
+
+/** 切换当前项目：更新全局 currentProjectId，然后按当前所在页面重新加载该项目的内容。 */
+async function switchCurrentProject(projectId) {
+    if (!projectId || projectId === currentProjectId) return;
+    currentProjectId = projectId;
+    updateProjectHeaderBar();
+    await onPageEnter(currentPage);
+    showToast('已切换到 ' + ((_projectsCache.find(p => String(p.id) === String(projectId)) || {}).name || ('项目 ' + projectId)));
+}
+
+/** 侧边栏“数据提取”入口：复用申报材料页的数据工作台容器，但直接跳到数据提取视图，
+ * 不经过章节步骤条——业务反馈数据提取应有独立入口，不该混在章节流程里。 */
+async function goToDataExtraction() {
+    // 不走 navigate('ndrc')：那条路径会异步跑 loadChapters()，它默认落地到"请选择小节"的
+    // 空态，可能在这里的数据视图渲染完之后才回来，把内容覆盖掉（竞态）。这里手动控制页面
+    // 显示，只做数据提取需要的那几步，跳过默认落地。
+    document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+    document.getElementById('page-ndrc')?.classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+    document.querySelector('.nav-item[data-page="data-extract"]')?.classList.add('active');
+    const titleEl = document.getElementById('pageTitle');
+    if (titleEl) titleEl.textContent = '数据提取';
+    currentPage = 'ndrc';
+    _setNdrcMode('extract');
+    _refreshTopbarProjectSwitcher();
+    if (!currentProjectId) return;
+    await loadProjectPack();
+    await selectDataFoundation();
+    loadMaterialsUI();
+}
+
+/** page-ndrc 被"数据提取"和"文档生成"两个侧边栏入口共用：按模式切换该显示材料面板
+ * 还是章节步骤条——两边只应该看到各自需要的部分，不是全部堆在一起。 */
+function _setNdrcMode(mode) {
+    const materials = document.getElementById('materialsPanelWrap');
+    const stepper = document.getElementById('stepperCardWrap');
+    if (materials) materials.style.display = mode === 'extract' ? '' : 'none';
+    if (stepper) stepper.style.display = mode === 'extract' ? 'none' : '';
 }
 
 /**
@@ -85,6 +140,11 @@ async function onPageEnter(pageId) {
         case 'ndrc':
             if (currentProjectId) {
                 await loadChapters();
+            }
+            break;
+        case 'knowhow':
+            if (typeof knowhowPageEnter === 'function') {
+                await knowhowPageEnter();
             }
             break;
         case 'documents':
@@ -497,27 +557,32 @@ function _updateMatToggleBtn() {
 /** PDF 按页原版图预览：首批 3 页；摘录命中页不在首批时从命中页开始，顶部提供“加载前几页” */
 async function _renderPagesPreview() {
     const { path, quote } = _matState;
+    const citedPageHint = Number(_matState.page || 0);
     const body = document.getElementById('matPreviewBody');
     document.getElementById('matPreviewTitle').textContent = '正在渲染原版页面…';
     body.innerHTML = '<div class="text-muted" style="padding:20px">正在渲染 PDF 原版页面，请稍候…</div>';
     let d;
     try {
-        d = await API.previewMaterialPages(path, 1, 3, quote);
+        d = await API.previewMaterialPages(path, 1, 3, quote, 0, '', citedPageHint);
     } catch (e) {
         // 渲染失败（如加密 PDF）回退文本版
         _matState.mode = 'text'; _updateMatToggleBtn();
         return _renderTextPreview();
     }
-    const st = _matState.pagesState = { total: d.total, start: 1, end: 0, loading: false, hit: d.hit_page, fuzzy: !!d.fuzzy, weak: !!d.weak };
+    const citedPage = citedPageHint > 0 ? Math.max(1, Math.min(citedPageHint, d.total)) : 0;
+    const targetPage = citedPage || d.hit_page || 0;
+    const st = _matState.pagesState = { total: d.total, start: 1, end: 0, loading: false,
+        hit: targetPage,
+        hit_box: d.hit_page === targetPage ? (d.hit_box || null) : null,
+        fuzzy: citedPage ? false : !!d.fuzzy,
+        weak: citedPage ? false : !!d.weak };
     document.getElementById('matPreviewTitle').textContent = `📄 《${String(path).split('/').pop()}》原版（共 ${d.total} 页）`;
     body.innerHTML = '';
-    const citedPage = Math.min(_matState.page || 0, d.total);
-    if (citedPage > 1) {
-        // 依据自带页码引注（生成时标注，扫描件搜不到字也能直达）
-        st.hit = st.hit || citedPage;
+    if (citedPage > 0) {
+        // 结构化依据里的物理页码优先；全文模糊搜索不得覆盖该页。
         body.insertAdjacentHTML('beforeend', `<div class="src-tip ok">✅ 依据标注摘录位于原文第 ${citedPage} 页，已为您跳转到该页。</div>`);
     }
-    if (quote && citedPage <= 1) {
+    if (quote && !citedPage) {
         if (st.hit && st.weak) {
             if (d.hit_box) st.hit_box = d.hit_box;
             body.insertAdjacentHTML('beforeend', d.hit_box
@@ -813,7 +878,7 @@ function _buildMaterialsTree(files, dirs) {
     for (const f of files) {
         const segs = String(f.path || '').split('/').filter(Boolean);
         const fname = segs.pop();
-        ensure(segs).files.push({ name: fname, size: f.size });
+        ensure(segs).files.push({ name: fname, size: f.size, path: f.path });
     }
     return root;
 }
@@ -843,9 +908,9 @@ function renderColumnBrowser(container, files, dirs) {
                 <span class="mc-meta">${_countTreeFiles(node.dirs.get(d))}</span><span class="mc-arrow">▸</span></div>`;
         }
         for (const f of node.files.sort((a, b) => a.name.localeCompare(b.name, 'zh'))) {
-            h += `<div class="mc-row mc-file" data-name="${_escHtmlAttr(f.name)}" data-type="file" title="${_escHtmlAttr(f.name)}">
+            h += `<div class="mc-row mc-file" data-name="${_escHtmlAttr(f.name)}" data-path="${_escHtmlAttr(f.path)}" data-type="file" title="点击查看原件：${_escHtmlAttr(f.name)}">
                 <span class="mc-ico">📄</span><span class="mc-name">${_escHtmlAttr(f.name)}</span>
-                <span class="mc-meta">${_fmtSize(f.size)}</span></div>`;
+                <span class="mc-meta">${_fmtSize(f.size)}</span><span class="mc-open-hint">查看</span></div>`;
         }
         col.innerHTML = h || '<div class="mc-empty">（空文件夹）</div>';
         col.addEventListener('click', (e) => {
@@ -861,6 +926,8 @@ function renderColumnBrowser(container, files, dirs) {
                 cols.push(nc);
                 container.appendChild(nc);
                 container.scrollLeft = container.scrollWidth;
+            } else if (row.dataset.type === 'file' && row.dataset.path) {
+                openMaterialPreview(row.dataset.path, '', 0);
             }
         });
         return col;
@@ -1243,17 +1310,16 @@ function selectCurrentFolder() {
 }
 
 /**
- * 加载章节列表：先拉当前项目绑定模板包的章节结构，再渲染步骤条与第一章编辑区
+ * 加载小节级生产线：进入项目后默认停在数据提取，不再打开旧的大章编辑器。
  */
 async function loadChapters() {
     if (!currentProjectId) return;
+    _setNdrcMode('generate');
 
     try {
         await loadProjectPack();
-        renderChapterStepper();
-        // 默认展示第一章（走 Kimi 生成 + Word 式编辑视图）
-        await renderChapterEditor(1);
-        // 底部整体进度条：按各章是否有内容计算（新管线）
+        await renderChapterStepper();
+        _renderNdrcLandingState();
         await updateChapterProgress();
     } catch (error) {
         console.warn('[REIT-AI] 加载章节列表失败:', error.message);
@@ -1299,44 +1365,55 @@ function _applyPackLabels() {
 }
 
 /**
- * 渲染章节步骤条（标题来自项目绑定模板包的 chapters.json，不再写死七章）
+ * 渲染小节步骤条：按官方大章节折叠，默认只漏出章标题，点开展开该章全部二级小节
+ * （31 节平铺太长，业务要求按章收起）。已配置 Know-how 的小节可点击生成/查看；
+ * 未配置的显示"未配置"状态，点击后引导去 Know-how 页补充；报告审核固定在最后。
  */
-function renderChapterStepper() {
+async function renderChapterStepper() {
     const container = document.getElementById('chapterStepper');
     if (!container) return;
-
-    // 第一项固定为"摘要表和释义"（不属于章节，走独立的点击逻辑）；
-    // 圆圈不指定 circle，由 renderStepper 统一按序号显示（1，章节依次 2~8）
-    const summaryStep = {
-        title: '摘要表和释义',
-        status: '',
-        desc: '项目基础信息',
-        onClick: 'selectSummary()',
-    };
-
-    const chapterSteps = (PACK_CHAPTERS || []).map(ch => ({
-        title: ch.title,
-        status: '',
-        desc: '待生成',
-        onClick: `selectChapter(${ch.n})`,
-    }));
-
-    renderStepper(container, [summaryStep, ...chapterSteps]);
-
-    // 异步核对各章实际生成状态，更新步骤条徽标（总复查修复：列表与编辑器状态不一致）
-    (PACK_CHAPTERS || []).forEach((ch, i) => {
-        API.getChapterContent(ch.n).then(content => {
-            if (content && content.source === 'ready') {
-                _markStepperDone(ch.n);
-            }
-        }).catch(() => { /* 单章查不到不影响其他章 */ });
-        // 刷新页面/重进后恢复“生成中”状态：橙色脉冲 + 全局横幅 + 继续轮询
-        API.getChapterStatus(ch.n).then(st => {
-            if (st && st.status === 'running' && !_kimiTimer) {
-                _pollChapterGeneration(ch.n);
-            }
-        }).catch(() => {});
+    let sections = [];
+    try { sections = (await API.listAllSkillSections()).sections || []; } catch (_) {}
+    const byChapter = {};
+    sections.forEach(s => {
+        (byChapter[s.chapter_n] ||= { title: s.chapter_title, items: [] }).items.push(s);
     });
+    const chapterNs = Object.keys(byChapter).map(Number).sort((a, b) => a - b);
+    container.innerHTML = chapterNs.map(n => {
+        const g = byChapter[n];
+        const configuredCount = g.items.filter(s => s.configured).length;
+        const generatedCount = g.items.filter(s => s.configured && s.generated).length;
+        const open = configuredCount > 0;  // 有已配置小节的章默认展开，方便直接看到演示内容
+        const rows = g.items.map(s => {
+            const done = s.configured && s.generated;
+            const cls = !s.configured ? 'muted' : (done ? 'done' : '');
+            const desc = !s.configured ? '未配置 Know-how'
+                : (s.generated ? '已生成' : (s.data_ready ? '可生成' : '待提取数据'));
+            const onClick = s.configured
+                ? `selectSkillSection('${s.id}')`
+                : `selectUnconfiguredSection('${s.id}', '${_escHtmlAttr(s.title)}')`;
+            return `<div class="stepper-section-item ${cls}" onclick="${onClick}">
+                <span class="stepper-section-dot"></span>
+                <span class="stepper-section-title">${_escHtmlAttr(s.id)} ${_escHtmlAttr(s.title)}</span>
+                <span class="stepper-section-desc">${_escHtmlAttr(desc)}</span>
+            </div>`;
+        }).join('');
+        const batchLabel = generatedCount > 0 ? `重新生成本章（${configuredCount}节）` : `生成本章（${configuredCount}节）`;
+        return `<details class="stepper-chapter" ${open ? 'open' : ''}>
+            <summary><span class="stepper-chapter-name">第${n}章 · ${_escHtmlAttr(g.title)}</span>
+                <span class="text-muted text-sm">（${configuredCount}/${g.items.length} 已配置）</span>
+                <button id="chapterGenerateBtn${n}" type="button" class="btn btn-primary btn-sm stepper-chapter-generate"
+                    ${configuredCount ? '' : 'disabled'}
+                    title="${configuredCount ? '一次生成本章全部已配置小节；未配置小节自动跳过' : '本章还没有可执行的 Know-how'}"
+                    onclick="event.preventDefault();event.stopPropagation();generateSkillChapterUI(${n},${generatedCount})">${configuredCount ? batchLabel : '暂无可生成小节'}</button>
+            </summary>
+            <div class="stepper-chapter-body">${rows}</div>
+        </details>`;
+    }).join('') + `<div class="stepper-section-item ${currentChapter === 'report-audit' ? 'done' : ''}" onclick="selectReportAudit()" style="margin-top:8px;border-top:1px solid var(--border);padding-top:12px">
+        <span class="stepper-section-dot"></span>
+        <span class="stepper-section-title">报告审核</span>
+        <span class="stepper-section-desc">审核已生成小节</span>
+    </div>`;
 }
 
 /** 立即把第 n 章在步骤条上标记为“已生成”（✓ + 文案），
@@ -1377,15 +1454,19 @@ function _markStepperIdle(n) {
     step.classList.remove('current', 'done');
     const idx = (PACK_CHAPTERS || []).findIndex(ch => ch.n === n);
     const circle = step.querySelector('.step-circle');
-    if (circle && idx >= 0) circle.textContent = idx + 2;  // 首项是摘要表，章节从 2 开始
+    if (circle && idx >= 0) circle.textContent = idx + 2;  // 第 1 项是数据提取，占位 1
     const desc = step.querySelector('.step-desc');
     if (desc) desc.textContent = '待生成';
 }
 
+/** 按 renderChapterStepper 的固定顺序定位第 n 章节点：位置 0 恒为“数据提取”，
+ * 紧接着按 PACK_CHAPTERS 顺序铺开整章入口，之后才是小节/审核项——因此章节位置
+ * 只取决于 PACK_CHAPTERS 中的下标，不受后面新增/减少多少小节级入口影响。 */
 function _stepperStepFor(container, n) {
     const idx = (PACK_CHAPTERS || []).findIndex(ch => ch.n === n);
     if (idx < 0) return null;
-    return container.querySelectorAll('.step')[idx + 1];  // +1：首项是摘要表
+    const steps = container.querySelectorAll('.step');
+    return steps[1 + idx] || null;
 }
 
 // ===== 全局生成中横幅：固定悬浮在页面顶部，切到任何章节/页面都能看到当前在生成哪章 =====
@@ -1422,6 +1503,976 @@ function _goToChapter(n) {
  */
 async function selectChapter(chapterNum) {
     await renderChapterEditor(chapterNum);
+}
+
+// ===== 字段级数据底座与审核层 =====
+
+let _foundationData = null;
+let _foundationRules = null;
+let _foundationDocuments = [];
+let _extractPollTimer = null;
+
+/** 申报材料页默认落地状态：只提示从左侧选小节，不再默认显示数据提取内容
+ * ——数据提取现在是独立侧边栏页面，两处职责分开。 */
+function _renderNdrcLandingState() {
+    currentChapter = null;
+    const container = document.getElementById('chapterDetail');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="foundation-empty" style="padding:40px;text-align:center">
+            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">请从左侧选择一个小节</h3>
+            <p class="text-muted text-sm" style="margin-top:8px">已配置 Know-how 的小节可以生成、查看结果和 Word 预览；数据提取和 Know-how 编辑分别在各自的侧边栏页面。</p>
+        </div>`;
+}
+
+async function selectDataFoundation() {
+    currentChapter = 'foundation';
+    const container = document.getElementById('chapterDetail');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="chapter-detail-header">
+            <div>
+                <h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">数据提取</h3>
+                <div class="text-muted text-sm" style="margin-top:4px">上传材料不会自动调用 AI；由业务确认后手动提取，规则和结果均可修改</div>
+            </div>
+            <button class="btn btn-primary" onclick="startFullDataExtraction(false)">提取数据</button>
+        </div>
+        <div class="data-workbench-tabs">
+            <button class="active" data-tab="foundation" onclick="showDataWorkspaceTab('foundation')">1. 数据与规则</button>
+            <button data-tab="manual" onclick="showDataWorkspaceTab('manual')">2. 人工输入</button>
+            <button data-tab="documents" onclick="showDataWorkspaceTab('documents')">3. 底稿 Markdown</button>
+        </div>
+        <div class="chapter-detail-body" id="foundationBody"></div>`;
+    await showDataWorkspaceTab('foundation');
+}
+
+async function showDataWorkspaceTab(tab) {
+    document.querySelectorAll('.data-workbench-tabs button').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
+    const body = document.getElementById('foundationBody');
+    if (!body) return;
+    body.innerHTML = '<div class="text-sm text-muted" style="padding:16px 0">正在加载…</div>';
+    if (tab === 'manual') return loadManualInputsWorkspace();
+    if (tab === 'documents') return loadDocumentLibraryWorkspace();
+    return loadFoundationWorkspace();
+}
+
+let _manualInputSources = [];
+
+function openManualInputSource(index) {
+    const source = _manualInputSources[index];
+    if (source && source.path) openMaterialPreview(source.path, '');
+}
+
+async function loadManualInputsWorkspace(refresh = false) {
+    const body = document.getElementById('foundationBody');
+    try {
+        const resp = refresh ? await API.refreshManualInputs() : await API.getManualInputs();
+        const d = resp.data || {};
+        _manualInputSources = d.sources || [];
+        const renderRows = rows => `<table class="foundation-table"><thead><tr><th>字段名称</th><th>业务填写值</th></tr></thead><tbody>${(rows || []).map(r => `<tr><td><b>${_escHtmlAttr(r.label || '')}</b></td><td>${_escHtmlAttr(r.value || '').replace(/\n/g, '<br>')}</td></tr>`).join('')}</tbody></table>`;
+        body.innerHTML = `
+            <div class="workspace-toolbar"><div><b>人工输入层</b><small>当前仅接收两份业务手填 Word，不进入 AI 抽取字段库</small></div><button class="btn btn-ghost btn-sm" onclick="loadManualInputsWorkspace(true)">↻ 重新读取 Word</button></div>
+            <div class="foundation-source-grid">${_manualInputSources.map((s, i) => `<div class="foundation-source ${s.status === 'located' ? 'located' : 'missing'}"><span class="source-dot"></span><div><b>${_escHtmlAttr(s.label)}</b><small>${_escHtmlAttr(s.path || '未找到文件')}</small></div>${s.path ? `<button class="btn btn-ghost btn-sm" onclick="openManualInputSource(${i})">查看原件</button>` : ''}</div>`).join('')}</div>
+            <details class="foundation-panel" open><summary>摘要表（${(d.summary?.rows || []).length} 行）</summary><div class="foundation-table-wrap">${renderRows(d.summary?.rows)}</div></details>
+            <details class="foundation-panel"><summary>项目概况表（${(d.project_overview?.rows || []).length} 行，生成第一章第一节时整表复制）</summary><div class="foundation-table-wrap">${renderRows(d.project_overview?.rows)}</div></details>`;
+    } catch (e) {
+        body.innerHTML = `<div class="foundation-error">人工输入读取失败：${_escHtmlAttr(e.message)}</div>`;
+    }
+}
+
+let _documentLibrary = [];
+
+async function loadDocumentLibraryWorkspace() {
+    const body = document.getElementById('foundationBody');
+    try {
+        const resp = await API.getDocumentLibrary();
+        _documentLibrary = resp.documents || [];
+        const required = _documentLibrary.filter(d => d.required);
+        const allWithIndex = _documentLibrary.map((d, i) => ({ d, i }))
+            .sort((a, b) => Number(b.d.required) - Number(a.d.required) || a.d.path.localeCompare(b.d.path, 'zh-CN'));
+        body.innerHTML = `
+            <div class="workspace-toolbar"><div><b>一份底稿，一个 Markdown</b><small>全目录可见，Know-how 命中文件排在前面；目标页视觉精读会覆盖对应页 Markdown</small></div><div class="flex gap-8"><button class="btn btn-ghost btn-sm" onclick="buildDocuments(false, false)">构建全部 Markdown</button><button class="btn btn-ghost btn-sm" onclick="buildDocuments(true, false)">构建目标底稿</button><button class="btn btn-primary btn-sm" onclick="buildDocuments(false, true)">本地 OCR 补全全部</button></div></div>
+            <div class="foundation-flow"><span>材料总数 <b>${_documentLibrary.length}</b></span><i>→</i><span>当前规则命中 <b>${required.length}</b></span><i>→</i><span>已有 Markdown <b>${_documentLibrary.filter(d => ['ready','partial'].includes(d.status)).length}</b></span><i>→</i><span>待识别页 <b>${_documentLibrary.reduce((n,d) => n + (d.placeholder_pages || 0), 0)}</b></span></div>
+            <input class="form-input" placeholder="搜索底稿文件名或路径…" oninput="filterDocumentLibrary(this.value)" style="max-width:360px;margin-bottom:10px">
+            <div class="document-library-split">
+                <div class="document-library-list" id="documentLibraryList">${allWithIndex.length ? allWithIndex.map(({ d, i }) => `<div class="document-library-row ${d.required ? 'required' : ''}" data-search="${_escHtmlAttr((d.filename + ' ' + d.path).toLowerCase())}">
+                    <div class="doc-state ${d.status}">${d.status === 'ready' ? '✓' : (d.status === 'partial' ? '◐' : '·')}</div>
+                    <div class="doc-main"><b>${d.required ? '<em class="required-mark">Know-how 命中</em>' : ''}${_escHtmlAttr(d.filename)}</b><small>${_escHtmlAttr(d.path)}</small><span>${d.page_count ? `${d.page_count} 页 · 原生文字 ${d.native_pages || 0} · OCR ${d.ocr_pages || 0} · 视觉 ${d.vision_pages || 0} · 待识别 ${d.placeholder_pages || 0}` : (d.status === 'pending' ? '尚未构建 Markdown' : '非分页文档')}</span></div>
+                    <div class="flex gap-8"><button class="btn btn-ghost btn-sm" onclick="viewDocumentMarkdown(${i})">查看 Markdown</button>${d.extension === '.pdf' ? `<button class="btn btn-ghost btn-sm" onclick="refineDocumentPagesUI(${i})">精读指定页</button>` : ''}</div>
+                </div>`).join('') : '<div class="text-muted text-sm" style="padding:8px 0">当前没有可构建的底稿</div>'}</div>
+                <div id="documentMarkdownViewer"></div>
+            </div>`;
+    } catch (e) {
+        body.innerHTML = `<div class="foundation-error">底稿知识库加载失败：${_escHtmlAttr(e.message)}</div>`;
+    }
+}
+
+function filterDocumentLibrary(keyword) {
+    const value = String(keyword || '').trim().toLowerCase();
+    document.querySelectorAll('#documentLibraryList .document-library-row').forEach(row => {
+        row.style.display = !value || (row.dataset.search || '').includes(value) ? '' : 'none';
+    });
+}
+
+async function buildDocuments(requiredOnly, fullOcr) {
+    const body = document.getElementById('foundationBody');
+    if (body) body.insertAdjacentHTML('afterbegin', `<div class="foundation-alert warn" id="documentBuilding">正在${fullOcr ? '逐页执行本地 OCR' : '读取原生文字层并建立 Markdown'}，请稍候…</div>`);
+    try {
+        const resp = await API.buildDocumentLibrary({ required_only: !!requiredOnly, full_ocr: !!fullOcr, force: false });
+        showToast(`已处理 ${resp.processed || 0} 份${requiredOnly ? '目标' : '全部'}底稿${resp.errors?.length ? `，${resp.errors.length} 份失败` : ''}`);
+        await loadDocumentLibraryWorkspace();
+    } catch (e) {
+        document.getElementById('documentBuilding')?.remove();
+        showToast('底稿构建失败：' + e.message, 'error');
+    }
+}
+
+async function viewDocumentMarkdown(index) {
+    const doc = _documentLibrary[index], viewer = document.getElementById('documentMarkdownViewer');
+    if (!doc || !viewer) return;
+    viewer.innerHTML = '<div class="text-muted" style="padding:16px">正在读取 Markdown…</div>';
+    try {
+        const resp = await API.getDocumentMarkdown(doc.path);
+        viewer.innerHTML = `<div class="markdown-viewer-head"><b>${_escHtmlAttr(doc.filename)}</b><button class="btn btn-ghost btn-sm" onclick="document.getElementById('documentMarkdownViewer').innerHTML=''">关闭</button></div><pre>${_escHtmlAttr(resp.markdown || '')}</pre>`;
+        viewer.scrollIntoView({behavior:'smooth', block:'start'});
+    } catch (e) { viewer.innerHTML = `<div class="foundation-error">读取失败：${_escHtmlAttr(e.message)}</div>`; }
+}
+
+async function refineDocumentPagesUI(index) {
+    const doc = _documentLibrary[index];
+    if (!doc) return;
+    const raw = prompt(`请输入要精读的页码（例如 1,3-5）。该操作优先使用视觉模型，失败时回退本地 OCR。\n\n${doc.filename}`, '1');
+    if (!raw) return;
+    const pages = [];
+    raw.split(/[,，\s]+/).forEach(part => {
+        const m = part.match(/^(\d+)-(\d+)$/);
+        if (m) for (let n = +m[1]; n <= +m[2]; n++) pages.push(n);
+        else if (/^\d+$/.test(part)) pages.push(+part);
+    });
+    const instruction = prompt('业务特别关注什么字段或表格？可留空。', '') || '';
+    try {
+        const resp = await API.refineDocumentPages(doc.path, pages, instruction);
+        showToast(`已精读 ${resp.refined?.length || 0} 页`);
+        await loadDocumentLibraryWorkspace();
+    } catch (e) { showToast('指定页精读失败：' + e.message, 'error'); }
+}
+
+async function loadFoundationWorkspace() {
+    const body = document.getElementById('foundationBody');
+    if (!body) return;
+    body.innerHTML = '<div class="text-sm text-muted" style="padding:16px 0">正在加载数据中间层…</div>';
+    try {
+        const [resp, rulesResp, docsResp, job] = await Promise.all([
+            API.getDataFoundation(), API.getDataFoundationRules(), API.getDocumentLibrary(), API.getDataExtractionStatus()
+        ]);
+        _foundationRules = rulesResp.data || null;
+        _foundationDocuments = docsResp.documents || [];
+        if (job.status === 'running') {
+            renderExtractionProgress(job);
+            pollDataExtraction();
+            return;
+        }
+        if (!resp.exists) {
+            body.innerHTML = `
+                <div class="foundation-empty">
+                    <h4>尚未提取数据</h4>
+                    <p>上传材料本身不会触发 OCR、模型、天眼查或联网搜索。确认文件后再手动开始。</p>
+                    <p class="text-muted text-sm">规则版本：${_escHtmlAttr(resp.rule_version || '未配置')}</p>
+                    <button class="btn btn-primary" onclick="startFullDataExtraction(false)">提取数据</button>
+                </div>`;
+            return;
+        }
+        _foundationData = resp.data;
+        renderDataFoundation();
+    } catch (e) {
+        body.innerHTML = `<div class="foundation-error">加载失败：${_escHtmlAttr(e.message)}</div>`;
+    }
+}
+
+async function startFullDataExtraction(force) {
+    try {
+        await API.startDataExtraction(!!force);
+        pollDataExtraction();
+    } catch (e) { showToast('启动提取失败：' + e.message, 'error'); }
+}
+
+function renderExtractionProgress(job) {
+    const body = document.getElementById('foundationBody');
+    if (!body) return;
+    body.innerHTML = `<div class="extraction-progress-card">
+        <div class="extraction-progress-head"><b>正在提取数据</b><span>${job.percent || 0}%</span></div>
+        <div class="progress-bar"><div class="progress-fill blue" style="width:${job.percent || 0}%"></div></div>
+        <p>${_escHtmlAttr(job.message || '')}</p>
+        <small>可离开本页面继续操作；返回后会恢复当前进度。天眼查和联网搜索会在最后阶段执行。</small>
+    </div>`;
+}
+
+function pollDataExtraction() {
+    if (_extractPollTimer) clearInterval(_extractPollTimer);
+    const tick = async () => {
+        try {
+            const job = await API.getDataExtractionStatus();
+            if (job.status === 'running') return renderExtractionProgress(job);
+            clearInterval(_extractPollTimer); _extractPollTimer = null;
+            if (job.status === 'done') {
+                _foundationData = job.data;
+                await renderChapterStepper();
+                await loadFoundationWorkspace();
+                showToast('数据提取完成；请检查字段和规则后按章批量生成或按小节精修');
+            } else if (job.status === 'error') {
+                const body = document.getElementById('foundationBody');
+                if (body) body.innerHTML = `<div class="foundation-error">提取失败：${_escHtmlAttr(job.error || '')}</div><button class="btn btn-primary" onclick="startFullDataExtraction(true)">重新提取</button>`;
+            }
+        } catch (_) {}
+    };
+    tick();
+    _extractPollTimer = setInterval(tick, 2500);
+}
+
+async function buildDataFoundation() {
+    const body = document.getElementById('foundationBody');
+    if (body) body.innerHTML = '<div class="text-muted" style="padding:18px">正在按业务 Know-how 刷新抽取规则、来源和字段…</div>';
+    try {
+        const resp = await API.buildDataFoundation();
+        _foundationData = resp.data;
+        renderDataFoundation();
+        showToast('数据中间层已刷新；人工修订已保留，规则和来源可展开检查');
+    } catch (e) {
+        if (body) body.innerHTML = `<div class="foundation-error">构建失败：${_escHtmlAttr(e.message)}</div>`;
+        showToast('构建失败：' + e.message, 'error');
+    }
+}
+
+async function deepExtractDataFoundation() {
+    if (!_foundationData) {
+        await buildDataFoundation();
+        if (!_foundationData) return;
+    }
+    const body = document.getElementById('foundationBody');
+    if (body) body.insertAdjacentHTML('afterbegin', '<div class="foundation-alert warn" id="foundationExtracting">正在识别营业执照、承诺函、信用报告，并定位四期财报三张合并报表目标页；不会 OCR 全部附注，请稍候…</div>');
+    try {
+        const resp = await API.deepExtractDataFoundation();
+        _foundationData = resp.data;
+        renderDataFoundation();
+        showToast('专项提取完成；目标页、抽取逻辑、当前值和冲突候选已更新');
+    } catch (e) {
+        const banner = document.getElementById('foundationExtracting');
+        if (banner) banner.remove();
+        showToast('专项提取失败：' + e.message, 'error');
+    }
+}
+
+function _foundationStatus(status) {
+    const map = {
+        extracted: ['已抽取', 'ok'], manual: ['人工值', 'manual'],
+        calculated: ['已计算', 'ok'], conflict: ['有冲突', 'warn'],
+        missing: ['缺失', 'bad'], disabled: ['已删除', ''],
+    };
+    return map[status] || [status || '未知', ''];
+}
+
+function _foundationReview(status) {
+    return status === 'approved' ? '已通过' : (status === 'rejected' ? '已退回' : '待审核');
+}
+
+function renderDataFoundation() {
+    const body = document.getElementById('foundationBody');
+    if (!body || !_foundationData) return;
+    const d = _foundationData, st = d.stats || {};
+    const stale = d.stale ? `<div class="foundation-alert warn">上传材料自上次构建后发生变化，请先点“构建 / 刷新底座”。</div>` : '';
+    const missingSources = (d.sources || []).filter(s => s.required && s.status !== 'located');
+    const sourceAlert = missingSources.length
+        ? `<div class="foundation-alert bad">缺少必需来源：${missingSources.map(s => _escHtmlAttr(s.label)).join('、')}</div>` : '';
+    body.innerHTML = `
+        ${stale}${sourceAlert}
+        <div class="workspace-toolbar"><div><b>数据中间层</b><small>材料选择和字段 Prompt 是同模板项目共用的 Know-how；具体文件、年份和页码是本项目运行结果</small></div><div class="flex gap-8"><button class="btn btn-primary btn-sm" onclick="startFullDataExtraction(true)">重新提取全部数据</button></div></div>
+        <div class="foundation-flow">
+            <span>① 业务 Know-how → 小节 Skill</span><i>→</i>
+            <span>② 一份底稿一个 Markdown</span><i>→</i>
+            <span>③ 按可编辑规则提取 <b>${st.field_filled || 0}/${st.field_total || 0}</b></span><i>→</i>
+            <span>④ 业务修订 <b>${(_foundationData.fields || []).filter(f => f.is_override).length}</b></span><i>→</i>
+            <span>已删除 <b>${st.disabled_total || 0}</b></span>
+        </div>
+        <div class="foundation-stat-grid">
+            <div class="foundation-stat"><span>必填缺失</span><strong class="${st.required_missing ? 'danger' : ''}">${st.required_missing || 0}</strong></div>
+            <div class="foundation-stat"><span>来源冲突</span><strong class="${(d.fields || []).some(f => f.status === 'conflict') ? 'danger' : ''}">${(d.fields || []).filter(f => f.status === 'conflict').length}</strong></div>
+            <div class="foundation-stat"><span>目标页批次</span><strong>${(d.financial_extraction_runs || []).length}</strong></div>
+            <div class="foundation-stat"><span>最近更新</span><strong class="date">${_escHtmlAttr((d.updated_at || d.built_at || '').replace('T', ' ').slice(0, 19))}</strong></div>
+        </div>
+        ${_renderFoundationValidations(d.input_validations || [])}
+        ${_renderSourceRoleRules()}
+        ${_renderFileReextractionRuns(d.file_reextraction_runs || [])}
+        ${_renderFoundationFieldsTable()}
+        `;
+}
+
+function buildRequiredDocuments(fullOcr) { return buildDocuments(true, fullOcr); }
+
+function _csvRule(values) { return (values || []).join('、'); }
+
+function _renderSourceRoleRules() {
+    const roles = (_foundationRules?.source_roles || []).filter(r => r.input_kind !== 'manual_input' && r.selector);
+    if (!roles.length) return '';
+    return `<details class="foundation-panel"><summary>通用材料选择规则（${roles.length} 类）</summary>
+        <div class="foundation-validations">${roles.map((role, index) => {
+            const selector = role.selector || {};
+            const runtimeMatches = (_foundationData?.source_selection_plan || []).filter(x =>
+                x.role === role.id || (role.id === 'audit_reports' && String(x.role || '').startsWith('audit_report_')));
+            const runtime = runtimeMatches[0] || {};
+            const selectedText = runtimeMatches.length > 1
+                ? runtimeMatches.map(x => `${x.label || x.role}：${x.selected_path || '未命中'}`).join('；')
+                : (runtime.selected_path || '尚未命中');
+            return `<div class="foundation-validation">
+                <span>→</span><div style="width:100%"><b>${_escHtmlAttr(role.label || role.id)}</b>
+                    <small>本项目命中：${_escHtmlAttr(selectedText)}</small>
+                    <details class="foundation-rule-edit"><summary>✎ 编辑跨项目共用的文件匹配规则</summary><div class="rule-edit-form">
+                        <label class="text-muted text-sm">文件名关键词（命中任一个）</label>
+                        <input class="foundation-rule-input" id="sr-name-${index}" value="${_escHtmlAttr(_csvRule(selector.filename_keywords_any))}" placeholder="例：审计报告、财务报表">
+                        <label class="text-muted text-sm">所在目录关键词（命中任一个）</label>
+                        <input class="foundation-rule-input" id="sr-path-${index}" value="${_escHtmlAttr(_csvRule(selector.path_keywords_any))}" placeholder="例：原始权益人、参与主体">
+                        <label class="text-muted text-sm">排除关键词</label>
+                        <input class="foundation-rule-input" id="sr-exclude-${index}" value="${_escHtmlAttr(_csvRule(selector.exclude_keywords_any))}" placeholder="例：项目公司、备考报表">
+                        <label class="text-muted text-sm">选文件说明（给 AI/业务看）</label>
+                        <textarea class="foundation-rule-input" id="sr-prompt-${index}" rows="3">${_escHtmlAttr(role.match_prompt || '')}</textarea>
+                        <button class="btn btn-primary btn-sm" onclick="saveSourceRoleRule(${index})">保存通用规则并在本项目重新匹配</button>
+                    </div></details>
+                    ${runtimeMatches.some(x => x.candidates?.length) ? `<details><summary>查看本次候选文件与得分</summary><pre>${_escHtmlAttr(JSON.stringify(runtimeMatches.map(x => ({period:x.label || x.role, candidates:x.candidates || []})), null, 2))}</pre></details>` : ''}
+                </div><em>模板规则</em>
+            </div>`;
+        }).join('')}</div></details>`;
+}
+
+function _splitRuleKeywords(value) {
+    return String(value || '').split(/[,，、;\n]+/).map(x => x.trim()).filter(Boolean);
+}
+
+async function saveSourceRoleRule(index) {
+    const roles = (_foundationRules?.source_roles || []).filter(r => r.input_kind !== 'manual_input' && r.selector);
+    const role = roles[index];
+    if (!role) return;
+    const selector = {...(role.selector || {})};
+    selector.filename_keywords_any = _splitRuleKeywords(document.getElementById(`sr-name-${index}`)?.value);
+    selector.path_keywords_any = _splitRuleKeywords(document.getElementById(`sr-path-${index}`)?.value);
+    selector.exclude_keywords_any = _splitRuleKeywords(document.getElementById(`sr-exclude-${index}`)?.value);
+    const match_prompt = document.getElementById(`sr-prompt-${index}`)?.value || '';
+    if (!confirm('该修改会影响使用同一 Know-how 模板的所有项目。保存后在当前项目重新选文件并提取，继续？')) return;
+    try {
+        await API.updateDataFoundationRules([{entity:'source_role', id:role.id, selector, match_prompt}]);
+        await startFullDataExtraction(true);
+    } catch (e) { showToast('材料选择规则保存失败：' + e.message, 'error'); }
+}
+
+
+function _renderFoundationValidations(validations) {
+    // 通过的校验不用列出来——这里只展示需要业务处理的失败项，通过项没有信息量。
+    const failed = validations.filter(v => v.status === 'failed');
+    if (!failed.length) return '';
+    return `<details class="foundation-panel" open>
+        <summary>一致性校验（${failed.length} 项需要处理）</summary>
+        <div class="foundation-validations">${failed.map(v => `
+            <div class="foundation-validation failed">
+                <span>!</span>
+                <div><b>${_escHtmlAttr(v.label)}</b><small>${_escHtmlAttr(v.message)}</small></div>
+                <em>${v.severity === 'error' ? '阻断项' : '提示项'}</em>
+            </div>`).join('')}</div>
+    </details>`;
+}
+
+// 提取策略的机器标识翻译成业务能看懂的中文；来源角色的中文名从 _foundationRules.source_roles
+// 取（rules.json 里业务已经写好的 label），外部/派生这几个不在那张表里，单独兜底。
+const STRATEGY_LABELS = {
+    table_exact: '按表格字段精确匹配', 'regex:': '从字段文本用规则提取子项',
+    document_label: '文档正文字段定位', document_conclusion: '结论类专项提取（需人工复核）',
+    document_list: '清单类专项提取（需人工复核）', financial_statement: '财务报表科目定位',
+    document_search: '底稿全文检索', filename: '取自文件名', filename_title: '取自文件标题（自动去附件编号）', path_number: '取自材料编号',
+    external_company_lookup: '天眼查企业查询', external_public_search: '公开网络检索',
+    derived_analysis: '基于已提取数据计算', manual: '业务人员手工填写',
+};
+const ROLE_LABEL_FALLBACK = {
+    tianyancha: '天眼查', web_search: '公开网络检索', derived: '数据中间层内部计算',
+    project_materials: '项目申报材料（按角色未细分）', audit_reports: '各年度审计报告',
+};
+function _strategyLabel(strategy) {
+    if (!strategy) return '未设置';
+    if (strategy.startsWith('regex:')) return STRATEGY_LABELS['regex:'];
+    return STRATEGY_LABELS[strategy] || strategy;
+}
+function _roleLabel(role) {
+    if (!role) return '未设置';
+    const fromRules = (_foundationRules?.source_roles || []).find(r => r.id === role);
+    if (fromRules) return fromRules.label || role;
+    const m = role.match(/^audit_report_(\d{4})$/);
+    if (m) return `${m[1]}年度审计报告`;
+    return ROLE_LABEL_FALLBACK[role] || role;
+}
+
+/** 数据中间层字段表：不按小节分组——同一个字段可能被多个小节复用，按小节分反而制造假边界。
+ * 平铺 + 搜索，每行显示"用于哪些小节"（由后端扫生成模板算出，不是字段自己的固定归属）。 */
+function _renderFoundationFieldsTable() {
+    const fields = (_foundationData.fields || []).map((f, index) => ({ ...f, _index: index }));
+    if (!fields.length) {
+        return '<div class="foundation-empty"><h4>暂无数据中间层字段</h4><p>点击"重新提取数据"开始抽取。</p></div>';
+    }
+    const activeFields = fields.filter(f => f.status !== 'disabled');
+    const deletedFields = fields.filter(f => f.status === 'disabled');
+    const deletedGroups = [];
+    const deletedKeys = new Set();
+    deletedFields.forEach(f => {
+        const match = String(f.id || '').match(/^finance\.([^.]+)\./);
+        const key = match ? `finance.${match[1]}` : f.id;
+        if (deletedKeys.has(key)) return;
+        deletedKeys.add(key);
+        deletedGroups.push({ ...f, _deletedLabel: match ? f.label.replace(/（.*$/, '') + '（全部期间）' : f.label });
+    });
+    return `<div class="foundation-section">
+        <div class="foundation-section-head">
+            <div><h4>数据中间层字段</h4><span>${activeFields.filter(f => f.value).length}/${activeFields.length} 已有值；两份业务人工输入表不在此列表，见"人工输入"页</span></div>
+            <input class="form-input" id="foundationFieldSearch" placeholder="搜索字段名称或值…" oninput="_filterFoundationFieldsTable(this.value)" style="max-width:220px">
+        </div>
+        <div class="foundation-table-wrap"><table class="foundation-table foundation-fields-table" id="foundationFieldsTable">
+            <thead><tr><th>字段名称</th><th>当前值</th><th>提取规则（从哪里 · 怎么取）</th><th>来源（点击溯源）</th><th>用于哪些小节</th><th>操作</th></tr></thead>
+            <tbody>${activeFields.map(f => _renderFoundationField(f)).join('') || '<tr><td colspan="6" class="source-none">当前没有启用的字段</td></tr>'}</tbody>
+        </table></div>
+        ${deletedFields.length ? `<details class="foundation-deleted-fields">
+            <summary>已删除字段（${deletedGroups.length} 组，共 ${deletedFields.length} 个期间字段）</summary>
+            <div>${deletedGroups.map(f => `<span>${_escHtmlAttr(f._deletedLabel)}<button class="btn btn-ghost btn-sm" onclick="restoreFoundationField(${f._index})">恢复</button></span>`).join('')}</div>
+        </details>` : ''}
+    </div>`;
+}
+
+function _renderFileReextractionRuns(runs) {
+    const rows = [...(runs || [])].reverse().slice(0, 8);
+    if (!rows.length) return '';
+    return `<details class="foundation-panel">
+        <summary>按文件重提取记录（最近 ${rows.length} 次）</summary>
+        <div class="foundation-validations">${rows.map(run => {
+            const target = run.target_path ? run.target_path.split('/').pop() : _roleLabel(run.target_role || '');
+            const status = run.status === 'completed' ? '已完成' : (run.status === 'failed' ? '失败' : '运行中');
+            return `<div class="foundation-validation ${run.status === 'failed' ? 'failed' : ''}">
+                <span>${run.status === 'completed' ? '✓' : '!'}</span>
+                <div><b>${_escHtmlAttr(run.shared_rule_version || `运行批次 R${run.project_run_revision || 0}`)} · ${_escHtmlAttr(target)}</b>
+                    <small>${_escHtmlAttr((run.completed_at || run.started_at || '').replace('T',' ').slice(0,19))}；关联 ${run.affected_field_ids?.length || 0} 个字段，值变化 ${run.changed_field_ids?.length || 0} 个${run.error ? `；${_escHtmlAttr(run.error)}` : ''}</small>
+                    <details><summary>查看规则、候选文件和影响字段</summary><pre>${_escHtmlAttr(JSON.stringify({rule_snapshot:run.rule_snapshot, source_selection:run.source_selection, affected_field_ids:run.affected_field_ids, manual_override_field_ids:run.manual_override_field_ids}, null, 2))}</pre></details>
+                </div><em>${status}</em>
+            </div>`;
+        }).join('')}</div>
+    </details>`;
+}
+
+function _filterFoundationFieldsTable(keyword) {
+    const kw = (keyword || '').trim().toLowerCase();
+    document.querySelectorAll('#foundationFieldsTable tbody tr').forEach(row => {
+        row.style.display = (!kw || (row.dataset.search || '').includes(kw)) ? '' : 'none';
+    });
+}
+
+function _renderFoundationField(field) {
+    // 值只读、来源只读——主要用来在编写时点击溯源；提取规则单独一列，用中文名不用内部英文
+    // 标识；可以展开小表单改，改完可对该字段单独触发一次快速（文字层）重新生成。
+    const [statusLabel, statusClass] = _foundationStatus(field.status);
+    const source = field.source || {}, rule = field.rule || {};
+    const sourceLine = source.path
+        ? `<button class="foundation-source-link" onclick="openFoundationFieldSource(${field._index})">${_escHtmlAttr(source.path.split('/').pop())}</button><small>${_escHtmlAttr(source.locator || '')}</small>`
+        : `<span class="source-none">${_escHtmlAttr(source.locator || field.extraction_note || '尚未执行或未命中来源')}</span>${(field.extraction_attempts || []).length ? `<details><summary>查看已检查范围</summary><pre>${_escHtmlAttr(JSON.stringify(field.extraction_attempts, null, 2))}</pre></details>` : ''}`;
+    const decision = field.conflict_decision ? `<small class="conflict-reason">当前采用：${_escHtmlAttr(field.conflict_decision.selected || '')}。${_escHtmlAttr(field.conflict_decision.reason || '')}</small>` : '';
+    const usedIn = (field.used_in_sections || []).map(sid => `<span class="foundation-badge">${_escHtmlAttr(sid)}</span>`).join('') || '<span class="source-none">暂未被任何小节引用</span>';
+    const searchKey = _escHtmlAttr(`${field.label} ${field.value || ''} ${field.id}`.toLowerCase());
+    const isRuntimeFinancial = String(field.extraction_plan?.template_rule_id || '').startsWith('financial_metrics.');
+    const editableRole = isRuntimeFinancial ? 'audit_reports' : rule.source_role;
+    const roleOptions = (_foundationRules?.source_roles || [])
+        .map(r => `<option value="${_escHtmlAttr(r.id)}" ${editableRole === r.id ? 'selected' : ''}>${_escHtmlAttr(r.label || r.id)}</option>`).join('')
+        + (editableRole && !(_foundationRules?.source_roles || []).some(r => r.id === editableRole)
+            ? `<option value="${_escHtmlAttr(editableRole)}" selected>${_escHtmlAttr(_roleLabel(editableRole))}</option>` : '');
+    const strategyOptions = Object.keys(STRATEGY_LABELS).filter(k => k !== 'regex:')
+        .map(v => `<option value="${v}" ${(rule.strategy || field.strategy) === v ? 'selected' : ''}>${_escHtmlAttr(STRATEGY_LABELS[v])}</option>`).join('');
+    const rawUnit = field.raw_unit ? `原表：${_escHtmlAttr(field.raw_value || '')} ${_escHtmlAttr(field.raw_unit)}` : '';
+    const conversion = field.conversion?.formula ? `；换算：${_escHtmlAttr(field.conversion.formula)}` : '';
+    const unitNote = rawUnit ? `<small>${rawUnit}${conversion}</small>` : '';
+    const displayValue = field.value
+        ? `${_escHtmlAttr(field.value).replace(/\n/g, '<br>')}${field.target_unit && !String(field.value).includes(field.target_unit) ? ` <em class="foundation-unit">${_escHtmlAttr(field.target_unit)}</em>` : ''}`
+        : '<span class="source-none">（空）</span>';
+    const plan = field.extraction_plan || {};
+    const ruleCell = `<div><b>${_escHtmlAttr(_roleLabel(editableRole))}</b> · ${_escHtmlAttr(_strategyLabel(rule.strategy))}</div>
+        ${rule.extract_prompt || rule.explanation ? `<small>${_escHtmlAttr(rule.extract_prompt || rule.explanation)}</small>` : ''}
+        <small>本项目运行绑定：${_escHtmlAttr(plan.selected_path || source.path || '尚未命中')}${plan.period?.label ? ` · ${_escHtmlAttr(plan.period.label)}` : ''}</small>
+        <details class="foundation-rule-edit">
+            <summary>✎ 编辑通用字段抽取规则</summary>
+            <div class="rule-edit-form">
+                <label class="text-muted text-sm">材料类型（具体文件由项目目录自动匹配）</label>
+                <select class="foundation-rule-input" id="fr-role-${field._index}" ${isRuntimeFinancial ? 'disabled' : ''}>${roleOptions}</select>
+                <label class="text-muted text-sm">用什么方式提取</label>
+                <select class="foundation-rule-input" id="fr-strategy-${field._index}">${strategyOptions}</select>
+                <label class="text-muted text-sm">抽取 Prompt（写清报表/段落、口径、单位和找不到时怎么办）</label>
+                <textarea class="foundation-rule-input" id="fr-prompt-${field._index}" rows="4">${_escHtmlAttr(rule.extract_prompt || rule.explanation || '')}</textarea>
+                <button class="btn btn-primary btn-sm" id="fr-reextract-btn-${field._index}" onclick="saveAndRebuildFoundationField(${field._index})">保存通用规则并重跑本项目</button>
+                <small class="text-muted">不保存具体文件名或年份；系统会重新从当前项目目录选文件，并更新同文件关联字段。人工覆盖值保留</small>
+            </div>
+        </details>`;
+    return `<tr class="foundation-field-row ${field.required && !field.value ? 'required-missing' : ''}" data-search="${searchKey}">
+        <td><b>${_escHtmlAttr(field.label)}</b>${field.required ? '<em class="required-mark">必填</em>' : ''}<span class="foundation-badge ${statusClass}">${statusLabel}</span></td>
+        <td class="foundation-value-readonly">${displayValue}${unitNote}</td>
+        <td>${ruleCell}</td>
+        <td>${sourceLine}${decision}</td>
+        <td>${usedIn}</td>
+        <td><button class="btn btn-ghost btn-sm foundation-delete-btn" onclick="deleteFoundationField(${field._index})">删除</button></td>
+    </tr>`;
+}
+
+function _foundationFieldFamily(field) {
+    const match = String(field?.id || '').match(/^finance\.([^.]+)\./);
+    if (!match) return [field];
+    return (_foundationData.fields || []).filter(f => String(f.id || '').startsWith(`finance.${match[1]}.`));
+}
+
+async function _setFoundationFieldsDisabled(index, disabled) {
+    const field = (_foundationData.fields || [])[index];
+    if (!field) return;
+    const family = _foundationFieldFamily(field);
+    if (disabled) {
+        const scope = family.length > 1 ? `“${field.label.replace(/（.*$/, '')}”全部期间` : `“${field.label}”`;
+        if (!confirm(`确认删除${scope}？删除后不再抽取、统计或生成，可在页面底部恢复。`)) return;
+    }
+    try {
+        await API.updateDataFoundationRules(family.map(f => ({ id: f.id, disabled })));
+        const resp = await API.buildDataFoundation();
+        _foundationData = resp.data;
+        renderDataFoundation();
+        showToast(disabled ? '字段已删除，不再参与抽取和章节生成' : '字段已恢复，将按原规则参与抽取和生成', 'success');
+    } catch (e) {
+        showToast(`${disabled ? '删除' : '恢复'}失败：${e.message}`, 'error');
+    }
+}
+
+function deleteFoundationField(index) {
+    return _setFoundationFieldsDisabled(index, true);
+}
+
+function restoreFoundationField(index) {
+    return _setFoundationFieldsDisabled(index, false);
+}
+
+/** 保存模板级通用规则，并以当前项目命中的来源文件为边界重提取相关字段。 */
+async function saveAndRebuildFoundationField(index) {
+    const field = (_foundationData.fields || [])[index];
+    if (!field) return;
+    const role = document.getElementById(`fr-role-${index}`)?.value || '';
+    const strategy = document.getElementById(`fr-strategy-${index}`)?.value || '';
+    const extract_prompt = document.getElementById(`fr-prompt-${index}`)?.value || '';
+    const isRuntimeFinancial = String(field.extraction_plan?.template_rule_id || '').startsWith('financial_metrics.');
+    const update = {
+            id: field.id, strategy, extract_prompt,
+            source_label: field.rule?.source_label || '', required: !!field.required,
+        };
+    if (!isRuntimeFinancial) update.source_role = role;
+    const target = field.extraction_plan?.selected_path?.split('/').pop() || _roleLabel(role);
+    if (!confirm(`这是跨项目共用规则。保存“${field.label}”后，会在本项目重新匹配材料并提取“${target}”关联的字段。继续？`)) return;
+    const button = document.getElementById(`fr-reextract-btn-${index}`);
+    if (button) { button.disabled = true; button.textContent = '正在重新匹配并提取…'; }
+    try {
+        const resp = await API.updateRuleAndReextractFile(update);
+        _foundationData = resp.data;
+        renderDataFoundation();
+        showToast(resp.message || '通用规则已保存，并完成本项目的文件重匹配与提取', 'success');
+    } catch (e) {
+        if (button) { button.disabled = false; button.textContent = '保存通用规则并重跑本项目'; }
+        showToast('规则重提取失败：' + e.message, 'error');
+    }
+}
+
+let _draftSourceRefs = [];  // 关键事实引用池：每项可含多个底稿/计算来源
+let _draftSourceRefKeys = new Map();
+
+function _draftCitationKey(citation) {
+    const sources = (citation?.sources || []).map(s => [s.kind, s.path, s.page, s.locator, s.tool]);
+    return JSON.stringify([citation?.field_id, citation?.display_value, sources]);
+}
+
+function _registerDraftCitation(citation) {
+    const key = _draftCitationKey(citation);
+    if (_draftSourceRefKeys.has(key)) return _draftSourceRefKeys.get(key);
+    const idx = _draftSourceRefs.length;
+    _draftSourceRefs.push(citation || {});
+    _draftSourceRefKeys.set(key, idx);
+    return idx;
+}
+
+function _citationBadge(citation) {
+    if (!citation) return '';
+    const idx = _registerDraftCitation(citation);
+    const sources = citation.sources || [];
+    const localSourceIndex = sources.findIndex(s => s.path);
+    const sourceIndex = localSourceIndex >= 0 ? localSourceIndex : 0;
+    const source = sources[sourceIndex] || {};
+    const page = source.page ? `第${source.page}页` : '';
+    const title = `${citation.label || citation.field_id || '关键事实'}${page ? ` · ${page}` : ''}：${source.locator || '查看来源'}`;
+    return `<button class="fact-citation" title="${_escHtmlAttr(title)}" onclick="openDraftSourceRef(${idx},${sourceIndex});event.stopPropagation()">${idx + 1}</button>`;
+}
+
+function _renderProvenanceText(text, citations) {
+    const value = String(text || '');
+    const spans = [...(citations || [])].filter(c => Number.isInteger(c.start) && Number.isInteger(c.end) && c.end > c.start)
+        .sort((a, b) => a.start - b.start || a.end - b.end);
+    if (!spans.length) return _escHtmlAttr(value).replace(/\n/g, '<br>');
+    let cursor = 0, html = '';
+    spans.forEach(citation => {
+        if (citation.start < cursor || citation.start > value.length) return;
+        html += _escHtmlAttr(value.slice(cursor, citation.start)).replace(/\n/g, '<br>');
+        const fact = value.slice(citation.start, Math.min(citation.end, value.length));
+        html += `<span class="trace-fact">${_escHtmlAttr(fact).replace(/\n/g, '<br>')}${_citationBadge(citation)}</span>`;
+        cursor = Math.min(citation.end, value.length);
+    });
+    return html + _escHtmlAttr(value.slice(cursor)).replace(/\n/g, '<br>');
+}
+
+function _renderCitationDetails(citations, label = '本段') {
+    const unique = [];
+    (citations || []).flat().forEach(citation => {
+        if (!citation) return;
+        const idx = _registerDraftCitation(citation);
+        if (!unique.some(item => item.idx === idx)) unique.push({idx, citation});
+    });
+    if (!unique.length) return '';
+    const rows = unique.map(({idx, citation}) => {
+        const sources = citation.sources || [];
+        const sourceRows = sources.length ? sources.map((source, sourceIndex) => {
+            const name = source.path ? source.path.split('/').pop()
+                : (source.kind === 'tianyancha' || source.kind === 'tyc' ? '天眼查查询'
+                    : (source.kind === 'web_search' ? '公开网络检索' : (source.locator || '派生计算')));
+            const page = source.page ? `第${source.page}页` : '';
+            const locator = [page, source.locator].filter(Boolean).join(' · ');
+            const action = source.path
+                ? `<button class="foundation-source-link" onclick="openDraftSourceRef(${idx},${sourceIndex})">${_escHtmlAttr(name)}</button>`
+                : `<span class="trace-source-name">${_escHtmlAttr(name)}</span>`;
+            const quote = source.quote ? `<q>${_escHtmlAttr(String(source.quote).slice(0, 240))}</q>` : '';
+            return `<div class="trace-source-row">${action}<small>${_escHtmlAttr(locator)}</small>${quote}</div>`;
+        }).join('') : '<small class="source-none">当前字段尚无可点击底稿</small>';
+        const formula = citation.conversion?.display_formula || citation.conversion?.formula || '';
+        const conversion = formula
+            ? `<small class="trace-conversion">处理：${_escHtmlAttr(formula)}${citation.raw_value ? `；原值 ${_escHtmlAttr(citation.raw_value)} ${_escHtmlAttr(citation.raw_unit || '')}` : ''}</small>` : '';
+        return `<div class="trace-citation-row"><b><i>${idx + 1}</i>${_escHtmlAttr(citation.label || citation.field_id || '关键事实')}</b><em>${_escHtmlAttr(citation.display_value || '')}</em>${conversion}${sourceRows}</div>`;
+    }).join('');
+    return `<details class="section-source fact-source-list"><summary>${label}关键事实来源（${unique.length}）</summary>${rows}</details>`;
+}
+
+/** 把 src 文本（如 "〈1〉申报材料：a.pdf 〈摘录〉；〈2〉申报材料：b.pdf 〈摘录〉"）里的
+ * 每个"申报材料：路径"解析成可点击定位原文的按钮；解析不出结构化引用时退回纯文本展示。 */
+function _renderTraceableSrc(srcText) {
+    if (!srcText) return '';
+    const rows = String(srcText).split('；').filter(Boolean).map(part => {
+        const m = part.match(/申报材料：(.*?)\s*〈([^〉]*)〉\s*$/);
+        if (!m) return `<div><small>${_escHtmlAttr(part.trim())}</small></div>`;
+        const pageMatch = String(m[2] || '').match(/第\s*(\d+)(?:[、,，\-—]\d+)*\s*页/);
+        const r = {
+            path: m[1].trim(),
+            quote: String(m[2] || '').replace(/^第\s*\d+(?:[、,，\-—]\d+)*\s*页\s*[/｜|·-]*\s*/, ''),
+            page: pageMatch ? Number(pageMatch[1]) : 0,
+        };
+        const idx = _draftSourceRefs.length;
+        _draftSourceRefs.push(r);
+        return `<div><button class="foundation-source-link" onclick="openDraftSourceRef(${idx})">${_escHtmlAttr(r.path.split('/').pop())}</button><small>${_escHtmlAttr(r.quote)}</small></div>`;
+    }).join('');
+    const clickable = rows.includes('foundation-source-link');
+    return `<details class="section-source" open><summary>查看来源${clickable ? '（文件可点击定位原文）' : ''}</summary>${rows}</details>`;
+}
+
+function openDraftSourceRef(idx, sourceIndex = 0) {
+    const citation = _draftSourceRefs[idx] || {};
+    const sources = citation.sources || [];
+    const source = sources[sourceIndex] || sources.find(s => s.path) || citation;
+    if (source?.path) {
+        openMaterialPreview(source.path, source.quote || source.matched_quote || '', source.page || 0);
+        return;
+    }
+    showToast(source?.locator || `${citation.label || '该事实'}当前没有可打开的本地底稿`, source?.locator ? 'info' : 'error');
+}
+
+function _renderFoundationDraft(section) {
+    if (!section) return '<div class="foundation-draft-doc">暂无草稿</div>';
+    _draftSourceRefs = [];
+    _draftSourceRefKeys = new Map();
+    const blocks = (section.blocks || []).map(block => {
+        const legacySrc = !(block.provenance || block.cell_provenance || (block.rows || []).some(r => r?.provenance?.length))
+            ? _renderTraceableSrc(block.src) : '';
+        if (block.type === 'p') {
+            const citations = block.provenance || [];
+            return `<div class="section-result-block"><p>${_renderProvenanceText(block.text || '', citations)}</p>${_renderCitationDetails(citations, '本段')}${legacySrc}</div>`;
+        }
+        if (block.type === 'kv') {
+            const citations = (block.rows || []).flatMap(r => r.provenance || []);
+            const table = (block.rows || []).map(r => `<tr><th>${_escHtmlAttr(r.label)}</th><td><span class="trace-cell-value">${_escHtmlAttr(r.value || '').replace(/\n/g, '<br>')}${(r.provenance || []).map(_citationBadge).join('')}</span></td></tr>`).join('');
+            return `<div class="draft-table"><b>${_escHtmlAttr(block.caption || '')}</b><table>${table}</table>${_renderCitationDetails(citations, '本表')}${legacySrc}</div>`;
+        }
+        if (block.type === 'grid') {
+            const matrix = block.cell_provenance || [];
+            const citations = matrix.flat(2).filter(Boolean);
+            const body = (block.rows || []).map((row, rowIndex) => `<tr>${row.map((cell, colIndex) => {
+                const refs = matrix[rowIndex]?.[colIndex] || [];
+                return `<td><span class="trace-cell-value">${_escHtmlAttr(cell || '')}${refs.map(_citationBadge).join('')}</span></td>`;
+            }).join('')}</tr>`).join('');
+            return `<div class="draft-table"><b>${_escHtmlAttr(block.caption || '')}</b><table><thead><tr>${(block.headers || []).map(h => `<th>${_escHtmlAttr(h)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>${_renderCitationDetails(citations, '本表')}${legacySrc}</div>`;
+        }
+        return '';
+    }).join('');
+    return `<div class="foundation-draft-doc"><h4>${_escHtmlAttr(section.title || '')}</h4>${blocks}</div>`;
+}
+
+function approveFoundationSection(sectionId) {
+    (_foundationData.fields || []).forEach(f => {
+        if (f.section_id === sectionId && String(f.value || '').trim()) {
+            f.review ||= {};
+            f.review.status = 'approved';
+        }
+    });
+    renderDataFoundation();
+}
+
+function openFoundationFieldSource(index) {
+    const field = (_foundationData.fields || [])[index] || {};
+    const source = field.source || {};
+    if (source.path) openMaterialPreview(source.path, source.quote || source.matched_quote || '', source.page || 0);
+}
+
+async function saveDataFoundation(silent) {
+    if (!_foundationData) return false;
+    const updates = (_foundationData.fields || []).map(f => ({
+        id: f.id,
+        value: f.value || '',
+    }));
+    try {
+        const resp = await API.updateDataFoundation(updates);
+        _foundationData = resp.data;
+        renderDataFoundation();
+        if (!silent) showToast('数据中间层修订已保存；修订值将覆盖本次 AI 抽取结果');
+        return true;
+    } catch (e) {
+        showToast('保存失败：' + e.message, 'error');
+        return false;
+    }
+}
+
+async function applyDataFoundationDrafts() {
+    if (!_foundationData) return;
+    if (!await saveDataFoundation(true)) return;
+    try {
+        const resp = await API.applyDataFoundationDrafts();
+        _previewCache = {};
+        _markStepperDone(1); _markStepperDone(2);
+        showToast(resp.message || '两节草稿已写入对应章节，可打开第一章/第二章查看和下载');
+    } catch (e) {
+        showToast('写入草稿失败：' + e.message, 'error');
+    }
+}
+
+/** 尚无小节级 Know-how 的官方小节：不提供生成入口，引导业务去 Know-how 页补充原文。 */
+function selectUnconfiguredSection(sectionId, title) {
+    currentChapter = `section-${sectionId}`;
+    const container = document.getElementById('chapterDetail');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="foundation-empty" style="padding:32px;text-align:center">
+            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">${_escHtmlAttr(sectionId)} ${_escHtmlAttr(title)}</h3>
+            <p class="text-muted text-sm" style="margin-top:8px">这一节还没有业务 Know-how，暂时无法生成。</p>
+            <button class="btn btn-primary" style="margin-top:12px" onclick="goToKnowhow('${_escHtmlAttr(sectionId)}')">去 Know-how 页补充</button>
+        </div>`;
+}
+
+let _skillSectionView = 'result';  // result（生成结果+溯源） | word（Word 排版预览，无溯源标记，同最终导出）
+let _skillSectionData = null;      // 当前小节最近一次加载的 {config, section, generated}
+
+async function selectSkillSection(sectionId) {
+    currentChapter = `section-${sectionId}`;
+    _skillSectionView = 'result';
+    const container = document.getElementById('chapterDetail');
+    if (!container) return;
+    container.innerHTML = '<div class="text-muted" style="padding:24px">正在加载小节生成结果…</div>';
+    try {
+        const resp = await API.getSkillSection(sectionId);
+        _skillSectionData = resp.data || {};
+        _renderSkillSectionDetail(sectionId);
+    } catch (e) { container.innerHTML = `<div class="foundation-error">小节加载失败：${_escHtmlAttr(e.message)}</div>`; }
+}
+
+function _renderSkillSectionDetail(sectionId) {
+    const container = document.getElementById('chapterDetail');
+    const d = _skillSectionData || {}, cfg = d.config || {};
+    if (!container) return;
+    container.innerHTML = `
+        <div class="chapter-detail-header"><div><h3>${_escHtmlAttr(sectionId)} ${_escHtmlAttr(cfg.title || '')}</h3><div class="text-muted text-sm">${_escHtmlAttr(cfg.chapter_title || '')}</div></div><div class="flex gap-8"><button class="btn btn-ghost btn-sm" onclick="goToKnowhow('${sectionId}')">查看 Know-how 原文</button><button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(${cfg.chapter_n || 0})" title="下载第${cfg.chapter_n || ''}章完整 Word（含本章全部小节，不止这一节）">下载本章 Word</button><button class="btn btn-ghost btn-sm" onclick="auditSkillSection('${sectionId}',${cfg.chapter_n || 0},'${_escHtmlAttr(cfg.title || '')}')">审核本小节</button><button class="btn btn-primary" onclick="generateSkillSectionUI('${sectionId}')">${d.generated ? '重新生成本小节' : '生成本小节'}</button></div></div>
+        <div class="chapter-detail-body">
+            <div class="section-generation-note">生成只读取当前数据中间层和该小节 Know-how，不会调用旧的大章 Agent，也不会改动同章其他小节。</div>
+            ${d.generated ? `
+                <div class="sk-seg" style="margin-bottom:12px">
+                    <div class="sk-seg-item ${_skillSectionView === 'result' ? 'active' : ''}" onclick="_switchSkillSectionView('result','${sectionId}')">生成结果 · 可溯源</div>
+                    <div class="sk-seg-item ${_skillSectionView === 'word' ? 'active' : ''}" onclick="_switchSkillSectionView('word','${sectionId}')">Word 排版预览（本节）</div>
+                </div>
+                <div id="skillSectionViewBody">${_skillSectionView === 'result' ? _renderFoundationDraft(d.section) : '<div class="text-muted text-sm" style="padding:8px 0">加载中…</div>'}</div>
+            ` : '<div class="foundation-empty"><h4>本小节尚未生成</h4><p>请先完成数据提取并检查规则，然后点击“生成本小节”。</p></div>'}
+        </div>`;
+    if (d.generated && _skillSectionView === 'word') {
+        _loadSkillSectionWordPreview(sectionId);
+    }
+}
+
+function _switchSkillSectionView(view, sectionId) {
+    _skillSectionView = view;
+    _renderSkillSectionDetail(sectionId);
+}
+
+/** 只渲染这一节，不混进同章其它小节（哪怕还没配置/没生成）；整章合并下载走标题栏
+ * "下载本章 Word" 按钮，两件事分开。 */
+async function _loadSkillSectionWordPreview(sectionId) {
+    const body = document.getElementById('skillSectionViewBody');
+    if (!body || !sectionId) return;
+    try {
+        const resp = await API.getSectionPreview(sectionId);
+        body.innerHTML = resp.has_content
+            ? `${_gateWarnHtml(resp.gate_warnings)}<div class="word-preview-frame">${resp.html}</div>`
+            : '<div class="text-muted text-sm" style="padding:8px 0">暂无内容</div>';
+    } catch (e) {
+        body.innerHTML = `<div class="foundation-error">预览加载失败：${_escHtmlAttr(e.message)}</div>`;
+    }
+}
+
+async function generateSkillSectionUI(sectionId) {
+    try {
+        const resp = await API.generateSkillSection(sectionId);
+        showToast(resp.message || '小节生成完成');
+        _previewCache = {};
+        await renderChapterStepper();
+        await selectSkillSection(sectionId);
+    } catch (e) { showToast('小节生成失败：' + e.message, 'error'); }
+}
+
+/** 一次生成某章全部已配置二级小节；这是小节 Skill 的批处理，不回退调用旧大章 Agent。 */
+async function generateSkillChapterUI(chapterN, generatedCount = 0) {
+    if (generatedCount > 0 && !confirm(`第${chapterN}章已有 ${generatedCount} 个小节生成过，继续会按当前数据和 Skill 覆盖这些小节。是否继续？`)) return;
+    const btn = document.getElementById(`chapterGenerateBtn${chapterN}`);
+    const oldText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '本章生成中…'; }
+    try {
+        const resp = await API.generateSkillChapter(chapterN);
+        _previewCache = {};
+        await renderChapterStepper();
+        _renderChapterBatchResult(resp.data || {});
+        showToast(resp.message || `第${chapterN}章批量生成完成`, (resp.data || {}).failed_total ? 'warning' : 'success');
+    } catch (e) {
+        showToast(`第${chapterN}章生成失败：` + e.message, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = oldText; }
+    }
+}
+
+function _renderChapterBatchResult(data) {
+    const container = document.getElementById('chapterDetail');
+    if (!container) return;
+    const n = data.chapter_n || 0;
+    currentChapter = `section-chapter-${n}`;
+    const rows = (items, kind) => (items || []).map(item => `
+        <div class="chapter-batch-row ${kind}">
+            <span>${_escHtmlAttr(item.id || '')} ${_escHtmlAttr(item.title || '')}</span>
+            <span>${kind === 'success' ? '已生成' : (kind === 'failed' ? _escHtmlAttr(item.error || '生成失败') : _escHtmlAttr(item.reason || '已跳过'))}</span>
+        </div>`).join('');
+    container.innerHTML = `
+        <div class="chapter-detail-header">
+            <div><h3>第${n}章 ${_escHtmlAttr(data.chapter_title || '')}</h3><div class="text-muted text-sm">本次按小节 Skill 批量生成结果</div></div>
+            <div class="flex gap-8"><button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(${n})">下载本章 Word</button><button class="btn btn-primary btn-sm" onclick="generateSkillChapterUI(${n},${data.generated_total || 0})">重新生成本章</button></div>
+        </div>
+        <div class="chapter-detail-body">
+            <div class="section-generation-note">已配置小节逐节生成；未配置 Know-how 的小节不会调用旧的大章 Agent，待业务补齐规则后会自动纳入下一次整章生成。</div>
+            <div class="chapter-batch-summary">
+                <span>成功 ${data.generated_total || 0}</span><span>失败 ${data.failed_total || 0}</span><span>跳过 ${data.skipped_total || 0}</span>
+            </div>
+            ${rows(data.generated_sections, 'success')}
+            ${rows(data.failed_sections, 'failed')}
+            ${rows(data.skipped_sections, 'skipped')}
+        </div>`;
+}
+
+async function auditSkillSection(sectionId, chapterN, title) {
+    try {
+        await API.runReportAudit({scope:'chapter', chapter_n:chapterN, section_title:title, use_ai:true});
+        showToast('小节审核完成，可在“报告审核”查看问题');
+    } catch (e) { showToast('小节审核失败：' + e.message, 'error'); }
+}
+
+async function selectReportAudit() {
+    currentChapter = 'report-audit';
+    const container = document.getElementById('chapterDetail');
+    if (!container) return;
+    container.innerHTML = `
+        <div class="chapter-detail-header"><div><h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">报告审核</h3><div class="text-muted text-sm" style="margin-top:4px">审核对象是生成后的报告，不是数据中间层；意见仅提示，永远不阻止 Word 导出</div></div><div class="flex gap-8"><button class="btn btn-ghost btn-sm" onclick="runFullReportAudit(false)">仅规则检查</button><button class="btn btn-ghost btn-sm" onclick="runFullReportAudit(true)">运行完整 AI 审核</button><button class="btn btn-primary btn-sm" onclick="runWholeReportAudit()" title="全部小节都写完之后运行一次，只找跨小节才能发现的矛盾；校验要点在 Skill 管理页的“全文一致性校验 Know-how”里维护">运行全文一致性校验</button></div></div>
+        <div class="chapter-detail-body" id="reportAuditBody"><div class="text-muted" style="padding:16px">正在加载审核结果…</div></div>`;
+    await loadReportAudit();
+}
+
+async function loadReportAudit() {
+    const body = document.getElementById('reportAuditBody');
+    if (!body) return;
+    try {
+        const resp = await API.getReportAudit();
+        renderReportAudit(resp.data || {});
+    } catch (e) { body.innerHTML = `<div class="foundation-error">审核结果加载失败：${_escHtmlAttr(e.message)}</div>`; }
+}
+
+function _renderWholeReportAudit(wr) {
+    if (!wr) return '';
+    const issues = wr.issues || [];
+    return `<details class="audit-run" open style="border-color:var(--primary)">
+        <summary><span>全文一致性校验（跨小节，共检查 ${wr.sections_checked || 0} 节）</span><em>${wr.stats?.total || 0} 项 · ${_escHtmlAttr((wr.audited_at || '').replace('T',' ').slice(0,19))}</em></summary>
+        ${wr.stale ? `<div class="foundation-alert warn">${_escHtmlAttr(wr.stale_reason || '章节内容已变化，本结果已过期，请重新运行全文一致性校验。')}</div>` : ''}
+        ${wr.error ? `<div class="foundation-alert warn">${_escHtmlAttr(wr.error)}</div>` : ''}
+        <div class="audit-issues">${issues.length ? issues.map(issue => `<div class="audit-issue ${issue.severity || 'warning'}"><span>${issue.severity === 'error' ? '错误' : (issue.severity === 'info' ? '提示' : '警告')}</span><div><b>${_escHtmlAttr(issue.description || '')}</b><small>${_escHtmlAttr(issue.location || '')}</small>${issue.suggestion ? `<p>建议：${_escHtmlAttr(issue.suggestion)}</p>` : ''}</div></div>`).join('') : (wr.error ? '' : '<div class="audit-clean">✓ 未发现跨小节矛盾</div>')}</div>
+    </details>`;
+}
+
+function renderReportAudit(data) {
+    const body = document.getElementById('reportAuditBody');
+    if (!body) return;
+    const runs = Object.values(data.runs || {}).sort((a,b) => (a.key || '').localeCompare(b.key || ''));
+    const issues = runs.flatMap(r => r.issues || []);
+    body.innerHTML = `
+        <div class="foundation-flow"><span>已审核小节 <b>${runs.length}</b></span><i>→</i><span>错误 <b>${issues.filter(i => i.severity === 'error').length}</b></span><i>→</i><span>警告 <b>${issues.filter(i => i.severity === 'warning').length}</b></span><i>→</i><span>提示 <b>${issues.filter(i => i.severity === 'info').length}</b></span></div>
+        ${_renderWholeReportAudit(data.whole_report)}
+        ${!runs.length ? '<div class="foundation-empty"><h4>尚无小节审核结果</h4><p>生成小节后会自动审核该节；也可以点击“运行完整 AI 审核”复核当前全部报告。</p></div>' : runs.map(run => `<details class="audit-run" open><summary><span>${_escHtmlAttr(run.title || run.key)}</span><em>${run.stats?.total || 0} 项 · AI ${run.ai_status === 'completed' ? '已完成' : (run.ai_status === 'failed' ? '失败，已保留规则检查' : '未配置或无新增问题')}</em></summary>${run.ai_error ? `<div class="foundation-alert warn">AI 审核失败：${_escHtmlAttr(run.ai_error)}。不影响导出。</div>` : ''}${String(run.section_id || '').includes('.') && ((run.issues || []).length || run.ai_status === 'failed') ? `<div style="padding:8px 12px"><button class="btn btn-primary btn-sm" onclick="regenerateAuditSection('${_escHtmlAttr(run.section_id)}')">重新生成并审核该小节</button></div>` : ''}<div class="audit-issues">${(run.issues || []).length ? (run.issues || []).map(issue => `<div class="audit-issue ${issue.severity || 'warning'}"><span>${issue.severity === 'error' ? '错误' : (issue.severity === 'info' ? '提示' : '警告')}</span><div><b>${_escHtmlAttr(issue.description || '')}</b><small>${_escHtmlAttr(issue.location || '')}</small>${issue.suggestion ? `<p>建议：${_escHtmlAttr(issue.suggestion)}</p>` : ''}${issue.evidence ? `<details><summary>查看依据</summary><pre>${_escHtmlAttr(issue.evidence)}</pre></details>` : ''}</div></div>`).join('') : '<div class="audit-clean">✓ 本轮未发现问题</div>'}</div></details>`).join('')}`;
+}
+
+async function regenerateAuditSection(sectionId) {
+    if (!sectionId || !confirm(`将按当前数据中间层和生成 SKILL 覆盖小节 ${sectionId}，随后重新运行该节 AI 审核。确定继续？`)) return;
+    try {
+        const generated = await API.generateSkillSection(sectionId);
+        const cfg = generated?.data?.config || {};
+        await API.runReportAudit({
+            scope: 'chapter', chapter_n: cfg.chapter_n || Number(sectionId.split('.')[0]),
+            section_title: cfg.title || '', use_ai: true,
+        });
+        showToast(`${sectionId} 已重新生成并完成复核`, 'success');
+        await loadReportAudit();
+    } catch (e) { showToast('重新生成或审核失败：' + e.message, 'error'); }
+}
+
+async function runWholeReportAudit() {
+    const body = document.getElementById('reportAuditBody');
+    if (body) body.insertAdjacentHTML('afterbegin', `<div class="foundation-alert warn" id="auditRunning">正在运行全文一致性校验（跨小节比对，可能需要一点时间）…</div>`);
+    try {
+        const resp = await API.runWholeReportAudit();
+        renderReportAudit(resp.data || {});
+        showToast('全文一致性校验完成；结果仅供业务复核，不阻止 Word 导出');
+    } catch (e) {
+        document.getElementById('auditRunning')?.remove();
+        showToast('全文一致性校验失败：' + e.message, 'error');
+    }
+}
+
+async function runFullReportAudit(useAi) {
+    const body = document.getElementById('reportAuditBody');
+    if (body) body.insertAdjacentHTML('afterbegin', `<div class="foundation-alert warn" id="auditRunning">正在${useAi ? '逐小节运行 AI 审核' : '执行规则检查'}；审核意见不会阻止导出，请稍候…</div>`);
+    try {
+        const resp = await API.runReportAudit({scope:'report', use_ai:!!useAi});
+        renderReportAudit(resp.data || {});
+        showToast('报告审核完成；结果仅供业务复核，不阻止 Word 导出');
+    } catch (e) {
+        document.getElementById('auditRunning')?.remove();
+        showToast('报告审核失败：' + e.message, 'error');
+    }
 }
 
 let _summaryData = null;
@@ -2833,30 +3884,22 @@ async function _pickDiagramTemplate(cb) {
 }
 
 /**
- * 底部整体进度：当前项目绑定包中有内容的章节占比（source 非 template 视为有内容）
+ * 底部整体进度：仅统计当前注册的小节 Skill，不再读取七个大章的旧状态。
  */
 async function updateChapterProgress() {
     const fill = document.getElementById('progressFill');
     const label = document.getElementById('progressPercent');
     if (!fill || !label) return;
 
-    const chapters = PACK_CHAPTERS || [];
-    if (!currentProjectId || chapters.length === 0) {
+    if (!currentProjectId) {
         fill.style.width = '0%';
         label.textContent = '0%';
         return;
     }
-
-    const results = await Promise.all(chapters.map(async (ch) => {
-        try {
-            const d = await API.getChapterContent(ch.n);
-            return !!(d && d.source && d.source !== 'template');
-        } catch (e) {
-            return false;
-        }
-    }));
-    const done = results.filter(Boolean).length;
-    const percent = Math.round(done / chapters.length * 100);
+    let sections = [];
+    try { sections = (await API.listSkillSections()).sections || []; } catch (_) {}
+    const done = sections.filter(section => section.generated).length;
+    const percent = sections.length ? Math.round(done / sections.length * 100) : 0;
     fill.style.width = percent + '%';
     label.textContent = percent + '%';
 }

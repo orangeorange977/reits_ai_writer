@@ -1,0 +1,4 @@
+interface:
+  display_name: "2.3 发起人情况"
+  short_description: "从企业底稿和外部权威来源提取事实并生成发起人完整小节"
+  default_prompt: "Use $reits-section-2-3 to generate section 2.3 from the data foundation."
