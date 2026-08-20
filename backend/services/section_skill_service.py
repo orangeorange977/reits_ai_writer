@@ -65,7 +65,26 @@ def _reanchor_provenance(text: str, provenance: list[dict]) -> list[dict] | None
     return output
 
 
-def _polish_with_generation_skill(draft: dict, generation_skill: dict) -> tuple[dict, str, str]:
+def _generation_skill_document(config: dict, pack_id: str | None = None) -> tuple[str, dict]:
+    rel = f"{config['skill']}/compiled/GENERATION_SKILL.md"
+    path = pack_service.skill_text_path(rel, pack_id)
+    if not path.exists():
+        raise RuntimeError(f"真实生成 SKILL 尚未落盘：{rel}，请重新编译并应用")
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.I | re.S)
+    if not match:
+        raise RuntimeError(f"真实生成 SKILL 缺少机器执行配置：{rel}")
+    try:
+        template = json.loads(match.group(1))
+    except Exception as exc:
+        raise RuntimeError(f"真实生成 SKILL 的机器执行配置无效：{exc}") from exc
+    if not isinstance(template.get("blocks"), list) or not template["blocks"]:
+        raise RuntimeError(f"真实生成 SKILL 的机器执行配置缺少 blocks：{rel}")
+    return text, template
+
+
+def _polish_with_generation_skill(draft: dict, generation_skill: dict,
+                                  skill_document: str = "") -> tuple[dict, str, str]:
     """Use the compiled runtime Skill—not Know-how—to improve narrative paragraphs.
 
     Tables and exact values remain deterministic.  If the model changes/adds a
@@ -91,7 +110,7 @@ def _polish_with_generation_skill(draft: dict, generation_skill: dict) -> tuple[
         "2. 不新增、删除、改写任何项目事实或数字；原段落中的事实值必须保持原字符串；\n"
         "3. 不补充无底稿支持的原因或判断；不改变【待补充】类提示；\n"
         "4. 只返回 JSON：{\"paragraphs\":[{\"index\":0,\"text\":\"...\"}]}。\n\n"
-        "真实生成 SKILL：\n" + json.dumps(generation_skill, ensure_ascii=False)[:24000]
+        "真实生成 SKILL：\n" + (skill_document or json.dumps(generation_skill, ensure_ascii=False))[:30000]
         + "\n\n当前项目待润色段落：\n" + json.dumps(candidates, ensure_ascii=False)
     )
     try:
@@ -186,15 +205,16 @@ def generate_section(project_id: str | None, section_id: str,
     if foundation.get("stale"):
         raise RuntimeError("上传材料已变化，请重新提取数据后再生成")
     rules = data_foundation_service.load_rules(pack_id=pack_id)
-    generation_skill = deepcopy((rules.get("generation_templates") or {}).get(section_id) or {})
-    if not generation_skill.get("blocks"):
-        raise RuntimeError(f"小节 {section_id} 尚无可执行生成 SKILL，请先在 Know-how 页编译并应用")
+    skill_document, generation_skill = _generation_skill_document(config, pack_id)
+    rules_template = deepcopy((rules.get("generation_templates") or {}).get(section_id) or {})
+    if generation_skill != rules_template:
+        raise RuntimeError("真实生成 SKILL 与数据底座配置不同步，请重新保存或编译该 SKILL")
     if foundation.get("rule_version") != rules.get("rule_version"):
         raise RuntimeError("真实生成 SKILL 已更新，请先提取本节数据，再重新生成")
     draft = deepcopy((foundation.get("drafts") or {}).get(section_id))
     if not draft:
         raise RuntimeError(f"小节 {section_id} 的 Skill 尚未生成可用草稿")
-    generated, mode, note = _polish_with_generation_skill(draft, generation_skill)
+    generated, mode, note = _polish_with_generation_skill(draft, generation_skill, skill_document)
     result = skill_runner.upsert_structured_section(
         config["chapter_n"], generated, project_id,
         [f"真实生成 SKILL：{config['skill']}/compiled/GENERATION_SKILL.md", "数据中间层当前快照"], pack_id,

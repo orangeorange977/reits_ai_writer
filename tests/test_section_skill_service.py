@@ -91,6 +91,20 @@ class GenerateChapterSectionsTest(unittest.TestCase):
         self.assertEqual(mode, "skill_template_fallback")
         self.assertEqual(result, draft)
 
+    @patch("backend.services.kimi_client.chat")
+    def test_polisher_receives_the_real_markdown_skill_document(self, chat):
+        chat.return_value = '{"paragraphs":[{"index":0,"text":"当前项目总资产为100万元，相关数据来自项目底稿。"}]}'
+        draft = {"blocks": [{
+            "type": "p", "text": "当前项目总资产为100万元，相关数据来自项目底稿。",
+            "provenance": [],
+        }]}
+        template = {"style_instructions": ["正式申报文体"]}
+        document = "# 真实生成 SKILL\n\n## 人工写作要求\n\n- 先给结论，再写依据。"
+        service._polish_with_generation_skill(draft, template, document)
+        prompt = chat.call_args.args[0][0]["content"]
+        self.assertIn("# 真实生成 SKILL", prompt)
+        self.assertIn("先给结论，再写依据", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

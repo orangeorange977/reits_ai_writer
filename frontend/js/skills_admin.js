@@ -110,7 +110,7 @@ function _skEditHint() {
     const f = SK_FILES.find(x => x.rel === SK_CURRENT) || {};
     if (f.kind === 'section') return '保存的是业务 Know-how 原文；点击“AI 重新编译”并确认应用后，才会更新三件套。';
     if (f.kind === 'compiled_extraction') return '这是可执行提取规则；保存后，下一次点击“提取数据”立即按新规则运行。';
-    if (f.kind === 'compiled_generation') return '这是可执行生成 SKILL；保存后，下一次生成或重新生成该小节立即生效。';
+    if (f.kind === 'compiled_generation') return '这是生成时实际读取的实体 SKILL：正文指导 AI 写作，文末 JSON 负责字段和结构。只改正文说明会在下次生成立即生效；修改 JSON 后需重新提取数据。';
     if (f.kind === 'compiled_audit') return '这是可执行 AI 审核 SKILL；保存后，下一次审核该小节立即生效。';
     return '修改保存后，后续生成即时按新版本执行；代码内置版本不受影响。';
 }
@@ -302,7 +302,7 @@ async function skSave() {
         const messages = {
             section: '已保存 Know-how 原文；点击“AI 重新编译”并确认应用后才会更新三件套',
             compiled_extraction: '提取规则已保存；下一次点击“提取数据”按新规则运行',
-            compiled_generation: '生成 SKILL 已保存；下一次生成本小节按新规则运行',
+            compiled_generation: '真实生成 SKILL 已保存；正文修改立即用于下次生成，JSON 修改后请重新提取数据',
             compiled_audit: '审核 SKILL 已保存；下一次审核本小节按新清单运行',
         };
         showToast(messages[current.kind] || '已保存，后续运行即时生效', 'success');
@@ -398,11 +398,14 @@ function skRenderMd(md) {
             if (listTag !== 'ul') { flushList2(); listTag = 'ul'; listBuf = []; }
             listBuf.push(`<li>${_skInline(ul[1])}</li>`); continue;
         }
-        const ol = t.match(/^\d+[\.、]\s+(.*)$/);
+        const ol = t.match(/^(\d+)[\.、]\s+(.*)$/);
         if (ol) {
             flushPara(); flushQuote(); flushTable();
             if (listTag !== 'ol') { flushList2(); listTag = 'ol'; listBuf = []; }
-            listBuf.push(`<li>${_skInline(ol[1])}</li>`); continue;
+            // Keep the number written in Markdown. DOCX imports intentionally
+            // separate paragraphs with blank lines, so the browser may receive
+            // several short <ol> blocks and would otherwise restart each at 1.
+            listBuf.push(`<li value="${ol[1]}">${_skInline(ol[2])}</li>`); continue;
         }
         flushList2(); flushQuote(); flushTable();
         para.push(t);

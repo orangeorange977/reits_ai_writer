@@ -221,8 +221,42 @@ class ApplyCompiledTest(unittest.TestCase):
             self.assertEqual(rules["audit_checks"]["2.3"]["checklist"],
                              ["第一条业务审核规则", "第二条业务审核规则"])
             generation = rc.artifact_text("2.3", "generation", None, rules=rules)
-            self.assertIn("可执行生成模板", generation)
+            self.assertIn("这是本小节生成时实际读取的运行文件", generation)
+            self.assertIn("## 执行流程", generation)
+            self.assertIn("## 写作规则", generation)
+            self.assertIn("## 输出结构与顺序", generation)
+            self.assertIn("## 参考示例（仅参考写法，禁止取值）", generation)
+            self.assertIn("## 机器执行配置（必须保留）", generation)
             self.assertIn('"blocks"', generation)
+
+    def test_apply_materializes_real_generation_skill(self):
+        with patch.object(pack_service, "OVERRIDES_DIR", self.overrides_dir):
+            payload = self._payload_for("1.1", "project.name", "项目名称")
+            payload["generation_templates"]["1.1"].update({
+                "style_instructions": ["使用正式申报材料文体"],
+                "style_examples": [{"reference_only": True, "content": "仅供参考的示例正文。"}],
+            })
+            rc.apply_compiled("1.1", payload, None)
+            rel = rc.artifact_rel("1.1", "generation", None)
+            path = pack_service.override_path(rel, None)
+            self.assertTrue(path.is_file())
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("## 任务目标", text)
+            self.assertIn("## 可用输入", text)
+            self.assertIn("仅供参考的示例正文", text)
+            self.assertIn('"template": "{{project.name}}"', text)
+
+    def test_text_only_generation_skill_edit_does_not_invalidate_extracted_data(self):
+        with patch.object(pack_service, "OVERRIDES_DIR", self.overrides_dir):
+            payload = self._payload_for("1.1", "project.name", "项目名称")
+            applied = rc.apply_compiled("1.1", payload, None)
+            before_version = applied["rule_version"]
+            text = rc.artifact_text("1.1", "generation", None, rules=applied)
+            text = text.replace("## 写作规则", "## 写作规则\n\n- 人工补充：语言务必简洁")
+            saved = rc.save_artifact("1.1", "generation", text, None)
+            self.assertEqual(saved["rule_version"], before_version)
+            self.assertIn("人工补充", pack_service.override_path(
+                rc.artifact_rel("1.1", "generation", None), None).read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

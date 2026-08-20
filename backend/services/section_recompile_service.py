@@ -76,7 +76,8 @@ def compiled_artifacts(section_id: str, pack_id: str | None = None) -> list[dict
          "artifact_kind": kind, "section_id": section_id,
          "label": f"{section_id} {label}"}
         for kind, label in (
-            ("extraction", "提取规则"), ("generation", "生成 SKILL"), ("audit", "AI 审核 SKILL"))
+            ("extraction", "提取规则"), ("generation", "生成 SKILL（真实运行文件）"),
+            ("audit", "AI 审核 SKILL"))
     ]
 
 
@@ -373,20 +374,114 @@ def _artifact_payload(rules: dict, section_id: str, kind: str):
     raise KeyError(kind)
 
 
+def _generation_skill_text(section_id: str, template: dict, pack_id: str | None = None,
+                           know_how_text: str | None = None) -> str:
+    """Build the actual, human-readable runtime Skill around its JSON contract."""
+    config = section_skill_service.get_section(section_id, pack_id)
+    instructions = [str(x).strip() for x in template.get("style_instructions") or [] if str(x).strip()]
+    examples = _knowhow_examples(know_how_text) if know_how_text is not None else []
+    if not examples:
+        examples = template.get("style_examples") or []
+
+    referenced_fields: set[str] = set()
+    structure_lines = []
+    for index, block in enumerate(template.get("blocks") or [], 1):
+        referenced_fields.update(str(x) for x in block.get("src_fields") or [] if str(x).strip())
+        referenced_fields.update(
+            match for match in re.findall(r"\{\{([\w.]+)\}\}", json.dumps(block, ensure_ascii=False))
+            if not match.startswith("repeat.")
+        )
+        referenced_fields.update(
+            str(row.get("field_id")) for row in block.get("rows") or [] if row.get("field_id")
+        )
+        block_type = block.get("type")
+        condition = ""
+        if block.get("if_all"):
+            condition = "；仅当 " + "、".join(str(x) for x in block["if_all"]) + " 均有值时输出"
+        if block_type == "p":
+            structure_lines.append(f"{index}. 正文/标题段：`{block.get('template', '')}`{condition}")
+            if block.get("else_template"):
+                structure_lines.append(f"   - 条件不满足时：`{block['else_template']}`")
+        elif block_type == "kv":
+            labels = "、".join(str(row.get("label", "")) for row in block.get("rows") or [] if row.get("label"))
+            structure_lines.append(
+                f"{index}. 两列表格“{block.get('caption') or '未命名表格'}”，字段顺序：{labels or '按机器配置'}{condition}")
+        elif block_type == "overview_table":
+            structure_lines.append(
+                f"{index}. 项目概况整表：从 `{block.get('src_source_role', '指定来源')}` 原样复制，"
+                f"不得重排、摘要或改写{condition}")
+        elif block_type == "financial_grid":
+            structure_lines.append(
+                f"{index}. 财务指标表“{block.get('caption') or '未命名财务表'}”：按申报基准日绑定最近三年及一期{condition}")
+
+    repeat = template.get("repeat_by")
+    repeat_text = ""
+    if isinstance(repeat, dict) and repeat.get("field_id"):
+        repeat_text = (
+            f"- 按字段 `{repeat['field_id']}` 中的主体顺序循环；每个主体都必须完整执行全部输出结构，"
+            "不得跨主体复用数据或结论。\n")
+        referenced_fields.add(str(repeat["field_id"]))
+    elif isinstance(repeat, str) and repeat.strip():
+        repeat_text = f"- 按字段 `{repeat}` 的值循环执行全部输出结构。\n"
+        referenced_fields.add(repeat)
+
+    example_parts = []
+    for item in examples:
+        content = str(item.get("content", "") if isinstance(item, dict) else item).strip()
+        if content:
+            example_parts.append(content)
+    example_text = "\n\n---\n\n".join(example_parts) or "（当前 Know-how 未提供示例。）"
+    input_text = "、".join(f"`{field_id}`" for field_id in sorted(referenced_fields)) or "以机器执行配置为准"
+    writing_rules = "\n".join(f"- {item}" for item in instructions) or "- 使用正式、准确的申报材料文体。"
+    output_structure = "\n".join(structure_lines) or "1. 按机器执行配置中的 blocks 顺序输出。"
+
+    return (
+        f"# {section_id} {config['title']} · 生成 SKILL\n\n"
+        "> 这是本小节生成时实际读取的运行文件，由 Know-how 编译而来。"
+        "Know-how 的版本、日期、修订人、审核人和状态不属于写作指令，已排除。\n\n"
+        "## 任务目标\n\n"
+        f"使用当前项目已提取并通过来源定位的数据，生成“{config['title']}”小节。"
+        "不得读取 Know-how 原文，不得把方法论示例当作当前项目事实。\n\n"
+        "## 可用输入\n\n"
+        f"- 只允许使用当前数据中间层中的字段：{input_text}。\n"
+        "- 表格、金额、日期、比例、主体名称及引文保持数据中间层原值；不得自行补数、改数或推断。\n"
+        "- 数据缺失或冲突时执行下方缺失处理，不得使用示例补齐。\n\n"
+        "## 执行流程\n\n"
+        "1. 读取当前小节的数据中间层快照，并确认主体、期间、单位和来源。\n"
+        "2. 严格按“输出结构与顺序”生成，不得遗漏固定段落、表格或循环主体。\n"
+        "3. 仅对叙述段落进行正式申报文体整理；确定性表格及事实值不得改写。\n"
+        "4. 完成后检查所有数字、日期、名称和结论均可回指当前项目来源。\n\n"
+        "## 写作规则\n\n" + writing_rules + "\n"
+        "- 示例只用于学习语言、结构和分析方式，禁止复制其中任何项目事实。\n"
+        "- 不得增加无底稿支持的原因、评价、结论或附件编号。\n\n"
+        "## 输出结构与顺序\n\n" + repeat_text + output_structure + "\n\n"
+        "## 缺失与冲突处理\n\n"
+        "- 必填数据缺失时，保留机器配置中的待补充提示，不得删除提示后强行成文。\n"
+        "- 来源冲突时保留冲突事实并提示业务人员确认，不得自动选择或拼接。\n"
+        "- 最近一期并非完整年度时，不得直接与完整年度形成同比结论。\n\n"
+        "## 参考示例（仅参考写法，禁止取值）\n\n" + example_text + "\n\n"
+        "## 机器执行配置（必须保留）\n\n"
+        "> 系统使用本 JSON 确定字段绑定、条件和输出块；正文说明用于指导 AI 写作。"
+        "修改字段绑定或结构后需要重新提取数据。\n\n```json\n"
+        + json.dumps(template, ensure_ascii=False, indent=2) + "\n```\n"
+    )
+
+
 def artifact_text(section_id: str, kind: str, pack_id: str | None = None,
-                  use_default: bool = False, rules: dict | None = None) -> str:
+                  use_default: bool = False, rules: dict | None = None,
+                  know_how_text: str | None = None) -> str:
     rules = rules or _read_rules(pack_id, use_default=use_default)
     payload = _artifact_payload(rules, section_id, kind)
     if kind == "extraction":
         return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
-    config = section_skill_service.get_section(section_id, pack_id)
     if kind == "generation":
-        return (
-            f"# {section_id} {config['title']} · 生成 SKILL\n\n"
-            "> 本文件是可执行配置。正文说明可以修改；必须保留并正确编辑下方 JSON。保存后下一次生成本小节立即生效。\n\n"
-            "## 可执行生成模板\n\n```json\n"
-            + json.dumps(payload, ensure_ascii=False, indent=2) + "\n```\n"
-        )
+        if know_how_text is None:
+            config = section_skill_service.get_section(section_id, pack_id)
+            rel = f"{config['skill']}/SKILL.md"
+            source = pack_service.pack_path(rel, pack_id) if use_default else pack_service.skill_text_path(rel, pack_id)
+            know_how_text = source.read_text(encoding="utf-8") if source.exists() else None
+        return _generation_skill_text(section_id, payload, pack_id, know_how_text)
+    config = section_skill_service.get_section(section_id, pack_id)
     checklist = payload.get("checklist") or []
     return (
         f"# {section_id} {config['title']} · AI 审核 SKILL\n\n"
@@ -476,7 +571,11 @@ def recompile(section_id: str, know_how_text: str, pack_id: str | None = None) -
     if errors:
         return {"ok": False, "errors": errors, "preview": payload}
     hypothetical, merge_report = _merge_payload_into_rules(current, payload, section_id)
-    artifacts = {kind: artifact_text(section_id, kind, pack_id, rules=hypothetical) for kind in _ARTIFACT_NAMES}
+    artifacts = {
+        kind: artifact_text(section_id, kind, pack_id, rules=hypothetical,
+                            know_how_text=know_how_text if kind == "generation" else None)
+        for kind in _ARTIFACT_NAMES
+    }
     return {"ok": True, "errors": [], "preview": payload, "merge_report": merge_report, "artifacts": artifacts}
 
 
@@ -541,6 +640,7 @@ def save_artifact(section_id: str, kind: str, content: str,
             raise ValueError("；".join(errors))
         rules, _ = _merge_payload_into_rules(rules, payload, section_id)
     elif kind == "generation":
+        previous = deepcopy((rules.get("generation_templates") or {}).get(section_id) or {})
         template = _json_from_markdown(content)
         if not isinstance(template.get("blocks"), list) or not template["blocks"]:
             raise ValueError("生成 SKILL 的 JSON 必须包含非空 blocks")
@@ -552,7 +652,11 @@ def save_artifact(section_id: str, kind: str, content: str,
         rules.setdefault("audit_checks", {})[section_id] = {"checklist": _checklist_from_markdown(content)}
     else:
         raise ValueError(f"未知编译产物类型：{kind}")
-    rules["rule_version"] = f"{rules.get('rule_version', 'v1')}.edit-{_now()}"
+    # Editing only the human writing instructions takes effect directly from
+    # this Markdown file and does not invalidate already extracted data. A JSON
+    # structure/field change still bumps the rule version and requires extraction.
+    if kind != "generation" or template != previous:
+        rules["rule_version"] = f"{rules.get('rule_version', 'v1')}.edit-{_now()}"
     _write_rules(rules, pack_id)
     path = pack_service.override_path(artifact_rel(section_id, kind, pack_id), pack_id)
     path.parent.mkdir(parents=True, exist_ok=True)
