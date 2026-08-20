@@ -439,6 +439,24 @@ const API = {
     },
 
     /**
+     * 启动“摘要表和释义”AI 生成（后台异步）
+     * @returns {Promise<object>} {status: 'started', ...}
+     */
+    async runSummary() {
+        const params = new URLSearchParams();
+        params.set('project_id', this._currentProjectId());
+        return this.post(`/skills/summary/run?${params.toString()}`);
+    },
+
+    /**
+     * 查询“摘要表和释义”生成状态/结果
+     * @returns {Promise<object>} {status: 'idle'|'running'|'done'|'error', data, error}
+     */
+    async getSummaryStatus() {
+        return this.get('/skills/summary/status', { project_id: this._currentProjectId() });
+    },
+
+    /**
      * 获取可用的 Kimi 模型列表 + 当前所选
      * @returns {Promise<object>} {models:[...], current}
      */

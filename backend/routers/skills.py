@@ -93,11 +93,11 @@ def _load_web_render(pack_id: str = None):
 
 @router.get("/models")
 async def list_models():
-    """列出可用的大模型（DeepSeek + Kimi 两厂商）+ 当前所选（供系统设置页下拉）。"""
+    """列出可用的大模型（DeepSeek + Kimi + MiniMax 三厂商）+ 当前所选（供系统设置页下拉）。"""
     def _query():
         from backend.services.kimi_client import get_client
-        from backend.config import DEEPSEEK_API_KEY, DEEPSEEK_MODEL
-        deepseek_models, kimi_models = [], []
+        from backend.config import DEEPSEEK_API_KEY, DEEPSEEK_MODEL, MINIMAX_API_KEY, MINIMAX_MODEL
+        deepseek_models, kimi_models, minimax_models = [], [], []
         # DeepSeek：优先查接口，失败回退固定候选（deepseek-chat 为主力对话模型）
         if DEEPSEEK_API_KEY:
             try:
@@ -114,7 +114,16 @@ async def list_models():
             kimi_models = [m.id for m in client.models.list().data]
         except Exception as e:
             logger.warning(f"查询 Kimi 模型列表失败: {e}")
-        return deepseek_models + kimi_models
+        # MiniMax
+        if MINIMAX_API_KEY:
+            try:
+                client = get_client(MINIMAX_MODEL)
+                minimax_models = [m.id for m in client.models.list().data]
+            except Exception as e:
+                logger.warning(f"查询 MiniMax 模型列表失败: {e}")
+            if MINIMAX_MODEL not in minimax_models:
+                minimax_models.insert(0, MINIMAX_MODEL)
+        return deepseek_models + kimi_models + minimax_models
     models = await asyncio.to_thread(_query)
     return {"models": models, "current": skill_runner.get_selected_model()}
 
@@ -125,7 +134,7 @@ class ModelBody(BaseModel):
 
 @router.post("/model")
 async def set_model(body: ModelBody):
-    """保存所选模型（DeepSeek/Kimi，各章生成即时生效，无需重启）。"""
+    """保存所选模型（DeepSeek/Kimi/MiniMax，各章生成即时生效，无需重启）。"""
     if not body.model.strip():
         raise HTTPException(status_code=400, detail="模型名不能为空")
     await asyncio.to_thread(skill_runner.set_selected_model, body.model.strip())
@@ -310,6 +319,54 @@ async def import_summary_excel(file: UploadFile = File(...)):
         logger.error(f"解析上传的 Excel 失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"解析 Excel 失败：{e}")
 
+
+@router.post("/summary/run")
+async def summary_run(http_req: Request, project_id: str = ""):
+    """启动“摘要表和释义”AI 生成（后台异步），立即返回；前端轮询 /summary/status 取结果填编辑区。
+    任务键用章节号 0（卷首不属于 1-7 章），与章节任务共用状态/落库机制。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    pack_id = await _project_pack_id(project_id)
+    pid = _norm_pid(project_id)
+    key = (pid, 0)
+    if _job(key)["status"] == "running":
+        raise HTTPException(status_code=409, detail="摘要表和释义正在生成中，请稍候")
+    # 材料目录自动解析到项目上传目录（与章节生成同口径）
+    mat = ""
+    candidate = PROJECTS_DIR / pid / "materials"
+    if candidate.is_dir() and any(candidate.iterdir()):
+        mat = str(candidate)
+    _jobs[key] = {"status": "running", "data": None, "error": None}
+    await _save_job_to_db(key, _jobs[key])
+
+    async def _job_fn():
+        try:
+            result = await asyncio.to_thread(skill_runner.run_summary, mat, pid, pack_id)
+            _jobs[key] = {"status": "done", "data": result, "error": None}
+            logger.info(f"摘要表和释义生成完成（项目 {pid or '默认'}）")
+        except Exception as e:
+            logger.error(f"摘要表和释义生成失败: {e}", exc_info=True)
+            _jobs[key] = {"status": "error", "data": None, "error": str(e)}
+        await _save_job_to_db(key, _jobs[key])
+
+    _tasks[key] = asyncio.create_task(_job_fn())
+    return {"status": "started", "message": "摘要表和释义生成已启动，请稍候（AI 处理约需数分钟）"}
+
+
+@router.get("/summary/status")
+async def summary_status(http_req: Request, project_id: str = ""):
+    """查询“摘要表和释义”生成进度/结果；内存无记录时落回 DB（重启后仍可见）。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    key = (_norm_pid(project_id), 0)
+    if key in _jobs:
+        return _jobs[key]
+    stored = await get_generation_job(key[0], 0)
+    if stored and stored.get("status") == "running":
+        stored = {"status": "error", "data": None,
+                  "error": "生成因系统重启被中断，请点“AI 生成”继续"}
+        _jobs[key] = stored
+        await _save_job_to_db(key, stored)
+    return stored or {"status": "idle", "data": None, "error": None}
+
 # 各章生成任务状态：内存字典供本进程实时轮询，同时落 DB generation_jobs 表
 # （步骤 3.5：重启后已完成任务仍可见，多 worker 部署的状态共享基础），按 (project_id, 章节号) 存
 _jobs = {}    # (pid, n) -> {"status","data","error"}
@@ -482,6 +539,8 @@ def _preview_signature(n: int, template_path: str, project_id: str = "", pack_id
         ch_ns = [n]
     srcs = [skill_runner.chapter_json_path(m, project_id or None) for m in ch_ns]
     srcs.append(skill_runner.WRITE_CONFIG_PATH)
+    # 卷首注入：摘要表/释义保存数据变化也要让预览重渲染
+    srcs.append(summary_service.saved_summary_path(project_id or None))
     if tpl:
         srcs.append(Path(tpl))
     try:
@@ -544,6 +603,8 @@ async def chapter_preview(n: int, http_req: Request, template_path: str = "", pr
                     "gate_warnings": gate_warnings}
         # 回退：没有有效模板路径时，独立生成一份
         wr.render_docx(sections, docx_path)
+        _fill_front_matter_safe(docx_path, pid, wr)
+        _ensure_page_breaks_safe(docx_path, pack_id, wr)
         html = wr.render_preview_html(sections)
         return {"has_content": True, "html": html, "used_template": False,
                 "gate_warnings": gate_warnings}
@@ -582,6 +643,28 @@ def _install_cover_front(docx_path, pid) -> None:
         cover_service.install_cover_front_page(docx_path, pid)
     except Exception as e:
         logger.warning(f"封面置顶失败（保留官方首页）: {e}")
+
+
+def _fill_front_matter_safe(docx_path, pid, wr) -> None:
+    """卷首注入：摘要表填值 + 释义节插入（官方模板无释义骨架）。
+    失败不阻断导出/预览（降级为模板原卷首），仅记录日志。"""
+    try:
+        saved = summary_service.get_summary_data(pid or None)
+        if saved and (saved.get("summary_table") or saved.get("glossary")):
+            wr.fill_front_matter(docx_path, saved)
+    except Exception as e:
+        logger.warning(f"卷首注入失败（保留模板原卷首）: {e}")
+
+
+def _ensure_page_breaks_safe(docx_path, pack_id, wr) -> None:
+    """排版规则：摘要表、释义各自单独另起一页；七章标题各新起一页，
+    不紧跟上一章。失败不阻断导出/预览（降级为原排版），仅记录日志。"""
+    try:
+        heads = ["摘要表", "释义"]
+        heads += [c.get("title") for c in skill_runner.chapters_for(pack_id).values()]
+        wr.ensure_page_breaks(docx_path, heads)
+    except Exception as e:
+        logger.warning(f"分页排版失败（保留原排版）: {e}")
 
 
 def _collect_book_sections(n: int, pid, pack_id) -> list:
@@ -628,6 +711,8 @@ def _render_chapter_docx(n: int, pid, pack_id) -> bool:
         _install_cover_front(docx_path, pid)   # 规则：导出 Word 第一页=编辑好的封面
     else:
         wr.render_docx(sections, docx_path)
+    _fill_front_matter_safe(docx_path, pid, wr)   # 卷首：摘要表填值 + 释义节插入
+    _ensure_page_breaks_safe(docx_path, pack_id, wr)   # 摘要表/释义/各章 另起一页
     return True
 
 

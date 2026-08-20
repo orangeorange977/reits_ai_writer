@@ -54,6 +54,7 @@ def _editable_skills(pack_id: str) -> list:
     """可编辑的文本 skill 清单：各章写作要求 + 全局总纲 + 写作/排版要求。"""
     chapters = pack_service.get_chapters(pack_id)
     files = []
+    files.append({"rel": "reading/summary.md", "kind": "summary", "label": "卷首 · 摘要表和释义"})
     for n, c in sorted(chapters.items()):
         files.append({"rel": c["reading"], "kind": "chapter", "n": n,
                       "label": f"第{n}章 · {c['title']}"})

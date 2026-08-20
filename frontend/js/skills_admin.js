@@ -50,6 +50,7 @@ async function skillsPageEnter() {
 
 function _skRenderList() {
     const box = document.getElementById('skList');
+    const summaries = SK_FILES.filter(f => f.kind === 'summary');
     const chapters = SK_FILES.filter(f => f.kind === 'chapter');
     const globals = SK_FILES.filter(f => f.kind === 'global');
     const item = f => `
@@ -59,6 +60,7 @@ function _skRenderList() {
         </div>`;
     box.innerHTML = `
         <div class="sk-group-title">各章写作要求</div>
+        ${summaries.map(item).join('')}
         ${chapters.map(item).join('')}
         <div class="sk-group-title">全局</div>
         ${globals.map(item).join('')}`;

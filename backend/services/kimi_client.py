@@ -1,14 +1,15 @@
 """
-大模型客户端封装（Kimi/Moonshot + DeepSeek 双厂商）
+大模型客户端封装（Kimi/Moonshot + DeepSeek + MiniMax 三厂商）
 
-两家 API 都兼容 OpenAI 的接口格式，直接用 openai SDK，只是 base_url 不同。
-路由规则：模型名以 deepseek 开头 → DeepSeek，否则 → Moonshot(Kimi)。
+三家 API 都兼容 OpenAI 的接口格式，直接用 openai SDK，只是 base_url 不同。
+路由规则：模型名以 deepseek 开头 → DeepSeek；以 minimax 开头 → MiniMax；其余 → Moonshot(Kimi)。
 API Key 从 backend.config 读取（config.py 里是从 .env 环境变量加载的，不要在这里硬编码）。
 
 能力差异（重要）：
-- DeepSeek 不支持读图：ocr_images 始终走 Moonshot；
+- DeepSeek 不支持读图：视觉识别走 Moonshot 或 MiniMax（跟随当前所选主模型厂商）；
 - deepseek-reasoner 不支持函数调用：chat_with_tools 自动降级为 deepseek-chat；
-- Moonshot 内置联网搜索($web_search)：仅 Moonshot 模型可用。
+- Moonshot 内置联网搜索($web_search)：仅 Moonshot 模型可用；
+- MiniMax M 系列默认带思考前缀（会混入正文破坏 JSON 输出）：调用时统一关闭思考。
 """
 import base64
 import json
@@ -21,7 +22,9 @@ from openai import (OpenAI, RateLimitError, InternalServerError,
 
 from backend.config import (MOONSHOT_API_KEY, MOONSHOT_BASE_URL, MOONSHOT_MODEL,
                             MOONSHOT_VISION_MODEL,
-                            DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL)
+                            DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL,
+                            MINIMAX_API_KEY, MINIMAX_BASE_URL, MINIMAX_MODEL,
+                            MINIMAX_VISION_MODEL, DATA_SOURCE_BASE)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,24 @@ def _is_deepseek(model: str) -> bool:
     return bool(model) and model.lower().startswith("deepseek")
 
 
+def _is_minimax(model: str) -> bool:
+    return bool(model) and model.lower().startswith("minimax")
+
+
+def _current_selected_model() -> str:
+    """当前网页所选主模型（读 workspace/model_setting.json，与 skill_runner 同一份）。
+    在 kimi_client 内直读避免与 skill_runner 循环导入；仅供 ocr_images 选厂商用。"""
+    try:
+        p = DATA_SOURCE_BASE / "model_setting.json"
+        if p.exists():
+            m = (json.loads(p.read_text(encoding="utf-8-sig")) or {}).get("model")
+            if m:
+                return m
+    except Exception:
+        pass
+    return MOONSHOT_MODEL
+
+
 def get_client(model: str = None) -> OpenAI:
     """按模型名路由到对应厂商的 OpenAI 兼容客户端。"""
     if _is_deepseek(model):
@@ -44,6 +65,12 @@ def get_client(model: str = None) -> OpenAI:
                 "未配置 DEEPSEEK_API_KEY，请在项目根目录的 .env 文件里设置后重启服务"
             )
         return OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    if _is_minimax(model):
+        if not MINIMAX_API_KEY:
+            raise RuntimeError(
+                "未配置 MINIMAX_API_KEY，请在项目根目录的 .env 文件里设置后重启服务"
+            )
+        return OpenAI(api_key=MINIMAX_API_KEY, base_url=MINIMAX_BASE_URL)
     if not MOONSHOT_API_KEY:
         raise RuntimeError(
             "未配置 MOONSHOT_API_KEY，请在项目根目录的 .env 文件里设置后重启服务"
@@ -75,14 +102,19 @@ def _create(client: OpenAI, **kwargs):
 def chat(messages: list[dict], model: str = None, temperature: float = 1.0,
          max_tokens: int = None) -> str:
     """最基础的对话调用：传入messages（OpenAI格式），返回模型回复的文本。
-    max_tokens 仅对 DeepSeek 生效：推理类模型的思考会占用输出预算，
+    max_tokens 仅对 DeepSeek/MiniMax 生效：推理类模型的思考会占用输出预算，
     需要较长推理链的任务（如评分）应显式调大。"""
-    model = model or MOONSHOT_MODEL
+    model = model or _current_selected_model()
     client = get_client(model)
     extra = {}
     if _is_deepseek(model):
         temperature = min(temperature, 1.0)  # DeepSeek 的 temperature 上限 1.0
-        extra["max_tokens"] = max_tokens or 8192   # 默认 4096 会把长章节 JSON 截断
+        extra["max_tokens"] = max_tokens or 16384   # 推理模型思考占预算，8192 会截断长章节 JSON
+    if _is_minimax(model):
+        temperature = min(temperature, 1.0)
+        extra["max_tokens"] = max_tokens or 16384   # 8192 会截断长章节 JSON（曾只保留前3小节）
+        # M 系列默认开思考，<think> 前缀会混入正文破坏 JSON 输出：统一关闭
+        extra["extra_body"] = {"thinking": {"type": "disabled"}}
     resp = _create(
         client,
         model=model,
@@ -97,11 +129,26 @@ def ocr_images(images: list, model: str = None, instruction: str = "") -> str:
     """把若干张图片（PNG/JPG 字节）发给视觉模型识别文字。
     instruction 为空：逐字识别全部文字并按原文返回（默认，适合承诺函/营业执照等小件）。
     instruction 非空：只针对该问题在图中查找、只回相关内容（如“落款日期和落款单位”“审计意见段落”
-    “某科目金额”），不必通读全页——用于大扫描件定点取数，输出更短更准。"""
+    “某科目金额”），不必通读全页——用于大扫描件定点取数，输出更短更准。
+    厂商选择：跟随当前所选主模型——选 MiniMax 走 MiniMax，否则走 Moonshot；
+    DeepSeek 不支持读图，选 DeepSeek 时回退 Moonshot（未配置则试 MiniMax）。"""
     if not images:
         return ""
-    # DeepSeek 不支持读图：视觉识别始终走 Moonshot（忽略传入的 model）
-    client = get_client(MOONSHOT_MODEL)
+    sel = _current_selected_model()
+    if _is_minimax(sel) and MINIMAX_API_KEY:
+        client = get_client(sel)
+        vision_model = MINIMAX_VISION_MODEL or sel
+        extra_body = {"thinking": {"type": "disabled"}}   # 关思考，避免 <think> 混入识别结果
+    elif MOONSHOT_API_KEY:
+        client = get_client(MOONSHOT_MODEL)
+        vision_model = MOONSHOT_VISION_MODEL or MOONSHOT_MODEL
+        extra_body = None
+    elif MINIMAX_API_KEY:   # Moonshot 未配置/不可用时回退 MiniMax
+        client = get_client(MINIMAX_MODEL)
+        vision_model = MINIMAX_VISION_MODEL or MINIMAX_MODEL
+        extra_body = {"thinking": {"type": "disabled"}}
+    else:
+        raise RuntimeError("未配置任何支持读图的模型密钥（MOONSHOT/MINIMAX），无法视觉识别")
     if (instruction or "").strip():
         prompt = (
             f"请在下面的图片中查找与“{instruction.strip()}”相关的内容，"
@@ -119,25 +166,30 @@ def ocr_images(images: list, model: str = None, instruction: str = "") -> str:
         b64 = base64.b64encode(img).decode("ascii")
         content.append({"type": "image_url",
                         "image_url": {"url": f"data:image/png;base64,{b64}"}})
+    extra = {"extra_body": extra_body} if extra_body else {}
     resp = _create(
         client,
-        model=MOONSHOT_VISION_MODEL or MOONSHOT_MODEL,  # 视觉识别固定走 Moonshot（kimi-k3 支持读图）
+        model=vision_model,
         messages=[{"role": "user", "content": content}],
-        temperature=1.0,   # kimi-k3 要求 temperature=1.0
+        temperature=1.0,   # kimi-k3 要求 temperature=1.0；MiniMax 上限同为 1.0
+        **extra,
     )
     return resp.choices[0].message.content or ""
 
 
 def chat_with_tools(messages: list[dict], tools: list, tool_executor,
                     model: str = None, temperature: float = 1.0,
-                    max_rounds: int = 16) -> str:
+                    max_rounds: int = 40) -> str:
     """带函数调用(function calling)的对话：模型若请求调用工具，就用 tool_executor 执行、
     把结果回喂，循环直到模型给出最终文本回复。
     注：deepseek-reasoner 官方不支持函数调用，自动降级为 deepseek-chat。
 
     tool_executor(name: str, arguments: dict) -> str
+
+    注：max_rounds 曾为 16，实测 MiniMax-M3 生成长章节一轮就发近百次工具调用，
+    16 轮常在关键材料（如审计报告）还没读到时就被强制交卷，导致表格填成取数说明，故提到 40。
     """
-    model = model or MOONSHOT_MODEL
+    model = model or _current_selected_model()
     if _is_deepseek(model) and "reasoner" in model.lower():
         logger.warning(f"[chat_with_tools] {model} 不支持函数调用，自动降级为 {DEEPSEEK_MODEL}")
         model = DEEPSEEK_MODEL
@@ -145,9 +197,15 @@ def chat_with_tools(messages: list[dict], tools: list, tool_executor,
     extra = {}
     if _is_deepseek(model):
         temperature = min(temperature, 1.0)  # DeepSeek 的 temperature 上限 1.0
-        extra["max_tokens"] = 8192           # 默认 4096 会把长章节 JSON 截断
+        extra["max_tokens"] = 16384          # 推理模型思考占预算，8192 会截断长章节 JSON
         # DeepSeek 只认 type=function：过滤掉 Moonshot 内置工具（builtin_function 等）
         tools = [t for t in (tools or []) if t.get("type") == "function"]
+    if _is_minimax(model):
+        temperature = min(temperature, 1.0)
+        extra["max_tokens"] = 16384                  # 8192 会截断长章节 JSON（曾只保留前3小节）
+        # MiniMax 同样只认 type=function；且必须关思考，否则 <think> 破坏 JSON 输出
+        tools = [t for t in (tools or []) if t.get("type") == "function"]
+        extra["extra_body"] = {"thinking": {"type": "disabled"}}
     msgs = list(messages)
 
     for i in range(max_rounds):
@@ -188,7 +246,7 @@ def chat_with_tools(messages: list[dict], tools: list, tool_executor,
             # （仅 Moonshot 模型支持；DeepSeek 无此能力，返回提示让其基于已有信息作答）
             if name == "$web_search":
                 logger.info(f"[工具调用] $web_search 参数={tc.function.arguments}")
-                if _is_deepseek(model):
+                if _is_deepseek(model) or _is_minimax(model):
                     msgs.append({"role": "tool", "tool_call_id": tc.id, "name": name,
                                  "content": "（当前模型无联网搜索能力，请基于已提供的材料信息作答）"})
                 else:

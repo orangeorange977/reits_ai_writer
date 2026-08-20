@@ -89,3 +89,11 @@ async def scores(n: int, http_req: Request, project_id: str = ""):
     """打分历史（最新在最后）。"""
     await _assert_project_access(project_id, _current_user_id(http_req))
     return {"scores": eval_service.get_scores(project_id, n)}
+
+
+@router.delete("/score/{n}")
+async def delete_score(n: int, http_req: Request, project_id: str = ""):
+    """删除第 n 章 AI 打分历史。"""
+    await _assert_project_access(project_id, _current_user_id(http_req))
+    await asyncio.to_thread(eval_service.delete_scores, project_id, n)
+    return {"ok": True}

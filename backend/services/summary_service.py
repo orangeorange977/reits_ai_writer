@@ -25,6 +25,42 @@ def saved_summary_path(project_id: str = None) -> Path:
 
 _GROUP_KEYS = ("summary_table", "glossary", "other_info")
 
+# 官方2024版模板卷首摘要表的22个固定行项（与 reading/summary.md 基线一字不差）。
+# 未保存过任何数据时，用它作为默认空骨架展示——打开页面即见基本表格，值留空待录入。
+_DEFAULT_SUMMARY_TABLE_LABELS = [
+    "项目名称",
+    "行业领域",
+    "资产所在地",
+    "资产范围",
+    "建设规模合计（万元）",
+    "首次发行项目/新购入项目",
+    "申报基准日",
+    "不动产评估净值（万元）",
+    "拟发售基金总额（万元）",
+    "原始权益人及相关方认购基金比例",
+    "净回收资金（万元）",
+    "其中，拟用于在建项目、前期工作成熟的新建项目（含改扩建）和存量资产收购的金额（万元）",
+    "拟上市场所",
+    "发起人（如有）",
+    "原始权益人",
+    "基金管理人",
+    "资产支持证券管理人",
+    "律师事务所及项目主办律师",
+    "会计师事务所",
+    "资产评估机构",
+    "税务咨询机构",
+    "担任财务顾问的证券公司",
+]
+
+
+def default_summary_data() -> dict:
+    """默认骨架：摘要表22个固定行项（值为空）；释义给一行列标题占位。"""
+    return {
+        "summary_table": [{"label": lb, "value": ""} for lb in _DEFAULT_SUMMARY_TABLE_LABELS],
+        "glossary": [{"label": "简称", "value": "释义"}],
+        "other_info": [],
+    }
+
 
 def save_summary_data(data: dict, project_id: str = None) -> None:
     """把网页上编辑好的摘要表/释义/其他基本信息保存到该项目的 JSON 文件。"""
@@ -51,13 +87,20 @@ def load_saved_summary(project_id: str = None):
 def get_summary_data(project_id: str = None) -> dict:
     """返回 {summary_table, glossary, other_info}。
 
-    唯一来源是该项目的保存文件；没有保存过则返回空结构（三个空列表），
-    由用户在网页上录入或 Excel 导入后保存。
+    唯一来源是该项目的保存文件；没有保存过、或保存的内容为空（如空表
+    态下点过保存）时，对应分组回填默认骨架（摘要表22个固定行项、值为
+    空），保证打开页面即见基本表格；用户可在网页上直接录入或 Excel
+    导入后保存。
     """
-    saved = load_saved_summary(project_id)
-    if saved is not None:
-        return saved
-    return {"summary_table": [], "glossary": [], "other_info": []}
+    saved = load_saved_summary(project_id) or {}
+    data = {k: (saved.get(k) or []) for k in _GROUP_KEYS}
+    if not data["summary_table"]:
+        data["summary_table"] = [
+            {"label": lb, "value": ""} for lb in _DEFAULT_SUMMARY_TABLE_LABELS
+        ]
+    if not data["glossary"]:
+        data["glossary"] = [{"label": "简称", "value": "释义"}]
+    return data
 
 
 # Excel 三个 sheet 名 -> 结果里的键

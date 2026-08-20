@@ -26,6 +26,14 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 
+# ===== MiniMax 大模型接入配置 =====
+# 兼容 OpenAI 接口；模型名以 MiniMax 开头，客户端据此自动路由到 MiniMax（国内端点）。
+MINIMAX_API_KEY = os.environ.get("MINIMAX_API_KEY", "")
+MINIMAX_BASE_URL = os.environ.get("MINIMAX_BASE_URL", "https://api.minimaxi.com/v1")
+MINIMAX_MODEL = os.environ.get("MINIMAX_MODEL", "MiniMax-M3")
+# 视觉识别用的 MiniMax 模型；留空=用主模型（M 系列本身支持读图）
+MINIMAX_VISION_MODEL = os.environ.get("MINIMAX_VISION_MODEL", "")
+
 # ===== 天眼查 MCP（企业数据）接入 =====
 # 密钥从 .env 读；服务地址为天眼查官方 MCP 端点（Streamable HTTP / JSON-RPC 2.0）
 TIANYANCHA_MCP_KEY = os.environ.get("TIANYANCHA_MCP_KEY", "")

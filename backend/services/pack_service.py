@@ -134,6 +134,11 @@ def reading_path(n: int, pack_id: str = None) -> Path:
     return skill_text_path(ch["reading"], pack_id)
 
 
+def summary_reading_path(pack_id: str = None) -> Path:
+    """卷首"摘要表和释义"写作要求 reading/summary.md 的生效路径（走覆盖层）。"""
+    return skill_text_path("reading/summary.md", pack_id)
+
+
 def writing_skill_path(pack_id: str = None) -> Path:
     """写作/排版要求 writing/SKILL.md 的生效路径（走覆盖层）。"""
     return skill_text_path("writing/SKILL.md", pack_id)

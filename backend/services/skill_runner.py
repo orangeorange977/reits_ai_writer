@@ -15,7 +15,7 @@ from html.parser import HTMLParser
 
 from backend.config import (DATA_SOURCE_BASE, PROJECTS_DIR, safe_project_id,
                             DEEPSEEK_MODEL)
-from backend.services.kimi_client import chat, chat_with_tools, _is_deepseek
+from backend.services.kimi_client import chat, chat_with_tools, _is_deepseek, _is_minimax
 from backend.services import summary_service, tianyancha_client, materials_client, read_ledger
 from backend.services import pack_service, table_check
 
@@ -297,8 +297,17 @@ def _kv_rows_html(rows):
 def _grid_rows_html(headers, rows):
     thead = ""
     if headers:
-        thead = "<thead><tr>" + "".join(
-            f"<th>{_esc_html(h)}</th>" for h in headers) + "</tr></thead>"
+        ths = []
+        for h in headers:
+            if isinstance(h, dict):
+                cs = int(h.get("colspan", 1) or 1)
+                rs = int(h.get("rowspan", 1) or 1)
+                attr = (f' colspan="{cs}"' if cs > 1 else "") + \
+                       (f' rowspan="{rs}"' if rs > 1 else "")
+                ths.append(f"<th{attr}>{_esc_html(h.get('text', ''))}</th>")
+            else:
+                ths.append(f"<th>{_esc_html(h)}</th>")
+        thead = "<thead><tr>" + "".join(ths) + "</tr></thead>"
     body = ""
     for row in (rows or []):
         cells = ""
@@ -1273,6 +1282,11 @@ _MAT_TOOL_NAMES = {t["function"]["name"] for t in _MAT_TOOLS}
 _WEB_SEARCH_TOOL = {"type": "builtin_function", "function": {"name": "$web_search"}}
 
 
+def _supports_web_search(model: str) -> bool:
+    """联网搜索是 Moonshot(Kimi) 独有能力：DeepSeek/MiniMax 均不支持。"""
+    return not _is_deepseek(model) and not _is_minimax(model)
+
+
 def _make_materials_executor(root):
     def _exec(name: str, args: dict) -> str:
         if name == "list_materials":
@@ -1367,8 +1381,8 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
             "**绝不要把几十页审计报告整篇 OCR。** 扫描件表格数字 OCR 可能读错，拿不准的数字标"
             "“【注：OCR识别，请人工核对】”；识别不出或缺关键项才标“【注：…，请人工核对】”，绝不编造。"
         )
-    # 联网搜索是 Moonshot 内置能力：仅非 DeepSeek 模型时在提示词里告知
-    if not _is_deepseek(get_selected_model()):
+    # 联网搜索是 Moonshot 内置能力：仅 Moonshot(Kimi) 模型时在提示词里告知
+    if _supports_web_search(get_selected_model()):
         system_prompt += (
             "\n\n你还能**联网搜索**（$web_search）。当某项公开信息在“已保存摘要/释义/其他基本信息”、天眼查、"
             "证明材料里都找不到的公开披露数据（如机构某时点的规模、业绩等），可以联网搜索后填写。"
@@ -1404,8 +1418,8 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
         {"role": "user", "content": user_prompt},
     ]
     # 组合工具集：天眼查（企业数据）+ 证明材料读取；
-    # 联网搜索为 Moonshot 内置工具（builtin_function），DeepSeek 不支持，仅非 DeepSeek 时加入
-    tools = [] if _is_deepseek(get_selected_model()) else [_WEB_SEARCH_TOOL]
+    # 联网搜索为 Moonshot 内置工具（builtin_function），DeepSeek/MiniMax 不支持，仅 Moonshot 时加入
+    tools = [_WEB_SEARCH_TOOL] if _supports_web_search(get_selected_model()) else []
     if tianyancha_client.is_enabled():
         tools += _TYC_TOOLS
     mat_exec = None
@@ -1511,6 +1525,132 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
         logger.warning(f"写入 ch{n}.json 失败: {e}")
 
     return data
+
+
+def run_summary(materials_path: str = None, project_id: str = None, pack_id: str = None) -> dict:
+    """执行“摘要表和释义”：读 planning.md + reading/summary.md，让 Kimi 按固定体例
+    阅读申报材料/证明材料（并可查天眼查/联网）产出结构化 JSON。
+
+    返回 {summary_table:[{label,value}], glossary:[{label,value}], other_info:[], refs:[...]}
+    不落盘——由前端填入编辑区、用户核对后点保存才写入 summary_saved.json。"""
+    planning = _read_text(pack_service.planning_path(pack_id))
+    skill_md = _read_text(pack_service.summary_reading_path(pack_id))
+
+    refs = ["写作总纲（planning.md）", "卷首写作要求（摘要表和释义）"]
+
+    def _add_ref(label: str):
+        if label and label not in refs:
+            refs.append(label)
+
+    mat_root = None
+    if materials_path:
+        try:
+            p = Path(materials_path)
+            if p.is_dir():
+                mat_root = p
+        except Exception:
+            mat_root = None
+
+    system_prompt = (
+        f"你是{pack_service.material_label(pack_id)}的写作助手，正在起草申报材料卷首的'摘要表和释义'。"
+        "你会拿到全局总纲 planning.md 和卷首写作要求 SKILL.md。"
+        "你的任务是按 SKILL.md 的固定体例（摘要表 22 个固定行项、释义引导语/三列表式/收束语），"
+        "阅读申报材料/证明材料逐项提取真实值；参与主体机构名称等工商信息用天眼查据实查询。"
+        "确在所有材料中缺失时才标'【注：…，待人工核对】'，绝不编造数字或机构名。"
+    )
+    if tianyancha_client.is_enabled():
+        system_prompt += (
+            "\n\n你还配有天眼查企业数据查询工具。参与主体（原始权益人/基金管理人/项目公司/中介机构等）"
+            "的工商登记全称，先用 search_companies 锚定精确全称，再用 get_company_basic_profile 取画像，据实填写。"
+        )
+    if mat_root is not None:
+        system_prompt += (
+            "\n\n你还能读取本项目的**申报材料/证明材料**文件。先用 list_materials(keyword=…) 按关键词"
+            "（如“可研”“审计”“评估”“营业执照”“出让合同”）定位文件相对路径，再用 read_document(path=…) 读其文本；"
+            "扫描件会自动识别文字，也要读。带着目标读、分批小步读（扫描件一次≤8页）；"
+            "拿不准的数字标'【注：OCR识别，请人工核对】'，绝不编造。"
+        )
+    if _supports_web_search(get_selected_model()):
+        system_prompt += (
+            "\n\n你还能**联网搜索**（$web_search）。材料里找不到的公开披露数据可联网搜索后填写，"
+            "但务必注明来源时点与口径；来源不可靠宁可标'【注：网络来源，待人工核实】'。"
+        )
+
+    user_prompt = (
+        f"# 全局总纲 planning.md\n\n{planning}\n\n"
+        f"# 卷首（摘要表和释义）写作要求\n\n{skill_md}\n\n"
+        "# 输出要求\n按写作要求的“输出格式”输出纯 JSON：\n"
+        '{"summary_table": [{"label","value"}], "glossary": [{"label","value"}], "other_info": []}\n'
+        "不要任何解释、不要用 ``` 包裹，直接以 { 开头、以 } 结尾。"
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    tools = [_WEB_SEARCH_TOOL] if _supports_web_search(get_selected_model()) else []
+    if tianyancha_client.is_enabled():
+        tools += _TYC_TOOLS
+    mat_exec = None
+    if mat_root is not None:
+        tools += _MAT_TOOLS
+        mat_exec = _make_materials_executor(mat_root)
+
+    if tools:
+        def _combined_executor(name, args):
+            if name in _TYC_TOOL_NAMES:
+                result = _tyc_executor(name, args)
+                kw = (args or {}).get("keyword") or (args or {}).get("company_name") or ""
+                _add_ref(f"天眼查企业数据查询：{kw}" if kw else "天眼查企业数据查询")
+                return result
+            if name in _MAT_TOOL_NAMES and mat_exec is not None:
+                result = mat_exec(name, args)
+                if name == "read_document":
+                    path = str((args or {}).get("path") or "").strip()
+                    if path:
+                        _add_ref(f"申报材料：{path}")
+                return result
+            return f"（未知工具 {name}）"
+        raw = chat_with_tools(messages, tools, _combined_executor,
+                              model=get_selected_model(), temperature=1.0)
+    else:
+        raw = chat(messages, model=get_selected_model(), temperature=1.0)
+
+    if not (raw or "").strip():
+        logger.warning("摘要表和释义生成失败：模型返回空内容")
+        raise RuntimeError("模型未返回内容（可能是查询工具调用过多或超时），请重试生成")
+    try:
+        data = _parse_json(raw)
+    except Exception as e:
+        logger.warning(f"summary 解析模型输出失败：{e}；自动纠偏重试一次")
+        fix_msgs = messages + [
+            {"role": "assistant", "content": raw[-3000:]},
+            {"role": "user", "content": "你上次的输出不是有效 JSON。请重新输出符合要求的完整有效 JSON 本身："
+                                        "不要任何解释、不要用 ``` 包裹，直接以 { 开头、以 } 结尾。"},
+        ]
+        raw2 = chat(fix_msgs, model=get_selected_model(), temperature=0.3)
+        data = _parse_json(raw2)
+
+    if not isinstance(data, dict):
+        raise RuntimeError("模型输出不是期望的对象格式，请重试生成")
+    # 体例清洗：只保留三组 label/value 行，丢弃空值与表头行
+    out = {}
+    for key in ("summary_table", "glossary", "other_info"):
+        rows = data.get(key) or []
+        clean = []
+        for r in (rows if isinstance(rows, list) else []):
+            if not isinstance(r, dict):
+                continue
+            label = str(r.get("label") or "").strip()
+            value = str(r.get("value") or "").strip()
+            if not label or not value:
+                continue
+            if key == "glossary" and label in ("简称", "术语") and not clean:
+                continue   # 模型若把表头行也输出了，剔除
+            clean.append({"label": label, "value": value})
+        out[key] = clean
+    out["refs"] = refs
+    return out
 
 
 def load_web_render(pack_id: str = None):

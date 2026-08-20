@@ -293,7 +293,7 @@ def render_docx(sections, out_path):
             for ri, row in enumerate(table):
                 label = str(row.get("label", ""))
                 value = str(row.get("value", ""))
-                if not value.strip():
+                if _kv_row_is_section(label, value):
                     m = t.cell(ri, 0).merge(t.cell(ri, 1))
                     m.text = ""
                     _set_font(m.paragraphs[0].add_run(label), _TABLE_PT)
@@ -351,7 +351,7 @@ def render_preview_html(sections):
         if table:
             rows_html = ""
             for r in table:
-                if not str(r.get("value", "")).strip():
+                if _kv_row_is_section(r.get("label", ""), r.get("value", "")):
                     rows_html += f'<tr><td colspan="2" style="text-align:center">{_esc(r.get("label",""))}</td></tr>'
                 else:
                     rows_html += f'<tr><td>{_esc(r.get("label",""))}</td><td>{_esc(r.get("value",""))}</td></tr>'
@@ -470,6 +470,160 @@ def _fill_two_col_table(table, kv):
             _apply_cell_format(cell)
 
 
+# ============ 卷首：摘要表填值 + 释义节插入（官方模板无释义骨架，不插则导出永远缺释义表） ============
+
+_SUMMARY_HEADING = "摘要表"
+_GLOSSARY_HEADING = "释义"
+_GLOSSARY_INTRO = "在本申报材料中，除非文意另有所指，下列词语或简称具有如下含义："
+_GLOSSARY_CLOSE = "本申报材料中，部分合计数与各加数直接相加之和在尾数上或有差异，此差异系四舍五入所致。"
+
+
+def _label_base(label: str) -> str:
+    """行项名去掉括号口径提示，得匹配用基名（模板左列如'资产所在地（明确到县区级）'）。"""
+    return re.sub(r"[（(].*$", "", (label or "").strip()).strip()
+
+
+def fill_front_matter(docx_path, saved: dict) -> None:
+    """卷首注入：把用户核对过的摘要表值填入模板两列骨架表；在'一、项目基本情况'前
+    插入释义节（标题+引导语+简称/指/释义三列表+收束语）。
+
+    任一组无数据则跳过对应部分；调用方负责异常降级（失败不阻断导出）。"""
+    saved = saved or {}
+    summary_kv = {}
+    for r in (saved.get("summary_table") or []):
+        if isinstance(r, dict):
+            k = str(r.get("label") or "").strip()
+            v = str(r.get("value") or "").strip()
+            if k and v:
+                summary_kv[k] = v
+    glossary = []
+    for i, r in enumerate(saved.get("glossary") or []):
+        if not isinstance(r, dict):
+            continue
+        k = str(r.get("label") or "").strip()
+        v = str(r.get("value") or "").strip()
+        if not k or not v:
+            continue
+        if i == 0 and k in ("简称", "术语"):
+            continue   # 编辑区列标题行，不入文档
+        glossary.append((k, v))
+    if not summary_kv and not glossary:
+        return
+
+    doc = Document(str(docx_path))
+
+    p_summary = p_gloss = p_ch1 = None
+    summary_table = None
+    after_summary_heading = False
+    for blk in _iter_block_items(doc):
+        if isinstance(blk, Paragraph):
+            t = blk.text.strip()
+            if p_summary is None and t == _SUMMARY_HEADING:
+                p_summary = blk
+                after_summary_heading = True
+                continue
+            if not t:
+                continue   # 空段落不中断“标题后紧跟表”的检测
+            if p_gloss is None and t == _GLOSSARY_HEADING:
+                p_gloss = blk
+            elif p_ch1 is None and t == _CHAPTER_TITLE:
+                p_ch1 = blk
+            after_summary_heading = False
+        elif isinstance(blk, Table):
+            if after_summary_heading and summary_table is None:
+                summary_table = blk
+            after_summary_heading = False
+
+    # ---- 摘要表填值：按行项基名模糊匹配（模板行项名可能带括号提示） ----
+    if summary_table is not None and summary_kv:
+        for row in summary_table.rows:
+            if len(row.cells) < 2:
+                continue
+            left = row.cells[0].text.strip()
+            if not left or left == row.cells[1].text.strip():
+                continue
+            base = _label_base(left)
+            value = summary_kv.get(left) or summary_kv.get(base)
+            if not value:
+                for k, v in summary_kv.items():
+                    kb = _label_base(k)
+                    if kb and (base.startswith(kb) or kb.startswith(base)):
+                        value = v
+                        break
+            if value:
+                cell = row.cells[1]
+                cell.text = ""
+                _set_font(cell.paragraphs[0].add_run(value), _TABLE_PT)
+                _apply_cell_format(cell)
+
+    # ---- 释义节：已有释义标题则不重复插 ----
+    if glossary and p_gloss is None:
+        blocks = []   # 待插入的 XML 元素，按文档顺序
+        # 标题段：深拷贝摘要表标题段继承其格式，改写 run 文本
+        if p_summary is not None:
+            head_el = copy.deepcopy(p_summary._element)
+            runs = head_el.findall(qn("w:r"))
+            for r in runs[1:]:
+                head_el.remove(r)
+            if runs:
+                t_el = runs[0].find(qn("w:t"))
+                if t_el is None:
+                    t_el = OxmlElement("w:t")
+                    runs[0].append(t_el)
+                t_el.text = _GLOSSARY_HEADING
+            blocks.append(head_el)
+        # 引导语/收束语段：普通正文 run 继承模板 Normal 样式
+        intro_el = OxmlElement("w:p")
+        blocks.append(intro_el)
+        # 三列表：简称 | 指 | 释义
+        grid = {"rows": [[{"text": "简称"}, {"text": "-"}, {"text": "释义"}]] +
+                         [[{"text": k}, {"text": "指"}, {"text": v}] for k, v in glossary]}
+        tbl = _create_grid_table(doc, grid)
+        blocks.append(tbl._tbl)
+        close_el = OxmlElement("w:p")
+        blocks.append(close_el)
+
+        if p_ch1 is not None:
+            for el in blocks:
+                p_ch1._element.addprevious(el)
+        else:
+            tail = (summary_table._tbl if summary_table is not None
+                    else (p_summary._element if p_summary is not None else None))
+            if tail is None:
+                first = doc.element.body[0]
+                for el in blocks:
+                    first.addprevious(el)
+            else:
+                for el in reversed(blocks):
+                    tail.addnext(el)
+        # 引导语/收束语 run 在元素挂到文档树后写入（Paragraph 包装需要 parent）
+        _add_para_runs(Paragraph(intro_el, doc), _GLOSSARY_INTRO, [0], [])
+        _add_para_runs(Paragraph(close_el, doc), _GLOSSARY_CLOSE, [0], [])
+
+    doc.save(str(docx_path))
+
+
+def ensure_page_breaks(docx_path, headings) -> None:
+    """强制指定标题段落另起一页（pageBreakBefore）：卷首摘要表/释义各自
+    单独成页、各章标题新起一页，不紧跟上一章。匹配时忽略空白；未命中的
+    标题跳过；无命中不落盘。"""
+    want = {re.sub(r"\s", "", h) for h in (headings or []) if (h or "").strip()}
+    if not want:
+        return
+    doc = Document(str(docx_path))
+    hit = set()
+    for blk in _iter_block_items(doc):
+        if not isinstance(blk, Paragraph):
+            continue
+        key = re.sub(r"\s", "", blk.text)
+        if key in want and key not in hit:
+            blk.paragraph_format.page_break_before = True
+            hit.add(key)
+            if want <= hit:
+                break
+    if hit:
+        doc.save(str(docx_path))
+
 def _norm_cells(cells):
     """把一行单元格文本归一化成一个签名串（去掉所有空白），用于表头比对。"""
     return "".join("".join((c or "").split()) for c in cells)
@@ -488,7 +642,7 @@ def _match_grid_table(table, sec, used):
         key = (title, i)
         if key in used:
             continue
-        if tmpl_sig and _norm_cells(g.get("headers", []) or []) == tmpl_sig:
+        if tmpl_sig and _norm_cells([_hdr_cell(h)["text"] for h in (g.get("headers", []) or [])]) == tmpl_sig:
             used.add(key)
             return g
     # 2) 兜底：按顺序取下一张没用过的
@@ -502,7 +656,7 @@ def _match_grid_table(table, sec, used):
 
 def _grid_header_index(table, headers):
     """在模板表里定位表头所在行（表头可能不在第0行，如上方有跨列的表内小标题行）。找不到则默认0。"""
-    hsig = _norm_cells(headers or [])
+    hsig = _norm_cells([_hdr_cell(h)["text"] for h in (headers or [])])
     if hsig:
         for i, row in enumerate(table.rows):
             if _norm_cells([c.text for c in row.cells]) == hsig:
@@ -641,13 +795,22 @@ def _flush_pending_section(current_heading, current_sec, inserted_titles, fn_sta
     inserted_titles.add(title)
 
 
+def _hdr_cell(h):
+    """表头单元格归一：可为字符串或 {text,colspan,rowspan} 对象（如表23表头“类别”横跨前两列）。"""
+    if isinstance(h, dict):
+        return {"text": str(h.get("text", "")),
+                "colspan": max(1, int(h.get("colspan", 1) or 1)),
+                "rowspan": max(1, int(h.get("rowspan", 1) or 1))}
+    return {"text": str(h), "colspan": 1, "rowspan": 1}
+
+
 def _grid_logical_rows(g):
-    """把 grid（headers + rows，rows 单元格可为字符串或 {text,colspan,rowspan}）
-    统一成"逻辑行"列表：每行是 [{text,colspan,rowspan},...]。表头作为第一逻辑行。"""
+    """把 grid（headers + rows，headers/rows 单元格可为字符串或 {text,colspan,rowspan}）
+    统一成“逻辑行”列表：每行是 [{text,colspan,rowspan},...]。表头作为第一逻辑行。"""
     logical = []
     headers = g.get("headers", []) or []
     if headers:
-        logical.append([{"text": str(h), "colspan": 1, "rowspan": 1} for h in headers])
+        logical.append([_hdr_cell(h) for h in headers])
     for row in g.get("rows", []) or []:
         cells = []
         for c in (row or []):
@@ -661,9 +824,45 @@ def _grid_logical_rows(g):
     return logical
 
 
+def _normalize_grid_first_col_spans(logical, has_header):
+    """首列纵向自动合并兜底：数据行首列连续相同的非空文本折叠为 rowspan，
+    被覆盖行删除首列格（构建矩阵按 occupied 跳过）。
+    模型未按约定输出 {text,rowspan} 时（如“资产重组”逐行重复），
+    保证分组列仍纵向合并，与定稿版式一致。"""
+    rows = logical[1:] if has_header else logical
+    r = 0
+    while r < len(rows):
+        cells = rows[r]
+        if not cells:
+            r += 1
+            continue
+        c0 = cells[0]
+        txt = c0["text"].strip()
+        if not txt or c0["rowspan"] > 1 or c0["colspan"] > 1:
+            r += 1
+            continue
+        run = 1
+        while r + run < len(rows):
+            nxt = rows[r + run]
+            if not nxt:
+                break
+            n0 = nxt[0]
+            if (n0["text"].strip() != txt or n0["rowspan"] > 1
+                    or n0["colspan"] > 1):
+                break
+            run += 1
+        if run > 1:
+            c0["rowspan"] = run
+            for k in range(1, run):
+                rows[r + k].pop(0)
+        r += run
+    return logical
+
+
 def _create_grid_table(doc, g):
     """新建一张多列表并填好（支持合并单元格 colspan/rowspan），返回 table。"""
     logical = _grid_logical_rows(g)
+    logical = _normalize_grid_first_col_spans(logical, bool(g.get("headers")))
     R = len(logical)
     if R == 0:
         return doc.add_table(rows=0, cols=1)
@@ -734,15 +933,50 @@ def _fill_cell_text(cell, txt):
     _apply_cell_format(cell)
 
 
+_KV_TEMPLATE_LABELS_CACHE = None
+
+
+def _kv_template_labels():
+    """官方模板全部两列表第一列标签集合（缓存）。
+
+    用于判定 kv 表“分节行”：值为空且标签**不在**模板数据行标签集里的行
+    （模型自加的分组抬头，如“项目总体情况”“子项目1”）才两列合并居中；
+    标签在模板里的数据行，即使值为空也保留两列结构，避免整表被误并成单列。"""
+    global _KV_TEMPLATE_LABELS_CACHE
+    if _KV_TEMPLATE_LABELS_CACHE is None:
+        labels = set()
+        try:
+            tpl = Path(__file__).resolve().parent.parent / "template.docx"
+            if tpl.exists():
+                for t in Document(str(tpl)).tables:
+                    if len(t.columns) == 2:
+                        for r in t.rows:
+                            lab = r.cells[0].text.strip()
+                            val = r.cells[1].text.strip()
+                            # 两列同文=模板里的合并分节行（如“项目总体情况”），不算数据行标签
+                            if lab and lab != val:
+                                labels.add(lab)
+        except Exception:
+            labels = set()
+        _KV_TEMPLATE_LABELS_CACHE = labels
+    return _KV_TEMPLATE_LABELS_CACHE
+
+
+def _kv_row_is_section(label, value):
+    """kv 行是否为分节行（两列合并居中）：值为空且标签不是模板数据行标签。"""
+    return not str(value).strip() and str(label).strip() not in _kv_template_labels()
+
+
 def _create_kv_table(doc, kv_rows):
     """新建一张两列（字段:值）表并填好，返回 table。
-    值为空的行为分节行（如"项目总体情况""子项目1"）：两列合并占一整行、居中，与定稿版式一致。"""
+    分节行（如“项目总体情况”“子项目1”）：两列合并占一整行、居中，与定稿版式一致；
+    数据行值为空时保留两列（右列留空），不得并成单列。"""
     t = doc.add_table(rows=len(kv_rows), cols=2)
     t.style = "Table Grid"
     for ri, r in enumerate(kv_rows):
         label = str(r.get("label", ""))
         value = str(r.get("value", ""))
-        if not value.strip():
+        if _kv_row_is_section(label, value):
             m = t.cell(ri, 0).merge(t.cell(ri, 1))
             m.text = ""
             _set_font(m.paragraphs[0].add_run(label), _TABLE_PT)

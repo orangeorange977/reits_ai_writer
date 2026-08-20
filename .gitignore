@@ -20,6 +20,15 @@ server_*.log
 
 # 调试用临时脚本（不进仓库）
 .tmp_*
+.deploy_*.py
+.run_*.py
+
+# 运行期数据库文件
+backend/database/*.db
+
+# 本地生成的 PDF 产物（不进仓库）
+/第*.pdf
+/摘要和释义表.pdf
 
 # 本地运行日志与旧归档（不进仓库）
 server_*.log

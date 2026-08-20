@@ -514,6 +514,13 @@ def score_chapter(pid: str, n: int) -> dict:
     score["model"] = model
     score["chapter"] = n
     score["created_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    # 记录打分所依据的生成稿文件指纹（mtime）：生成稿一旦重新生成，
+    # 该分数即自动标记为“过期”，前端提示重新打分，避免旧稿分数误导
+    gen_path = PROJECTS_DIR / safe_project_id(pid) / f"ch{n}.json"
+    try:
+        score["gen_mtime"] = gen_path.stat().st_mtime
+    except OSError:
+        score["gen_mtime"] = None
 
     d = _bench_dir(pid)
     hist_path = d / f"scores_ch{n}.json"
@@ -529,19 +536,50 @@ def score_chapter(pid: str, n: int) -> dict:
     return score
 
 
+def _score_is_stale(entry: dict, pid: str, n: int, cur_gen_mtime) -> bool:
+    """该条分数是否基于旧版生成稿：打分后章节又被重新生成/保存过即为过期。"""
+    if cur_gen_mtime is None:
+        return False
+    gm = entry.get("gen_mtime")
+    if isinstance(gm, (int, float)):
+        return abs(cur_gen_mtime - float(gm)) > 1.0
+    # 历史旧记录无指纹：用打分时间兜底判断（打分后又改过生成稿即过期）
+    try:
+        scored_ts = time.mktime(time.strptime(str(entry.get("created_at", "")), "%Y-%m-%d %H:%M:%S"))
+    except Exception:
+        return True
+    return cur_gen_mtime - scored_ts > 1.0
+
+
 def get_scores(pid: str, n: int) -> list:
     p = _bench_dir(pid) / f"scores_ch{n}.json"
     if not p.exists():
         return []
     try:
-        return json.loads(p.read_text(encoding="utf-8-sig"))
+        hist = json.loads(p.read_text(encoding="utf-8-sig"))
     except Exception:
         return []
+    gen_path = PROJECTS_DIR / safe_project_id(pid) / f"ch{n}.json"
+    try:
+        cur_gen_mtime = gen_path.stat().st_mtime
+    except OSError:
+        cur_gen_mtime = None
+    for s in hist if isinstance(hist, list) else []:
+        if isinstance(s, dict):
+            s["stale"] = _score_is_stale(s, pid, n, cur_gen_mtime)
+    return hist if isinstance(hist, list) else []
 
 
 # ===== AI 打分后台任务：启动即返回，切换页面不影响评分 =====
 _SCORE_TASKS = {}    # key=f"{pid}:{n}" -> {status, started_at, finished_at, error, total}
 _TASK_LOCK = threading.Lock()
+
+
+def delete_scores(pid: str, n: int) -> None:
+    """删除第 n 章 AI 打分历史（scores_ch{n}.json），删后页面回到“未打分”状态。"""
+    p = _bench_dir(pid) / f"scores_ch{n}.json"
+    if p.exists():
+        p.unlink()
 
 
 def start_score_task(pid: str, n: int) -> dict:

@@ -8,6 +8,7 @@ let evalChapter = null;          // 当前选中章号
 let evalStandardChapters = [];   // 已上传标准答案的章号列表
 let evalGeneratedChapters = [];  // 已生成内容的章号列表
 let evalLastScore = null;        // 本章最近一次打分（含逐节语义相似度）
+let evalScoreStale = false;      // 最近一次打分是否已过期（生成稿打分后又更新过）
 const evalRunningTasks = new Set();  // 后台评分中的章号（切换页面不中断）
 let _evalPollTimer = null;
 const _expandedEvalSections = new Set();
@@ -108,7 +109,8 @@ async function _evalRefresh(showLoading) {
     } else if (evalRunningTasks.has(n)) {
         scoreBtn.disabled = true; scoreBtn.textContent = 'AI 评分中…';
     } else {
-        scoreBtn.disabled = false; scoreBtn.textContent = 'AI 打分';
+        scoreBtn.disabled = false;
+        scoreBtn.textContent = evalScoreStale ? '重新打分（生成稿已更新）' : 'AI 打分';
     }
 
     // 重连后台评分任务：切页/刷新后仍能接上正在跑的任务
@@ -119,21 +121,30 @@ async function _evalRefresh(showLoading) {
 
     // 打分卡：仅本章已生成且有历史时展示（带上章号标签）
     const scoreBox = document.getElementById('evalScoreCard');
+    const delScoreBtn = document.getElementById('evalDelScoreBtn');
     if (!gen) {
         evalLastScore = null;
         scoreBox.style.display = 'none';
         scoreBox.innerHTML = '';
+        delScoreBtn.style.display = 'none';
     } else {
         try {
             const s = await _evalJson(`/eval/scores/${n}?project_id=${encodeURIComponent(currentProjectId)}`);
             const list = s.scores || [];
             if (list.length) {
                 evalLastScore = list[list.length - 1];
+                evalScoreStale = !!evalLastScore.stale;
                 _evalRenderScore(evalLastScore, list.length);
             } else {
                 evalLastScore = null;
+                evalScoreStale = false;
                 scoreBox.style.display = 'none';
                 scoreBox.innerHTML = '';
+            }
+            delScoreBtn.style.display = list.length ? '' : 'none';
+            // 分数新鲜度在按钮初始化之后才确定：这里再同步一次按钮文案
+            if (gen && !evalRunningTasks.has(n)) {
+                scoreBtn.textContent = evalScoreStale ? '重新打分（生成稿已更新）' : 'AI 打分';
             }
         } catch (e) { /* 打分历史读失败不阻塞 */ }
     }
@@ -189,6 +200,21 @@ async function evalRemoveStandard() {
     try {
         await _evalJson(`/eval/standard/${n}?project_id=${encodeURIComponent(currentProjectId)}`, { method: 'DELETE' });
         showToast('已移除', 'success');
+        await _evalRefresh(false);
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+/** 删除本章 AI 打分历史（不影响标准答案与对比结果）；二次确认后执行。 */
+async function evalDeleteScores() {
+    const n = evalChapter;
+    if (!n) return;
+    if (evalRunningTasks.has(n)) { showToast('正在评分中，请等评分完成后再删除', 'error'); return; }
+    if (!confirm(`删除第${n}章的 AI 打分记录？删除后不可恢复，可重新打分。`)) return;
+    try {
+        await _evalJson(`/eval/score/${n}?project_id=${encodeURIComponent(currentProjectId)}`, { method: 'DELETE' });
+        showToast(`已删除第${n}章 AI 打分`, 'success');
         await _evalRefresh(false);
     } catch (e) {
         showToast(e.message, 'error');
@@ -375,6 +401,10 @@ function _evalRenderScore(score, histCount) {
     <div class="card">
         <div class="card-header"><h3>AI 打分 · 第${_escEval(score.chapter || evalChapter || '')}章（${_escEval(score.created_at || '')}，模型 ${_escEval(score.model || '')}${histCount > 1 ? `，共${histCount}次记录` : ''}）</h3></div>
         <div class="card-body">
+            ${score.stale ? `
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;margin-bottom:14px;border-radius:8px;background:rgba(255,159,10,.12);border:1px solid rgba(255,159,10,.45);color:#b25e00;font-size:13px">
+                ⚠️ 该分数基于旧版生成稿：打分后本章已重新生成/编辑，分数仅供参考，请点击上方“重新打分”获取最新分数。
+            </div>` : ''}
             <div class="eval-total" style="border-color:${_scoreColor(score.total)}">
                 <div class="eval-total-v" style="color:${_scoreColor(score.total)}">${score.total}</div>
                 <div class="eval-total-l">综合得分 / 100</div>

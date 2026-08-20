@@ -1458,11 +1458,14 @@ async function selectSummary() {
                 <h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">摘要表和释义</h3>
             </div>
             <div class="flex gap-8">
+                <button class="btn btn-ghost btn-sm" id="btnSummaryGen" onclick="runSummaryGen()">${ICN.robot} AI 生成</button>
+                <button class="btn btn-ghost btn-sm" onmousedown="event.preventDefault()" onclick="openKimiChat()" title="打开 Kimi 助手：多轮对话，可粘贴文字/贴链接/上传文件">${ICN.chat} Kimi 助手</button>
                 <button class="btn btn-ghost btn-sm" onclick="document.getElementById('summaryExcelInput').click()">${ICN.download} 上传Excel导入</button>
                 <input type="file" id="summaryExcelInput" accept=".xlsx,.xls" style="display:none" onchange="importSummaryExcel(this)">
                 <button class="btn btn-primary btn-sm" onclick="saveSummary()">${ICN.save} 保存</button>
             </div>
         </div>
+        <div id="summaryGenBanner" class="kimi-status" style="display:none;margin-bottom:12px"></div>
         <div class="chapter-detail-body">
             <div class="sections-tree" id="summarySections">
                 <div class="text-sm text-muted" style="padding:8px 0;">加载中…</div>
@@ -1479,6 +1482,11 @@ async function selectSummary() {
     }
 
     renderSummarySections();
+
+    // 后台正在生成（如从别的页切回来）→接入轮询恢复进度展示
+    API.getSummaryStatus().then(st => {
+        if (st && st.status === 'running' && currentChapter === 'summary') _pollSummaryGeneration();
+    }).catch(() => {});
 }
 
 /**
@@ -1504,6 +1512,66 @@ function renderSummarySections() {
 
 // 每个区块的撤销栈：结构性操作（插入/删除/拖动）和每次聚焦后的首次编辑前，都会压入快照
 const _summaryUndo = { summary_table: [], glossary: [], other_info: [] };
+// 摘要表和释义 AI 生成轮询定时器
+let _summaryTimer = null;
+
+/** AI 生成摘要表和释义：启动后台任务并轮询，完成后填入编辑区供用户核对保存 */
+async function runSummaryGen() {
+    try {
+        await API.runSummary();
+    } catch (error) {
+        if (!String(error.message).includes('正在生成')) {
+            showToast('启动失败: ' + error.message, 'error');
+            return;
+        }
+    }
+    _pollSummaryGeneration();
+}
+
+/** 轮询摘要表和释义生成进度；完成后把结果填入编辑区（不自动保存，等用户核对） */
+function _pollSummaryGeneration() {
+    const btn = document.getElementById('btnSummaryGen');
+    const banner = document.getElementById('summaryGenBanner');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ 生成中...'; }
+    if (banner) { banner.className = 'kimi-status'; banner.style.display = 'block';
+        banner.textContent = '🤖 AI 正在生成摘要表和释义，约需数分钟，请稍候…'; }
+    if (_summaryTimer) clearInterval(_summaryTimer);
+    _summaryTimer = setInterval(async () => {
+        let st;
+        try { st = await API.getSummaryStatus(); } catch (e) { return; }
+        if (st.status === 'done') {
+            clearInterval(_summaryTimer); _summaryTimer = null;
+            const d = st.data || {};
+            const cur = _summaryData || { summary_table: [], glossary: [], other_info: [] };
+            const genGloss = Array.isArray(d.glossary) ? d.glossary : [];
+            // 编辑区约定：释义第一行是列标题行；生成结果没有则补上
+            const withHeader = (genGloss.length && !['简称', '术语'].includes(String(genGloss[0].label || '').trim()))
+                ? [{ label: '简称', value: '释义' }, ...genGloss] : genGloss;
+            _summaryData = {
+                summary_table: (Array.isArray(d.summary_table) && d.summary_table.length) ? d.summary_table : (cur.summary_table || []),
+                glossary: withHeader.length ? withHeader : (cur.glossary || []),
+                other_info: (Array.isArray(d.other_info) && d.other_info.length) ? d.other_info : (cur.other_info || []),
+            };
+            if (currentChapter === 'summary') {
+                const btn2 = document.getElementById('btnSummaryGen');
+                const banner2 = document.getElementById('summaryGenBanner');
+                if (btn2) { btn2.disabled = false; btn2.innerHTML = ICN.robot + ' AI 生成'; }
+                if (banner2) banner2.style.display = 'none';
+                renderSummarySections();
+            }
+            showToast('摘要表和释义生成完成，请核对后点保存');
+        } else if (st.status === 'error') {
+            clearInterval(_summaryTimer); _summaryTimer = null;
+            if (currentChapter === 'summary') {
+                const btn2 = document.getElementById('btnSummaryGen');
+                const banner2 = document.getElementById('summaryGenBanner');
+                if (btn2) { btn2.disabled = false; btn2.innerHTML = ICN.robot + ' AI 生成'; }
+                if (banner2) { banner2.className = 'kimi-status error'; banner2.textContent = '生成失败：' + (st.error || '未知错误'); }
+            }
+            showToast('摘要表和释义生成失败', 'error');
+        }
+    }, 3000);
+}
 // 拖动上下文
 let _summaryDrag = null;
 
@@ -2342,13 +2410,13 @@ function _ensureKimiDrawer() {
       .kimi-drawer-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;
         border-bottom:1px solid #eef1f4;font-weight:600;}
       .kimi-drawer-head .khbtns button{border:none;background:transparent;cursor:pointer;font-size:13px;color:#666;margin-left:10px;}
-      .kimi-sel{padding:6px 14px;font-size:12px;color:#2e7d32;background:#eaf6ec;border-bottom:1px solid #eef1f4;
+      .kimi-sel{padding:6px 14px;font-size:12px;color:#235cb2;background:#eff8ff;border-bottom:1px solid #eef1f4;
         display:flex;align-items:center;justify-content:space-between;gap:8px;}
       .kimi-sel button{border:none;background:transparent;cursor:pointer;color:#888;}
       .kimi-msgs{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
       .kimi-empty{color:#999;font-size:13px;text-align:center;margin-top:28px;line-height:1.7;}
       .kimi-msg{max-width:88%;padding:8px 11px;border-radius:10px;line-height:1.55;white-space:pre-wrap;word-break:break-word;}
-      .kimi-msg.user{align-self:flex-end;background:#4CAF50;color:#fff;}
+      .kimi-msg.user{align-self:flex-end;background:#296cd1;color:#fff;}
       .kimi-msg.assistant{align-self:flex-start;background:#f2f4f7;color:#1a2330;}
       .kimi-acts{align-self:flex-start;display:flex;gap:6px;margin:-4px 0 2px;flex-wrap:wrap;}
       .kimi-acts button{font-size:12px;border:1px solid #dfe4ea;background:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;color:#333;}
@@ -2359,18 +2427,18 @@ function _ensureKimiDrawer() {
       .kimi-attach textarea{border:1px solid #dfe4ea;border-radius:6px;padding:5px;}
       .kimi-input-grip{height:9px;cursor:ns-resize;border-top:1px solid #eef1f4;display:flex;align-items:center;justify-content:center;background:#fafbfc;}
       .kimi-input-grip::before{content:'';width:34px;height:3px;border-radius:2px;background:#cdd5de;}
-      .kimi-input-grip:hover::before{background:#4CAF50;}
+      .kimi-input-grip:hover::before{background:#296cd1;}
       .kimi-input-row{display:flex;align-items:flex-end;gap:8px;padding:10px 14px;}
       .kimi-input-row textarea{flex:1;resize:none;min-height:40px;max-height:none;padding:8px;border:1px solid #dfe4ea;border-radius:8px;font-size:14px;box-sizing:border-box;}
       body.kimi-vresizing{user-select:none;cursor:ns-resize;}
       .kimi-iconbtn{border:1px solid #dfe4ea;background:#fff;border-radius:8px;padding:8px 10px;cursor:pointer;
         color:#555;line-height:0;display:flex;align-items:center;justify-content:center;}
-      .kimi-iconbtn:hover{background:#eaf6ec;color:#388E3C;border-color:#cde5cf;}
+      .kimi-iconbtn:hover{background:#eff8ff;color:#235cb2;border-color:#79afeb;}
       /* 左边整条都可抓着拖动改宽度；左上角露出一个圆弧手柄作为提示 */
       .kimi-resize{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:col-resize;z-index:2;}
-      .kimi-resize:hover{background:rgba(76,175,80,.12);}
+      .kimi-resize:hover{background:rgba(41,108,209,.12);}
       .kimi-grip{position:absolute;left:-9px;top:16px;width:18px;height:40px;border-radius:12px 0 0 12px;
-        background:#4CAF50;cursor:col-resize;z-index:3;display:flex;align-items:center;justify-content:center;
+        background:#296cd1;cursor:col-resize;z-index:3;display:flex;align-items:center;justify-content:center;
         box-shadow:-2px 0 6px rgba(20,30,45,.18);}
       .kimi-grip::before{content:'';width:6px;height:16px;
         border-left:2px solid rgba(255,255,255,.85);border-right:2px solid rgba(255,255,255,.85);}
