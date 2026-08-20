@@ -127,7 +127,7 @@
       "section_id": "1.1",
       "group": "项目正文",
       "label": "项目名称",
-      "source_role": "user_summary",
+      "source_role": "project_overview_table",
       "source_label": "项目名称",
       "strategy": "table_exact",
       "layer": "manual_input",
@@ -138,10 +138,11 @@
       "section_id": "1.1",
       "group": "项目正文",
       "label": "项目类型",
-      "source_role": "project_materials",
-      "source_label": "所有权类/特许经营权类",
-      "strategy": "document_search",
-      "extract_prompt": "判断拟发行基础设施 REITs 属于所有权类还是特许经营权类。必须依据项目权属或申报文书的明确表述，不得将“首次发行/新购入”当成项目权利类型。",
+      "source_role": "user_summary",
+      "source_label": "项目类型",
+      "strategy": "table_exact",
+      "layer": "manual_input",
+      "extract_prompt": "业务人员手工填写；两份人工摘要未提供该字段时保持待填写，系统不得从其他材料推断。",
       "required": true
     },
     {
@@ -149,7 +150,7 @@
       "section_id": "1.1",
       "group": "项目正文",
       "label": "所属基础设施REITs行业领域",
-      "source_role": "project_overview_table",
+      "source_role": "user_summary",
       "source_label": "所属基础设施REITs行业领域",
       "strategy": "table_exact",
       "layer": "manual_input",
@@ -193,8 +194,8 @@
       "section_id": "1.1",
       "group": "项目正文",
       "label": "资产范围",
-      "source_role": "project_overview_table",
-      "source_label": "资产范围（线性工程填写起止地点；非线性工程填写项目四至）",
+      "source_role": "user_summary",
+      "source_label": "资产范围",
       "strategy": "table_exact",
       "layer": "manual_input",
       "required": true
@@ -204,8 +205,8 @@
       "section_id": "1.1",
       "group": "项目正文",
       "label": "项目建设规模合计（万元）",
-      "source_role": "project_overview_table",
-      "source_label": "项目建设规模合计（万元）",
+      "source_role": "user_summary",
+      "source_label": "建设规模合计（万元）",
       "strategy": "table_exact",
       "layer": "manual_input",
       "required": true
@@ -299,14 +300,25 @@
       "required": true
     },
     {
+      "id": "originator.short_name",
+      "section_id": "2.3",
+      "group": "基本信息",
+      "label": "原始权益人简称",
+      "source_role": "user_summary",
+      "source_label": "原始权益人简称",
+      "strategy": "table_exact",
+      "layer": "manual_input",
+      "extract_prompt": "读取用户摘要表中经业务确认的原始权益人简称；缺失时不得自行缩写公司名称。",
+      "required": true
+    },
+    {
       "id": "originator.legal_representative",
       "section_id": "2.3",
       "group": "基本信息",
       "label": "法定代表人",
-      "source_role": "originator_license",
-      "source_label": "法定代表人",
-      "strategy": "document_label",
-      "extract_prompt": "从原始权益人最新营业执照的“法定代表人”字段按原文提取；天眼查只做交叉核验。",
+      "source_role": "tianyancha",
+      "strategy": "external_company_lookup",
+      "extract_prompt": "通过天眼查查询当前原始权益人的法定代表人；主体不能唯一匹配或结果冲突时保留候选并提示业务人员确认。",
       "required": true
     },
     {
@@ -324,10 +336,9 @@
       "section_id": "2.3",
       "group": "基本信息",
       "label": "成立日期",
-      "source_role": "originator_license",
-      "source_label": "成立日期",
-      "strategy": "document_label",
-      "extract_prompt": "从原始权益人最新营业执照的“成立日期”字段按原文提取。",
+      "source_role": "tianyancha",
+      "strategy": "external_company_lookup",
+      "extract_prompt": "通过天眼查查询当前原始权益人的成立日期；主体不能唯一匹配或结果冲突时保留候选并提示业务人员确认。",
       "required": true
     },
     {
@@ -335,10 +346,9 @@
       "section_id": "2.3",
       "group": "基本信息",
       "label": "注册资本",
-      "source_role": "originator_license",
-      "source_label": "注册资本",
-      "strategy": "document_label",
-      "extract_prompt": "从原始权益人最新营业执照的“注册资本”字段提取数值和币种/单位，不丢失单位。",
+      "source_role": "tianyancha",
+      "strategy": "external_company_lookup",
+      "extract_prompt": "通过天眼查查询当前原始权益人的注册资本，保留数值、币种和单位；主体不能唯一匹配时不得猜测。",
       "required": true
     },
     {
@@ -346,10 +356,9 @@
       "section_id": "2.3",
       "group": "基本信息",
       "label": "注册地址",
-      "source_role": "originator_license",
-      "source_label": "住所",
-      "strategy": "document_label",
-      "extract_prompt": "从原始权益人最新营业执照的“住所”字段按原文提取，不自行标准化行政区划。",
+      "source_role": "tianyancha",
+      "strategy": "external_company_lookup",
+      "extract_prompt": "通过天眼查查询当前原始权益人的注册地址并按查询原文保留；主体不能唯一匹配时不得猜测。",
       "required": true
     },
     {
@@ -381,6 +390,30 @@
       "strategy": "external_public_search",
       "extract_prompt": "以原始权益人全称和申报基准日计算的最近12个月区间，查询基础设施 REITs 项目是否被国家发展改革委退回；无权威证据时填“无法确认”而不是“无”。",
       "required": true
+    },
+    {
+      "id": "originator.contact_name_title",
+      "section_id": "2.3",
+      "group": "基本信息",
+      "label": "项目联系人姓名及职务",
+      "source_role": "user_summary",
+      "source_label": "项目联系人姓名及职务",
+      "strategy": "table_exact",
+      "layer": "manual_input",
+      "extract_prompt": "仅由业务人员填写，不得联网搜索个人信息。",
+      "required": false
+    },
+    {
+      "id": "originator.contact_details",
+      "section_id": "2.3",
+      "group": "基本信息",
+      "label": "联系方式",
+      "source_role": "user_summary",
+      "source_label": "联系方式",
+      "strategy": "table_exact",
+      "layer": "manual_input",
+      "extract_prompt": "仅由业务人员填写，不得联网搜索个人信息。",
+      "required": false
     },
     {
       "id": "finance.accounting_standard",
@@ -586,8 +619,8 @@
       "label": "息税折旧摊销前利润（EBITDA）",
       "value_type": "amount",
       "unit": "万元",
-      "required": false,
-      "default_disabled": true
+      "extract_prompt": "按业务口径计算：净利润+固定资产折旧+投资性房地产折旧+油气资产折耗+生产性生物资产折旧+无形资产摊销+使用权资产摊销。优先定位现金流量表补充资料，不得重复加总；任一组成项缺失时留空并提示补充。",
+      "required": true
     },
     {
       "id": "operating_cash_flow",
@@ -694,25 +727,29 @@
     "1.1": {
       "id": "1",
       "title": "（一）项目概况",
+      "style_instructions": [
+        "参考示例的正式申报材料文体、事实组织顺序和量化表达",
+        "仅使用当前项目数据，不得复制示例中的名称、地址、日期、金额或结论",
+        "表格和事实字段保持原值，缺失信息按生成规则保留待补充提示"
+      ],
+      "style_examples": [
+        {
+          "source": "Know-how #示例#",
+          "reference_only": true,
+          "content": "本项目的基础设施资产为国金数据中心，位于江苏省苏州市昆山市花桥镇远创路558号。土地使用权面积19,999.50平方米，建筑面积35,376.70平方米，净机房面积15,181.00平方米，机柜数量4,192个，机柜电力设计容量29,044kw。基础设施资产于价值时点2024年9月30日的资产评估价值为21.95亿元人民币。本项目为拥有土地使用权的所有权类项目。"
+        }
+      ],
       "blocks": [
         {
           "type": "p",
-          "template": "本项目名称是{{project.name}}，标的资产为{{project.subproject_name}}，位于{{project.location_detail}}。资产范围为{{project.asset_scope}}，总体建设规模为{{project.scale_total}}万元，土地面积为{{project.land_area}}㎡，建筑面积为{{project.building_area}}㎡，机柜共{{project.cabinet_count}}个，于{{project.operation_start}}开始运营。{{project.subproject_name}}于价值时点{{project.valuation_date}}的资产评估值为{{project.appraisal_value}}亿元。本项目类型为{{project.type}}。",
+          "template": "本项目名称是{{project.name}}，标的资产为{{project.subproject_name}}，位于{{project.location}}。资产范围为{{project.asset_scope}}，总体建设规模为{{project.scale_total}}万元，土地面积为{{project.land_area}}㎡，建筑面积为{{project.building_area}}㎡，机柜共{{project.cabinet_count}}个，于{{project.operation_start}}开始运营。{{project.subproject_name}}于价值时点{{project.valuation_date}}的不动产评估净值为{{project.appraisal_net_value}}万元。本项目类型为{{project.type}}。",
           "field_formats": {
-            "project.location_detail": {
-              "fallback_field": "project.location",
-              "merge_location_field": "project.location"
-            },
-            "project.asset_scope": {
-              "truncate_before": ["，具体范围", "具体范围"]
-            },
-            "project.appraisal_value": {"divide": 10000, "decimals": 2}
+            "project.asset_scope": {}
           },
           "src_fields": [
             "project.name",
             "project.subproject_name",
             "project.location",
-            "project.location_detail",
             "project.asset_scope",
             "project.scale_total",
             "project.land_area",
@@ -720,7 +757,7 @@
             "project.cabinet_count",
             "project.operation_start",
             "project.valuation_date",
-            "project.appraisal_value",
+            "project.appraisal_net_value",
             "project.type"
           ]
         },
@@ -741,10 +778,27 @@
     "2.3": {
       "id": "3",
       "title": "（三）发起人（原始权益人）情况",
+      "style_instructions": [
+        "参考示例的正式申报材料文体、分层结构和财务分析方式",
+        "仅使用当前项目数据，不得复制示例中的名称、地址、日期、金额、结论或附件号",
+        "最近一期不是完整年度时不得与完整年度直接比较，原因没有底稿支持时只描述客观变化"
+      ],
+      "style_examples": [
+        {
+          "source": "Know-how #示例#",
+          "reference_only": true,
+          "content": "虚构示例分析：2022年至2024年，星河数字资产规模、营业收入和净利润持续增长，资产负债率总体下降，经营活动产生的现金流量净额保持为正。2025年1-6月为非完整年度，不与2024年全年直接比较；如需解释指标波动，应读取对应业务说明底稿。违法违规和信用情况分别成段说明，并分别引用承诺函和信用查询材料。"
+        }
+      ],
+      "repeat_by": {
+        "field_id": "originator.company_name",
+        "separator_regex": "[、,，;；/\\n]+",
+        "scoped_prefixes": ["originator.", "finance.", "compliance.", "credit."]
+      },
       "blocks": [
         {
           "type": "p",
-          "template": "1、{{originator.company_name}}",
+          "template": "{{repeat.index}}.【{{originator.company_name}}】",
           "src_fields": [
             "originator.company_name"
           ]
@@ -755,8 +809,13 @@
           "src_fields": []
         },
         {
+          "type": "p",
+          "template": "以下表格信息通过天眼查查询后填写；表格中已经写明填写要求的，按照填写要求填写。",
+          "src_fields": []
+        },
+        {
           "type": "kv",
-          "caption": "表 2-2 原始权益人基本信息表",
+          "caption": "表# 发起人（{{originator.company_name}}）基本信息",
           "src_fields": [
             "originator.company_name",
             "originator.legal_representative",
@@ -806,12 +865,12 @@
               "label": "最近12个月内申报的基础设施REITs项目被国家发展改革委退回情况"
             },
             {
-              "label": "项目联系人姓名及职务",
-              "value": "（待定）"
+              "field_id": "originator.contact_name_title",
+              "label": "项目联系人姓名及职务"
             },
             {
-              "label": "联系方式",
-              "value": "（待定）"
+              "field_id": "originator.contact_details",
+              "label": "联系方式"
             }
           ]
         },
@@ -821,19 +880,8 @@
           "src_fields": []
         },
         {
-          "type": "p",
-          "template": "{{originator.company_name}}最近3个会计年度及一期财务报表按照{{finance.accounting_standard}}编制。已审计年度由{{finance.auditor}}审计并出具{{finance.audit_opinion}}审计意见；最近一期{{finance.latest_period_status}}。财务数据均采用{{finance.scope}}口径。",
-          "src_fields": [
-            "finance.accounting_standard",
-            "finance.auditor",
-            "finance.audit_opinion",
-            "finance.latest_period_status",
-            "finance.scope"
-          ]
-        },
-        {
           "type": "financial_grid",
-          "caption": "表 2-3 原始权益人最近3个会计年度及一期主要财务指标",
+          "caption": "表# 发起人（{{originator.company_name}}）最近3个会计年度及一期主要财务指标",
           "src_role_prefix": "audit_report_",
           "src_quote": "合并财务报表及附注"
         },
@@ -861,11 +909,12 @@
         {
           "type": "p",
           "if_all": [
+            "originator.short_name",
             "compliance.violation_conclusion",
             "compliance.safety_conclusion",
             "compliance.commitment_quote"
           ],
-          "template": "{{originator.company_name}}近3年在投资建设、生产运营、市场监管、税务等方面{{compliance.violation_conclusion}}，{{compliance.safety_conclusion}}重大安全生产事故。{{compliance.commitment_date}}，{{originator.company_name}}出具《{{compliance.commitment_name}}》，就自身运营情况承诺：“{{compliance.commitment_quote}}”相关情况详见附件{{compliance.commitment_attachment}}。",
+          "template": "{{originator.short_name}}近3年在投资建设、生产运营、市场监管、税务等方面{{compliance.violation_conclusion}}，{{compliance.safety_conclusion}}重大安全生产事故。{{compliance.commitment_date}}，{{originator.short_name}}出具《{{compliance.commitment_name}}》，就自身运营情况承诺：“{{compliance.commitment_quote}}”。相关情况详见附件{{compliance.commitment_attachment}}。",
           "else_template": "【待补充或提取原始权益人运营情况承诺函及监管查询结果，不输出无违法违规结论】",
           "src_source_role": "originator_commitment",
           "src_quote": "运营情况承诺函"
@@ -878,9 +927,10 @@
         {
           "type": "p",
           "if_all": [
+            "originator.short_name",
             "credit.conclusion"
           ],
-          "template": "截至{{credit.cutoff_date}}，经查询{{credit.sites}}，基于查询结果，最近三年，{{originator.company_name}}{{credit.conclusion}}因严重违法失信行为被有权部门认定为失信被执行人、重大税收违法案件当事人或涉金融严重失信人的记录，详见附件{{credit.attachment}}。",
+          "template": "截至{{credit.cutoff_date}}，经查询{{credit.sites}}，基于查询结果，最近三年，{{originator.short_name}}{{credit.conclusion}}因严重违法失信行为被有权部门认定为失信被执行人、重大税收违法案件当事人或涉金融严重失信人的记录，详见附件{{credit.attachment}}。",
           "else_template": "【待更新或提取信用查询结果，不沿用方法论示例日期和结论】",
           "src_source_role": "originator_credit",
           "src_quote": "原始权益人信用记录查询结果"
@@ -900,8 +950,8 @@
     },
     "2.3": {
       "checklist": [
-        "公司名称必须与摘要表、营业执照和材料封面中的原始权益人一致；法定代表人/成立日期/注册资本/注册地址须与最新营业执照逐项一致，天眼查冲突以营业执照为准",
-        "资产负债率必须按表内总负债、总资产复算，差异超过 0.01 个百分点须报错；营业收入/净利润/经营现金流须与各期合并报表一致",
+        "原始权益人全称、简称和主体顺序须在用户填写摘要表、天眼查、财务报表、承诺函和信用查询材料之间一致",
+        "资产负债率必须按表内总负债、总资产复算，差异超过 0.01 个百分点须报错；营业收入、净利润、EBITDA和经营现金流须与各期报表或可定位计算底稿一致",
         "财务波动原因没有底稿支持时不得输出确定性原因",
         "违法违规结论与信用结论必须分别核验，不得用“无失信”替代“无重大违法违规”；信用记录如有命中项不得套用“不存在”表述",
         "不得使用方法论 #示例# 中的任何日期、结论或数值；承诺函/信用查询缺失时必须使用【待补充】类提示而非编造结论"

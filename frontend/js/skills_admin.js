@@ -43,7 +43,7 @@ async function skillsPageEnter() {
         return;
     }
     // 默认选中项排除已从列表隐藏的 chapter 项（见 _skRenderList），否则会选中一个看不见的条目。
-    const visible = SK_FILES.filter(f => f.kind !== 'chapter');
+    const visible = SK_FILES.filter(f => f.kind !== 'chapter' && f.kind !== 'section');
     if (!SK_CURRENT || !visible.find(f => f.rel === SK_CURRENT)) {
         SK_CURRENT = visible.length ? visible[0].rel : null;
     }
@@ -56,9 +56,7 @@ function _skRenderList() {
     // 这批文本只作为未来拆分成小节 Know-how 的原始素材保留在磁盘上，不在此处展示/编辑。
     const box = document.getElementById('skList');
     const globals = SK_FILES.filter(f => f.kind === 'global');
-    const sections = SK_FILES.filter(f => f.kind === 'section');
     const compiled = SK_FILES.filter(f => String(f.kind || '').startsWith('compiled_'));
-    const configuredCount = sections.filter(f => f.configured).length;
     const item = f => `
         <div class="sk-item ${f.rel === SK_CURRENT ? 'active' : ''}" onclick="skSelect('${_skEsc(f.rel)}')">
             <span class="sk-item-label">${_skEsc(f.label)}</span>
@@ -66,9 +64,7 @@ function _skRenderList() {
             ${f.overridden ? '<span class="sk-dot" title="已被用户修改"></span>' : ''}
         </div>`;
     box.innerHTML = `
-        <div class="sk-group-title">小节 Know-how（已配置 ${configuredCount} / 共 ${sections.length} 节）</div>
-        ${sections.map(item).join('')}
-        <div class="sk-group-title">已编译 · 可执行三件套</div>
+        <div class="sk-group-title">小节可执行三件套</div>
         ${compiled.map(item).join('')}
         <div class="sk-group-title">全局</div>
         ${globals.map(item).join('')}`;
@@ -372,6 +368,7 @@ function skRenderMd(md) {
         if (tableBuf && tableBuf.length) {
             const rows = tableBuf.filter(r => !/^\s*\|?[\s:|-]+\|?\s*$/.test(r));
             const head = rows.shift();
+            if (!head) { tableBuf = null; return; }
             const cells = r => r.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
             let html = '<table><thead><tr>' + cells(head).map(c => `<th>${_skInline(c)}</th>`).join('') + '</tr></thead><tbody>';
             html += rows.map(r => '<tr>' + cells(r).map(c => `<td>${_skInline(c)}</td>`).join('') + '</tr>').join('');

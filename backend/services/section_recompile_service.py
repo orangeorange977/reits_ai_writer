@@ -32,6 +32,22 @@ def _strip_json_fence(raw: str) -> str:
     return re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=re.I)
 
 
+def _knowhow_examples(know_how_text: str) -> list[dict]:
+    """Keep the user's example verbatim in the executable generation Skill.
+
+    Examples are reference material, never project facts.  Storing them in the
+    compiled artifact (instead of loading Know-how at generation time) preserves
+    the hard boundary between authoring input and the runtime Skill.
+    """
+    match = re.search(r"(?ims)^#{1,6}\s*#?示例#?\s*$\n?(.*)$", know_how_text or "")
+    content = (match.group(1).strip() if match else "")
+    return ([{
+        "source": "Know-how #示例#",
+        "reference_only": True,
+        "content": content[:16000],
+    }] if content else [])
+
+
 def _read_rules(pack_id: str | None = None, use_default: bool = False) -> dict:
     path = pack_service.pack_path(_RULES_REL, pack_id) if use_default else pack_service.skill_text_path(_RULES_REL, pack_id)
     if not path.exists():
@@ -180,9 +196,14 @@ def _remove_section_fields(fields: list[dict], section_id: str) -> list[dict]:
 
 def _merge_fields(existing: list[dict], incoming: list[dict], section_id: str) -> tuple[list[dict], dict[str, str], dict]:
     """Merge the target section into the global dictionary and return aliases/report."""
+    previous_by_id = {str(field.get("id")): field for field in existing if field.get("id")}
     candidates = _remove_section_fields(existing, section_id)
     for raw in incoming:
         field = deepcopy(raw)
+        previous = previous_by_id.get(str(field.get("id", ""))) or {}
+        for key in ("layer", "value_type", "unit"):
+            if key not in field and key in previous:
+                field[key] = deepcopy(previous[key])
         field["section_id"] = section_id
         field["used_by_sections"] = sorted(set(_sections(field) + [section_id]))
         candidates.append(field)
@@ -283,6 +304,15 @@ def _validate_compiled(payload: dict, section_id: str) -> list[str]:
     if not isinstance(template, dict) or not isinstance(template.get("blocks"), list) or not template.get("blocks"):
         errors.append(f"generation_templates.{section_id} 缺少非空 blocks")
     else:
+        repeat = template.get("repeat_by")
+        if repeat is not None and not (
+                isinstance(repeat, str) and repeat.strip()
+                or isinstance(repeat, dict) and str(repeat.get("field_id", "")).strip()):
+            errors.append(f"generation_templates.{section_id}.repeat_by 必须是字段 ID 或含 field_id 的对象")
+        examples = template.get("style_examples", [])
+        if not isinstance(examples, list) or any(
+                not isinstance(item, (str, dict)) for item in examples):
+            errors.append(f"generation_templates.{section_id}.style_examples 必须是字符串或对象数组")
         for idx, block in enumerate(template["blocks"]):
             if not isinstance(block, dict) or block.get("type") not in _ALLOWED_BLOCK_TYPES:
                 errors.append(f"generation_templates.{section_id}.blocks[{idx}] 的 type 未知或缺失（只能是 {'/'.join(sorted(_ALLOWED_BLOCK_TYPES))}）")
@@ -395,6 +425,13 @@ def recompile(section_id: str, know_how_text: str, pack_id: str | None = None) -
     prompt = (
         "你是REITs申报材料系统的规则编译器。把下面业务 Know-how 编译为可执行 JSON，目标小节固定为 "
         f"{section_id}。顶层必须是 source_roles / fields / generation_templates / audit_checks。\n"
+        "先按职责拆分，严禁把 Know-how 整篇复制到任一产物：\n"
+        "- Word/YAML 中的版本、日期、修订人、审核人、状态、来源文件和导入时间属于文档管理元数据，三件套全部忽略；\n"
+        "- #资料来源#、文件选择、字段定位、抽取/换算口径只进入 source_roles/fields/financial_metrics；\n"
+        "- #模板# 的最终正文结构、固定文字、表格、标题、多主体循环和缺失时如何显示，只进入 generation_templates；必须完整保留所有要求输出的正文结构，不得过度删减；\n"
+        "- #一致性校验# 原则上只进入 audit_checks，不得塞进生成模板；只有防止错误成文所必需的门槛，才转成 if_all/else_template；\n"
+        "- #示例# 必须保留到 generation_templates.<section>.style_examples，作为语言、结构和分析方式参考；"
+        "示例不是项目事实，禁止把其中名称、日期、金额、结论或附件号用于当前项目。\n"
         "source_roles 只列本节新增或修改的语义材料角色，包含 id/label/required/match_prompt；"
         "项目文件使用 selector（document_type/extensions/filename_keywords_any/filename_keywords_all/"
         "path_keywords_any/exclude_keywords_any/subject_ref/repeat_by）。禁止写具体项目名、公司名、文件名、路径或年份。\n"
@@ -407,7 +444,11 @@ def recompile(section_id: str, know_how_text: str, pack_id: str | None = None) -
         "最近三年及一期财务指标写入 financial_metrics，年份由申报基准日在项目运行时绑定，"
         "禁止生成 finance.xxx.2024 或 audit_report_2024 这类实例规则。"
         "strategy 只能是 table_exact、regex:<正则>、document_label、document_conclusion、document_list、external_company_lookup、external_public_search、document_search、derived_analysis、manual。\n"
-        "generation_templates 的 block.type 只能是 p/kv/overview_table/financial_grid；p 用 {{field.id}}，kv 用 rows.field_id。\n"
+        "generation_templates 的 block.type 只能是 p/kv/overview_table/financial_grid；p 用 {{field.id}}，kv 用 rows.field_id。"
+        "Know-how 要求多个主体逐一完整输出时，generation_templates.<section>.repeat_by 必须设置为"
+        "{\"field_id\":\"主体清单字段\",\"separator_regex\":\"[、,，;；/\\\\n]+\","
+        "\"scoped_prefixes\":[\"originator.\",\"finance.\",\"compliance.\",\"credit.\"]}，"
+        "循环序号使用 {{repeat.index}}，当前主体使用该 field_id；表格 caption 也允许字段占位符。\n"
         "Know-how 明确写“待定”或固定模板文字、且没有材料来源的表格项，应写成 kv.rows 的静态 value，不要创建数据底座字段。\n"
         "audit_checks.checklist 从一致性校验、缺失处理和来源要求提炼。禁止把 #示例# 的数值、名称、日期或结论当真实值。只输出 JSON。\n\n"
         "全局已存在字段目录（跨全部小节，source_role+source_label 相同即视为同一事实，必须复用其 id）：\n"
@@ -421,6 +462,16 @@ def recompile(section_id: str, know_how_text: str, pack_id: str | None = None) -
         payload = _prepare_payload(json.loads(raw), section_id)
     except Exception as exc:
         return {"ok": False, "errors": [f"AI 输出不是合法 JSON：{exc}"], "preview": None, "raw": raw[:2000]}
+    # 示例由确定性代码从 Know-how 原文复制，避免模型漏掉、改写或把示例事实
+    # 混入 blocks。运行时只读取编译后的 generation Skill，不回读 Know-how。
+    template = (payload.get("generation_templates") or {}).get(section_id)
+    if isinstance(template, dict):
+        template["style_examples"] = _knowhow_examples(know_how_text)
+        template.setdefault("style_instructions", [
+            "参考示例的正式申报材料文体、段落组织和分析方式",
+            "仅使用当前项目数据，不得复制示例中的名称、日期、金额、结论或附件号",
+            "表格和事实字段保持原值，缺失信息按生成规则保留待补充提示",
+        ])
     errors = _validate_compiled(payload, section_id)
     if errors:
         return {"ok": False, "errors": errors, "preview": payload}

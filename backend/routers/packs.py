@@ -3,12 +3,13 @@
 列出可用模板包（供新建项目时选"材料模板"）与单包详情（manifest + 章节结构）。
 """
 
+import asyncio
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from pydantic import BaseModel
 
-from backend.services import pack_service, section_skill_service, section_recompile_service
+from backend.services import pack_service, section_skill_service, section_recompile_service, knowhow_import_service
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,24 @@ async def get_skill(pack_id: str, rel: str):
 class SkillSaveBody(BaseModel):
     rel: str
     content: str
+
+
+@router.post("/{pack_id}/knowhow/import")
+async def import_knowhow(pack_id: str, http_req: Request,
+                         files: list[UploadFile] = File(...), section_id: str = Form("")):
+    """Extract DOCX Know-how for preview. It never overwrites a Skill by itself."""
+    _require_admin(http_req)
+    try:
+        sections = section_skill_service.list_all_official_sections(pack_id=pack_id)
+        payload = [(item.filename or "know-how.docx", await item.read()) for item in files]
+        result = await asyncio.to_thread(
+            knowhow_import_service.import_docx_files, payload, sections, section_id.strip())
+        return {"ok": True, **result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("导入 Know-how 失败: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"导入 Know-how 失败：{exc}")
 
 
 @router.post("/{pack_id}/skill/save")

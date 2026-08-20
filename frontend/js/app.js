@@ -1511,6 +1511,7 @@ let _foundationData = null;
 let _foundationRules = null;
 let _foundationDocuments = [];
 let _extractPollTimer = null;
+let _sectionExtractPollTimer = null;
 
 /** 申报材料页默认落地状态：只提示从左侧选小节，不再默认显示数据提取内容
  * ——数据提取现在是独立侧边栏页面，两处职责分开。 */
@@ -2297,9 +2298,11 @@ function _renderSkillSectionDetail(sectionId) {
     const d = _skillSectionData || {}, cfg = d.config || {};
     if (!container) return;
     container.innerHTML = `
-        <div class="chapter-detail-header"><div><h3>${_escHtmlAttr(sectionId)} ${_escHtmlAttr(cfg.title || '')}</h3><div class="text-muted text-sm">${_escHtmlAttr(cfg.chapter_title || '')}</div></div><div class="flex gap-8"><button class="btn btn-ghost btn-sm" onclick="goToKnowhow('${sectionId}')">查看 Know-how 原文</button><button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(${cfg.chapter_n || 0})" title="下载第${cfg.chapter_n || ''}章完整 Word（含本章全部小节，不止这一节）">下载本章 Word</button><button class="btn btn-ghost btn-sm" onclick="auditSkillSection('${sectionId}',${cfg.chapter_n || 0},'${_escHtmlAttr(cfg.title || '')}')">审核本小节</button><button class="btn btn-primary" onclick="generateSkillSectionUI('${sectionId}')">${d.generated ? '重新生成本小节' : '生成本小节'}</button></div></div>
+        <div class="chapter-detail-header"><div><h3>${_escHtmlAttr(sectionId)} ${_escHtmlAttr(cfg.title || '')}</h3><div class="text-muted text-sm">${_escHtmlAttr(cfg.chapter_title || '')}</div></div><div class="flex gap-8"><button class="btn btn-ghost btn-sm" onclick="goToKnowhow('${sectionId}')">查看 Know-how 原文</button><button class="btn btn-ghost btn-sm" id="btnExtractSection" onclick="extractSectionDataUI('${sectionId}')" title="只读取本小节 Know-how 涉及的字段，不影响其他小节">提取本节数据</button><button class="btn btn-ghost btn-sm" onclick="downloadChapterWord(${cfg.chapter_n || 0})" title="下载第${cfg.chapter_n || ''}章完整 Word（含本章全部小节，不止这一节）">下载本章 Word</button><button class="btn btn-ghost btn-sm" id="btnAuditSection" onclick="auditSkillSection('${sectionId}',${cfg.chapter_n || 0},'${_escHtmlAttr(cfg.title || '')}')">审核本小节</button><button class="btn btn-primary" id="btnGenerateSection" onclick="generateSkillSectionUI('${sectionId}')">${d.generated ? '重新生成本小节' : '生成本小节'}</button></div></div>
         <div class="chapter-detail-body">
             <div class="section-generation-note">生成只读取当前数据中间层和该小节 Know-how，不会调用旧的大章 Agent，也不会改动同章其他小节。</div>
+            <div id="sectionExtractStatus"></div>
+            <div id="sectionAuditResult"></div>
             ${d.generated ? `
                 <div class="sk-seg" style="margin-bottom:12px">
                     <div class="sk-seg-item ${_skillSectionView === 'result' ? 'active' : ''}" onclick="_switchSkillSectionView('result','${sectionId}')">生成结果 · 可溯源</div>
@@ -2311,6 +2314,57 @@ function _renderSkillSectionDetail(sectionId) {
     if (d.generated && _skillSectionView === 'word') {
         _loadSkillSectionWordPreview(sectionId);
     }
+}
+
+/** 只提取当前小节 Know-how 引用的字段（按 used_in_sections 圈定 field_ids/来源文件），
+ * 不重跑其余约 29 个小节的数据——修改/新增一个小节的 Know-how 后不必等一次全量提取。 */
+async function extractSectionDataUI(sectionId) {
+    const btn = document.getElementById('btnExtractSection');
+    const status = document.getElementById('sectionExtractStatus');
+    if (btn) { btn.disabled = true; btn.textContent = '提取中…'; }
+    if (status) status.innerHTML = `<div class="extraction-progress-card" style="margin:12px 0">
+        <div class="extraction-progress-head"><b>正在提取本小节数据</b><span id="sectionExtractPct">0%</span></div>
+        <div class="progress-bar"><div class="progress-fill blue" id="sectionExtractFill" style="width:0%"></div></div>
+        <p id="sectionExtractMsg">已进入提取队列</p></div>`;
+    try {
+        await API.startSectionDataExtraction(sectionId);
+        _pollSectionExtraction(sectionId);
+    } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = '提取本节数据'; }
+        if (status) status.innerHTML = '';
+        showToast('启动提取失败：' + e.message, 'error');
+    }
+}
+
+function _pollSectionExtraction(sectionId) {
+    if (_sectionExtractPollTimer) clearInterval(_sectionExtractPollTimer);
+    const tick = async () => {
+        try {
+            const job = await API.getDataExtractionStatus();
+            if (job.status === 'running') {
+                const pct = document.getElementById('sectionExtractPct');
+                const fill = document.getElementById('sectionExtractFill');
+                const msg = document.getElementById('sectionExtractMsg');
+                if (pct) pct.textContent = `${job.percent || 0}%`;
+                if (fill) fill.style.width = `${job.percent || 0}%`;
+                if (msg) msg.textContent = job.message || '';
+                return;
+            }
+            clearInterval(_sectionExtractPollTimer); _sectionExtractPollTimer = null;
+            const btn = document.getElementById('btnExtractSection');
+            if (btn) { btn.disabled = false; btn.textContent = '提取本节数据'; }
+            const status = document.getElementById('sectionExtractStatus');
+            if (job.status === 'done') {
+                if (status) status.innerHTML = `<div class="foundation-alert" style="margin:12px 0">✓ ${_escHtmlAttr(job.message || '提取完成')}</div>`;
+                await renderChapterStepper();
+                showToast('本小节数据提取完成，可点击“生成本小节”查看结果', 'success');
+            } else if (job.status === 'error') {
+                if (status) status.innerHTML = `<div class="foundation-error" style="margin:12px 0">提取失败：${_escHtmlAttr(job.error || '')}</div>`;
+            }
+        } catch (_) {}
+    };
+    tick();
+    _sectionExtractPollTimer = setInterval(tick, 2000);
 }
 
 function _switchSkillSectionView(view, sectionId) {
@@ -2334,13 +2388,19 @@ async function _loadSkillSectionWordPreview(sectionId) {
 }
 
 async function generateSkillSectionUI(sectionId) {
+    const btn = document.getElementById('btnGenerateSection');
+    const oldText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '正在生成…'; }
     try {
         const resp = await API.generateSkillSection(sectionId);
-        showToast(resp.message || '小节生成完成');
+        showToast(resp.message || '小节生成完成', 'success');
         _previewCache = {};
         await renderChapterStepper();
         await selectSkillSection(sectionId);
-    } catch (e) { showToast('小节生成失败：' + e.message, 'error'); }
+    } catch (e) {
+        showToast('小节生成失败：' + e.message, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = oldText; }
+    }
 }
 
 /** 一次生成某章全部已配置二级小节；这是小节 Skill 的批处理，不回退调用旧大章 Agent。 */
@@ -2387,11 +2447,24 @@ function _renderChapterBatchResult(data) {
         </div>`;
 }
 
+/** 按规则+该小节自己的 audit_checks.checklist 跑一次 AI 审核，结果就地渲染在小节详情页，
+ * 不再只提示"去报告审核查看"——业务点了就要当场看到有没有问题。 */
 async function auditSkillSection(sectionId, chapterN, title) {
+    const btn = document.getElementById('btnAuditSection');
+    const result = document.getElementById('sectionAuditResult');
+    if (btn) { btn.disabled = true; btn.textContent = '审核中…'; }
+    if (result) result.innerHTML = '<div class="text-muted text-sm" style="padding:8px 0">正在审核本小节（规则检查 + AI），可能需要几秒到几十秒…</div>';
     try {
-        await API.runReportAudit({scope:'chapter', chapter_n:chapterN, section_title:title, use_ai:true});
-        showToast('小节审核完成，可在“报告审核”查看问题');
-    } catch (e) { showToast('小节审核失败：' + e.message, 'error'); }
+        const resp = await API.runReportAudit({scope:'chapter', chapter_n:chapterN, section_title:title, use_ai:true});
+        const run = (resp.data && resp.data.runs || {})[sectionId];
+        if (result) result.innerHTML = `<div style="margin:12px 0">${_auditRunHtml(run)}</div>`;
+        showToast(run ? `本小节审核完成：共 ${run.stats?.total || 0} 项` : '本小节审核完成', 'success');
+    } catch (e) {
+        if (result) result.innerHTML = `<div class="foundation-error" style="margin:12px 0">审核失败：${_escHtmlAttr(e.message)}</div>`;
+        showToast('小节审核失败：' + e.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '审核本小节'; }
+    }
 }
 
 async function selectReportAudit() {
@@ -2399,7 +2472,16 @@ async function selectReportAudit() {
     const container = document.getElementById('chapterDetail');
     if (!container) return;
     container.innerHTML = `
-        <div class="chapter-detail-header"><div><h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">报告审核</h3><div class="text-muted text-sm" style="margin-top:4px">审核对象是生成后的报告，不是数据中间层；意见仅提示，永远不阻止 Word 导出</div></div><div class="flex gap-8"><button class="btn btn-ghost btn-sm" onclick="runFullReportAudit(false)">仅规则检查</button><button class="btn btn-ghost btn-sm" onclick="runFullReportAudit(true)">运行完整 AI 审核</button><button class="btn btn-primary btn-sm" onclick="runWholeReportAudit()" title="全部小节都写完之后运行一次，只找跨小节才能发现的矛盾；校验要点在 Skill 管理页的“全文一致性校验 Know-how”里维护">运行全文一致性校验</button></div></div>
+        <div class="chapter-detail-header">
+            <div><h3 style="font-size:14px;font-weight:600;color:var(--text-primary)">报告审核</h3><div class="text-muted text-sm" style="margin-top:4px">审核对象是生成后的报告，不是数据中间层；意见仅提示，永远不阻止 Word 导出。共两个来源：各小节自己的审核清单（下方“小节审核”），和跨小节才发现得了的矛盾（下方“全文一致性校验”，独立 SKILL，与小节清单无关）</div></div>
+            <div class="flex gap-8" style="align-items:center">
+                <label class="text-sm flex items-center gap-4" style="cursor:pointer" title="不勾选则只跑确定性规则检查，不调用 AI">
+                    <input type="checkbox" id="reportAuditUseAi" checked>AI 审核
+                </label>
+                <button class="btn btn-ghost btn-sm" onclick="runFullReportAudit()" title="按各小节自己 Know-how 里的审核清单逐节检查">运行小节审核（全部小节）</button>
+                <button class="btn btn-primary btn-sm" onclick="runWholeReportAudit()" title="全部小节都写完之后运行一次，只找单看一节发现不了、放一起才能看出的跨小节矛盾（主体名称、日期、数字口径等）；由独立的“全文一致性校验 SKILL”驱动，与小节自己的审核清单是两回事">运行全文一致性校验（跨小节）</button>
+            </div>
+        </div>
         <div class="chapter-detail-body" id="reportAuditBody"><div class="text-muted" style="padding:16px">正在加载审核结果…</div></div>`;
     await loadReportAudit();
 }
@@ -2424,6 +2506,13 @@ function _renderWholeReportAudit(wr) {
     </details>`;
 }
 
+/** 单个小节审核结果的展示块；小节详情页的就地展示和报告审核页的列表共用同一段标记，
+ * 避免两处各写一份、慢慢改出不一致。 */
+function _auditRunHtml(run) {
+    if (!run) return '<div class="text-muted text-sm" style="padding:8px 0">尚无本节审核结果</div>';
+    return `<details class="audit-run" open><summary><span>${_escHtmlAttr(run.title || run.key)}</span><em>${run.stats?.total || 0} 项 · AI ${run.ai_status === 'completed' ? '已完成' : (run.ai_status === 'failed' ? '失败，已保留规则检查' : '未配置或无新增问题')}</em></summary>${run.ai_error ? `<div class="foundation-alert warn">AI 审核失败：${_escHtmlAttr(run.ai_error)}。不影响导出。</div>` : ''}${String(run.section_id || '').includes('.') && ((run.issues || []).length || run.ai_status === 'failed') ? `<div style="padding:8px 12px"><button class="btn btn-primary btn-sm" onclick="regenerateAuditSection('${_escHtmlAttr(run.section_id)}')">重新生成并审核该小节</button></div>` : ''}<div class="audit-issues">${(run.issues || []).length ? (run.issues || []).map(issue => `<div class="audit-issue ${issue.severity || 'warning'}"><span>${issue.severity === 'error' ? '错误' : (issue.severity === 'info' ? '提示' : '警告')}</span><div><b>${_escHtmlAttr(issue.description || '')}</b><small>${_escHtmlAttr(issue.location || '')}</small>${issue.suggestion ? `<p>建议：${_escHtmlAttr(issue.suggestion)}</p>` : ''}${issue.evidence ? `<details><summary>查看依据</summary><pre>${_escHtmlAttr(issue.evidence)}</pre></details>` : ''}</div></div>`).join('') : '<div class="audit-clean">✓ 本轮未发现问题</div>'}</div></details>`;
+}
+
 function renderReportAudit(data) {
     const body = document.getElementById('reportAuditBody');
     if (!body) return;
@@ -2432,7 +2521,7 @@ function renderReportAudit(data) {
     body.innerHTML = `
         <div class="foundation-flow"><span>已审核小节 <b>${runs.length}</b></span><i>→</i><span>错误 <b>${issues.filter(i => i.severity === 'error').length}</b></span><i>→</i><span>警告 <b>${issues.filter(i => i.severity === 'warning').length}</b></span><i>→</i><span>提示 <b>${issues.filter(i => i.severity === 'info').length}</b></span></div>
         ${_renderWholeReportAudit(data.whole_report)}
-        ${!runs.length ? '<div class="foundation-empty"><h4>尚无小节审核结果</h4><p>生成小节后会自动审核该节；也可以点击“运行完整 AI 审核”复核当前全部报告。</p></div>' : runs.map(run => `<details class="audit-run" open><summary><span>${_escHtmlAttr(run.title || run.key)}</span><em>${run.stats?.total || 0} 项 · AI ${run.ai_status === 'completed' ? '已完成' : (run.ai_status === 'failed' ? '失败，已保留规则检查' : '未配置或无新增问题')}</em></summary>${run.ai_error ? `<div class="foundation-alert warn">AI 审核失败：${_escHtmlAttr(run.ai_error)}。不影响导出。</div>` : ''}${String(run.section_id || '').includes('.') && ((run.issues || []).length || run.ai_status === 'failed') ? `<div style="padding:8px 12px"><button class="btn btn-primary btn-sm" onclick="regenerateAuditSection('${_escHtmlAttr(run.section_id)}')">重新生成并审核该小节</button></div>` : ''}<div class="audit-issues">${(run.issues || []).length ? (run.issues || []).map(issue => `<div class="audit-issue ${issue.severity || 'warning'}"><span>${issue.severity === 'error' ? '错误' : (issue.severity === 'info' ? '提示' : '警告')}</span><div><b>${_escHtmlAttr(issue.description || '')}</b><small>${_escHtmlAttr(issue.location || '')}</small>${issue.suggestion ? `<p>建议：${_escHtmlAttr(issue.suggestion)}</p>` : ''}${issue.evidence ? `<details><summary>查看依据</summary><pre>${_escHtmlAttr(issue.evidence)}</pre></details>` : ''}</div></div>`).join('') : '<div class="audit-clean">✓ 本轮未发现问题</div>'}</div></details>`).join('')}`;
+        ${!runs.length ? '<div class="foundation-empty"><h4>尚无小节审核结果</h4><p>生成小节后会自动审核该节；也可以点击“运行小节审核”复核当前全部报告。</p></div>' : runs.map(run => _auditRunHtml(run)).join('')}`;
 }
 
 async function regenerateAuditSection(sectionId) {
@@ -2462,16 +2551,17 @@ async function runWholeReportAudit() {
     }
 }
 
-async function runFullReportAudit(useAi) {
+async function runFullReportAudit() {
+    const useAi = document.getElementById('reportAuditUseAi')?.checked !== false;
     const body = document.getElementById('reportAuditBody');
-    if (body) body.insertAdjacentHTML('afterbegin', `<div class="foundation-alert warn" id="auditRunning">正在${useAi ? '逐小节运行 AI 审核' : '执行规则检查'}；审核意见不会阻止导出，请稍候…</div>`);
+    if (body) body.insertAdjacentHTML('afterbegin', `<div class="foundation-alert warn" id="auditRunning">正在${useAi ? '逐小节运行规则检查 + AI 审核' : '逐小节执行规则检查'}；审核意见不会阻止导出，请稍候…</div>`);
     try {
-        const resp = await API.runReportAudit({scope:'report', use_ai:!!useAi});
+        const resp = await API.runReportAudit({scope:'report', use_ai:useAi});
         renderReportAudit(resp.data || {});
-        showToast('报告审核完成；结果仅供业务复核，不阻止 Word 导出');
+        showToast('小节审核完成；结果仅供业务复核，不阻止 Word 导出');
     } catch (e) {
         document.getElementById('auditRunning')?.remove();
-        showToast('报告审核失败：' + e.message, 'error');
+        showToast('小节审核失败：' + e.message, 'error');
     }
 }
 

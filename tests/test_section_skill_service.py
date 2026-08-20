@@ -61,6 +61,36 @@ class GenerateChapterSectionsTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "尚未配置"):
             service.generate_chapter_sections("p1", 4, "pack")
 
+    @patch("backend.services.kimi_client.chat")
+    def test_real_generation_skill_examples_polish_prose_and_keep_citations(self, chat):
+        chat.return_value = '{"paragraphs":[{"index":0,"text":"经核验，本项目总资产为100万元，相关事实均来自当前项目底稿。"}]}'
+        draft = {"id": "1", "title": "测试", "blocks": [{
+            "type": "p", "text": "本项目总资产为100万元，数据来自当前项目底稿。", "src": "材料",
+            "provenance": [{"display_value": "100", "start": 7, "end": 10, "sources": [{"path": "a.pdf"}]}],
+        }]}
+        skill = {"style_instructions": ["正式申报文体"], "style_examples": [{
+            "reference_only": True, "content": "示例公司总资产为999万元。",
+        }]}
+        result, mode, note = service._polish_with_generation_skill(draft, skill)
+        chat.assert_called_once()
+        self.assertEqual(mode, "generation_skill_ai")
+        self.assertIn("经核验", result["blocks"][0]["text"])
+        citation = result["blocks"][0]["provenance"][0]
+        self.assertEqual(result["blocks"][0]["text"][citation["start"]:citation["end"]], "100")
+        self.assertIn("1 个", note)
+
+    @patch("backend.services.kimi_client.chat")
+    def test_real_generation_skill_rejects_example_fact_leak(self, chat):
+        chat.return_value = '{"paragraphs":[{"index":0,"text":"星河数字总资产为999万元，属于虚构示例。"}]}'
+        draft = {"id": "1", "title": "测试", "blocks": [{
+            "type": "p", "text": "当前项目总资产为100万元，相关数据来自项目底稿。", "provenance": [],
+        }]}
+        skill = {"style_examples": [{"reference_only": True, "content": "星河数字总资产为999万元。"}]}
+        result, mode, _ = service._polish_with_generation_skill(draft, skill)
+        chat.assert_called_once()
+        self.assertEqual(mode, "skill_template_fallback")
+        self.assertEqual(result, draft)
+
 
 if __name__ == "__main__":
     unittest.main()

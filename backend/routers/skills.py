@@ -327,6 +327,22 @@ def _foundation_required_paths(data: dict | None) -> list[str]:
     ]
 
 
+def _section_extraction_scope(data: dict | None, section_id: str) -> tuple[set[str], set[str]]:
+    """field_ids + source paths a single small section actually reads, derived from
+    each field's ``used_in_sections`` (see _fields_used_in_sections) so a Know-how edit
+    can be re-extracted without re-running every other section's fields."""
+    fields = (data or {}).get("fields", [])
+    field_ids = {f.get("id") for f in fields if section_id in (f.get("used_in_sections") or [])}
+    roles = {(f.get("rule") or {}).get("source_role") for f in fields if f.get("id") in field_ids}
+    sources_by_role = {s.get("role"): s for s in (data or {}).get("sources", [])}
+    target_paths = {
+        sources_by_role[role]["path"] for role in roles
+        if role in sources_by_role and sources_by_role[role].get("status") == "located"
+        and sources_by_role[role].get("path")
+    }
+    return field_ids, target_paths
+
+
 class DocumentBuildBody(BaseModel):
     paths: list[str] = []
     required_only: bool = False
@@ -475,6 +491,7 @@ class FoundationRuleUpdateBody(BaseModel):
 
 class FoundationExtractBody(BaseModel):
     force: bool = False
+    section_id: str = ""
 
 
 class FoundationFileReextractBody(BaseModel):
@@ -670,8 +687,10 @@ _foundation_extract_jobs: dict[str, dict] = {}
 _foundation_extract_tasks: dict[str, asyncio.Task] = {}
 
 
-async def _run_foundation_extraction(project_id: str, pack_id: str | None, force: bool):
+async def _run_foundation_extraction(project_id: str, pack_id: str | None, force: bool,
+                                     section_id: str = ""):
     pid = _norm_pid(project_id)
+    scoped = bool(section_id)
 
     def progress(stage: str, percent: int, message: str):
         _foundation_extract_jobs[pid] = {
@@ -685,7 +704,17 @@ async def _run_foundation_extraction(project_id: str, pack_id: str | None, force
         progress("rules", 12, "按当前可编辑规则定位底稿")
         foundation = await asyncio.to_thread(
             data_foundation_service.build_foundation, pid or None, pack_id)
-        required = _foundation_required_paths(foundation)
+
+        field_ids: set[str] | None = None
+        target_paths: set[str] | None = None
+        if scoped:
+            field_ids, target_paths = _section_extraction_scope(foundation, section_id)
+            if not field_ids:
+                raise ValueError(f"小节 {section_id} 没有引用任何数据中间层字段，无需单独提取")
+            required = sorted(target_paths)
+        else:
+            required = _foundation_required_paths(foundation)
+
         progress("documents", 20, f"构建 {len(required)} 份目标底稿 Markdown")
         if required:
             await asyncio.to_thread(
@@ -693,20 +722,25 @@ async def _run_foundation_extraction(project_id: str, pack_id: str | None, force
                 pid or None, required, False, force)
         progress("documents", 35, "从营业执照、承诺函、信用报告和财报关键页提取事实")
         await asyncio.to_thread(
-            data_foundation_service.deep_extract_foundation, pid or None, pack_id, force)
+            data_foundation_service.deep_extract_foundation, pid or None, pack_id, force,
+            target_paths, field_ids)
         progress("rules", 76, "按可编辑规则合并执行其余底稿字段提取")
         await asyncio.to_thread(
-            data_foundation_service.extract_rule_driven_fields, pid or None, pack_id, force)
+            data_foundation_service.extract_rule_driven_fields, pid or None, pack_id, force,
+            field_ids, target_paths)
         progress("external", 86, "调用天眼查并联网搜索公开信息")
         data = await asyncio.to_thread(
-            data_foundation_service.extract_external_foundation, pid or None, pack_id, force)
-        progress("documents", 92, "为项目目录其余材料建立一文件一 Markdown 底稿")
-        await asyncio.to_thread(
-            document_pipeline_service.build_project,
-            pid or None, None, False, force)
+            data_foundation_service.extract_external_foundation, pid or None, pack_id, force,
+            field_ids)
+        if not scoped:
+            progress("documents", 92, "为项目目录其余材料建立一文件一 Markdown 底稿")
+            await asyncio.to_thread(
+                document_pipeline_service.build_project,
+                pid or None, None, False, force)
         _foundation_extract_jobs[pid] = {
             "status": "done", "stage": "completed", "percent": 100,
-            "message": "数据提取完成，可检查规则、来源和字段后按章批量生成或按小节精修",
+            "message": (f"小节 {section_id} 相关字段提取完成（共 {len(field_ids)} 个），未涉及其余小节"
+                       if scoped else "数据提取完成，可检查规则、来源和字段后按章批量生成或按小节精修"),
             "error": None, "data": data,
         }
         await touch_project_updated_at(pid)
@@ -721,19 +755,25 @@ async def _run_foundation_extraction(project_id: str, pack_id: str | None, force
 @router.post("/data-foundation/extract")
 async def start_data_foundation_extraction(body: FoundationExtractBody, http_req: Request,
                                            project_id: str = ""):
-    """User-triggered full extraction. Uploading files alone never starts AI/OCR/external calls."""
+    """User-triggered extraction. Uploading files alone never starts AI/OCR/external calls.
+
+    ``section_id`` scopes the run to just the fields one small section reads (see
+    ``_section_extraction_scope``) so editing one Know-how does not force a full
+    project re-extraction; omitted, it runs the full pipeline as before.
+    """
     await _assert_project_access(project_id, _current_user_id(http_req))
     pid = _norm_pid(project_id)
     current = _foundation_extract_jobs.get(pid, {})
     if current.get("status") == "running":
         raise HTTPException(status_code=409, detail="当前项目正在提取数据")
     pack_id = await _project_pack_id(project_id)
+    section_id = (body.section_id or "").strip()
     _foundation_extract_jobs[pid] = {
         "status": "running", "stage": "queued", "percent": 1,
-        "message": "已进入提取队列", "error": None,
+        "message": f"已进入提取队列（{section_id}）" if section_id else "已进入提取队列", "error": None,
     }
     _foundation_extract_tasks[pid] = asyncio.create_task(
-        _run_foundation_extraction(pid, pack_id, body.force))
+        _run_foundation_extraction(pid, pack_id, body.force, section_id))
     return {"status": "started", "message": "数据提取已启动"}
 
 
@@ -892,8 +932,29 @@ async def recompile_section(section_id: str, body: RecompileBody, http_req: Requ
                 lambda: pack_service.skill_text_path(skill_dir, pack_id).read_text(encoding="utf-8"))
         except Exception:
             know_how_text = ""
-    result = await asyncio.to_thread(
-        section_recompile_service.recompile, section_id, know_how_text, pack_id)
+    try:
+        result = await asyncio.to_thread(
+            section_recompile_service.recompile, section_id, know_how_text, pack_id)
+    except Exception as exc:
+        status_code = getattr(exc, "status_code", None)
+        selected_model = skill_runner.get_selected_model() or "当前模型"
+        if status_code == 402 or "Insufficient Balance" in str(exc):
+            provider = "DeepSeek" if str(selected_model).lower().startswith("deepseek") else selected_model
+            raise HTTPException(
+                status_code=402,
+                detail=f"{provider} API 余额不足，无法编译 Know-how。请充值或在系统设置中切换到可用模型后重试。",
+            ) from exc
+        if status_code in (401, 403):
+            raise HTTPException(
+                status_code=502,
+                detail=f"{selected_model} 的 API 凭证无效或无权访问，请检查系统配置。",
+            ) from exc
+        if isinstance(exc, RuntimeError):
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI 编译服务调用失败（{selected_model}）：{exc}",
+        ) from exc
     return {"status": "ok", **result}
 
 

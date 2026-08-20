@@ -1131,7 +1131,8 @@ def _render_block(block: dict, fields: list[dict], overview_rows: list[dict], ov
             rows.append(row)
         field_ids = [r.get("field_id") for r in rows_spec
                      if r.get("field_id") and (by_id.get(r.get("field_id")) or {}).get("status") != "disabled"]
-        return {"type": "kv", "caption": block.get("caption", ""),
+        caption, _ = _render_field_expr_with_provenance(block.get("caption", ""), fields)
+        return {"type": "kv", "caption": caption,
                 "src": _src_for_fields(fields, block.get("src_fields") or field_ids), "rows": rows}
     if kind == "overview_table":
         caption = block.get("caption_prefix", "") + (overview_title or block.get("caption_fallback", ""))
@@ -1190,18 +1191,56 @@ def _render_block(block: dict, fields: list[dict], overview_rows: list[dict], ov
                 locator = (f"第{'、'.join(map(str, pages))}页 / " if pages else "") + block.get("src_quote", "")
                 financial_refs.append(f"申报材料：{source['path']} 〈{locator}〉")
         src = "；".join(financial_refs)
-        return {"type": "grid", "caption": block.get("caption", ""), "src": src,
+        caption, _ = _render_field_expr_with_provenance(block.get("caption", ""), fields)
+        return {"type": "grid", "caption": caption, "src": src,
                 "headers": headers, "rows": rows, "cell_provenance": cell_provenance}
     return None
 
 
 def _render_template(tmpl: dict, fields: list[dict], overview_rows: list[dict], overview_title: str,
                      source_by_role: dict[str, dict], periods: list[dict], metrics: list[dict]) -> dict:
+    repeat = tmpl.get("repeat_by") or {}
+    if isinstance(repeat, str):
+        repeat = {"field_id": repeat}
+    repeat_field = str(repeat.get("field_id", "")).strip() if isinstance(repeat, dict) else ""
+    raw_repeat_value = _value(fields, repeat_field) if repeat_field else ""
+    separator = repeat.get("separator_regex") or r"[、,，;；/\n]+" if isinstance(repeat, dict) else r"[、,，;；/\n]+"
+    items = [x.strip() for x in re.split(separator, raw_repeat_value) if x.strip()] if repeat_field else []
+    if not items:
+        items = [raw_repeat_value] if repeat_field else [""]
+
     blocks = []
-    for block in tmpl.get("blocks", []):
-        rendered = _render_block(block, fields, overview_rows, overview_title, source_by_role, periods, metrics)
-        if rendered is not None:
-            blocks.append(rendered)
+    for item_index, item in enumerate(items, 1):
+        scoped_fields = fields
+        if repeat_field:
+            scoped_fields = []
+            scoped_prefixes = tuple(repeat.get("scoped_prefixes") or [])
+            for raw_field in fields:
+                field = deepcopy(raw_field)
+                field_id = str(field.get("id", ""))
+                if field_id == repeat_field:
+                    field["value"] = item
+                elif len(items) > 1 and scoped_prefixes and field_id.startswith(scoped_prefixes):
+                    entity_values = field.get("entity_values") or {}
+                    entity_value = entity_values.get(item) if isinstance(entity_values, dict) else None
+                    if isinstance(entity_value, dict):
+                        field.update(deepcopy(entity_value))
+                    elif entity_value is not None:
+                        field["value"] = entity_value
+                    else:
+                        field["value"] = ""
+                        field["source"] = {}
+                        field["status"] = "missing"
+                scoped_fields.append(field)
+            scoped_fields.extend([
+                {"id": "repeat.index", "label": "循环序号", "value": str(item_index), "source": {}},
+                {"id": "repeat.entity_name", "label": "当前主体", "value": item, "source": {}},
+            ])
+        for block in tmpl.get("blocks", []):
+            rendered = _render_block(
+                block, scoped_fields, overview_rows, overview_title, source_by_role, periods, metrics)
+            if rendered is not None:
+                blocks.append(rendered)
     return {"id": tmpl.get("id", ""), "title": tmpl.get("title", ""), "blocks": blocks}
 
 
@@ -1224,6 +1263,11 @@ def _template_field_refs(tmpl: dict) -> set[str]:
     itself does not track this (see rules.json comment), usage is derived from the templates
     that consume it, so the same field can legitimately be read by several small sections."""
     refs: set[str] = set()
+    repeat = tmpl.get("repeat_by") or {}
+    if isinstance(repeat, str):
+        refs.add(repeat)
+    elif isinstance(repeat, dict) and repeat.get("field_id"):
+        refs.add(repeat["field_id"])
     for block in tmpl.get("blocks", []):
         refs.update(block.get("src_fields") or [])
         refs.update(block.get("if_all") or [])
@@ -1500,6 +1544,10 @@ def build_foundation(project_id: str | None, pack_id: str | None = None) -> dict
 
     fields = []
     generation_fields = []
+    manual_role_ids = {
+        str(role.get("id")) for role in rules.get("source_roles", [])
+        if role.get("input_kind") == "manual_input" and role.get("id")
+    }
     for spec in rules.get("fields", []):
         role = spec.get("source_role", "manual")
         strategy = spec.get("strategy", "")
@@ -1605,7 +1653,10 @@ def build_foundation(project_id: str | None, pack_id: str | None = None) -> dict
             "extract_prompt": field["rule"]["extract_prompt"],
         }
         generation_fields.append(field)
-        if spec.get("layer") != "manual_input":
+        # Older AI-compiled overrides may have omitted the redundant ``layer`` key.
+        # The source role is the durable semantic signal, so manual inputs must still
+        # stay in generation_fields only instead of appearing as editable extraction output.
+        if spec.get("layer") != "manual_input" and role not in manual_role_ids:
             fields.append(field)
 
     for field in fields:

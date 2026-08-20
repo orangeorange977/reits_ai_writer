@@ -172,10 +172,12 @@ class DataFoundationServiceTest(unittest.TestCase):
         self.assertEqual(field["value"], "张三")
         self.assertTrue(field["is_override"])
         section = data["drafts"]["2.3"]
-        values = [row["value"] for row in section["blocks"][2]["rows"]]
+        basic_info = next(block for block in section["blocks"] if block.get("type") == "kv"
+                          and "基本信息" in block.get("caption", ""))
+        values = [row["value"] for row in basic_info["rows"]]
         self.assertIn("张三", values)
 
-    def test_refresh_preserves_specialized_extraction_when_source_is_unchanged(self):
+    def test_refresh_invalidates_specialized_extraction_when_authoritative_source_changes(self):
         with patch.object(service, "PROJECTS_DIR", self.projects), \
              patch.object(manual_input_service, "PROJECTS_DIR", self.projects), \
              patch.object(service, "_sync_legacy_summary"):
@@ -190,9 +192,8 @@ class DataFoundationServiceTest(unittest.TestCase):
             service._write(data, "demo")
             refreshed = service.build_foundation("demo")
         field = next(f for f in refreshed["fields"] if f["id"] == "originator.legal_representative")
-        self.assertEqual(field["value"], "张三")
-        self.assertEqual(field["status"], "extracted")
-        self.assertEqual(field["extraction_note"], "专项提取")
+        self.assertEqual(field["value"], "")
+        self.assertNotEqual(field["extraction_note"], "专项提取")
 
     def test_refresh_preserves_audited_comparison_column_fallback(self):
         with patch.object(service, "PROJECTS_DIR", self.projects), \
@@ -296,6 +297,38 @@ class DataFoundationServiceTest(unittest.TestCase):
         self.assertEqual(rendered["blocks"][4]["rows"], [["总资产", "100.00"]])
         self.assertIn("audit-2023.pdf", rendered["blocks"][4]["src"])
 
+    def test_generation_template_repeats_entities_without_cross_subject_data_leak(self):
+        fields = [
+            {"id": "originator.company_name", "label": "原始权益人", "value": "甲公司、乙公司", "source": {}},
+            {"id": "originator.legal_representative", "label": "法定代表人", "value": "旧单值",
+             "entity_values": {"甲公司": "甲法代", "乙公司": "乙法代"}, "source": {}},
+            {"id": "credit.conclusion", "label": "信用结论", "value": "无失信", "source": {}},
+        ]
+        tmpl = {
+            "id": "3", "title": "多主体",
+            "repeat_by": {
+                "field_id": "originator.company_name",
+                "separator_regex": "[、]+",
+                "scoped_prefixes": ["originator.", "credit."],
+            },
+            "blocks": [
+                {"type": "p", "template": "{{repeat.index}}.【{{originator.company_name}}】"},
+                {"type": "kv", "caption": "{{originator.company_name}}基本信息",
+                 "rows": [{"field_id": "originator.legal_representative", "label": "法定代表人"}]},
+                {"type": "p", "if_all": ["credit.conclusion"], "template": "{{credit.conclusion}}",
+                 "else_template": "【待核验当前主体信用记录】"},
+            ],
+        }
+        rendered = service._render_template(tmpl, fields, [], "", {}, [], [])
+        self.assertEqual(rendered["blocks"][0]["text"], "1.【甲公司】")
+        self.assertEqual(rendered["blocks"][1]["caption"], "甲公司基本信息")
+        self.assertEqual(rendered["blocks"][1]["rows"][0]["value"], "甲法代")
+        self.assertEqual(rendered["blocks"][3]["text"], "2.【乙公司】")
+        self.assertEqual(rendered["blocks"][4]["rows"][0]["value"], "乙法代")
+        # 没有按主体提供 entity_values 的旧单值会被清空，不能复制给两家公司。
+        self.assertEqual(rendered["blocks"][2]["text"], "【待核验当前主体信用记录】")
+        self.assertEqual(rendered["blocks"][5]["text"], "【待核验当前主体信用记录】")
+
     def test_external_source_with_metadata_is_visible_in_generated_citations(self):
         source = service._src_for_fields([{
             "id": "company.legal", "label": "法定代表人", "value": "张三",
@@ -384,20 +417,22 @@ class DataFoundationServiceTest(unittest.TestCase):
         self.assertEqual(data["stats"]["required_missing"], before_missing - 1)
         self.assertEqual(data["stats"]["disabled_total"], before["stats"]["disabled_total"] + 1)
         # 删除后不进入生成结果；底座仍保留 disabled 快照供前端恢复。
-        rows = data["drafts"]["2.3"]["blocks"][2]["rows"]
+        basic_info = next(block for block in data["drafts"]["2.3"]["blocks"]
+                          if block.get("type") == "kv" and "基本信息" in block.get("caption", ""))
+        rows = basic_info["rows"]
         self.assertFalse(any(r["label"] == "法定代表人" for r in rows))
 
-    def test_ebitda_is_optional_deleted_by_default_and_not_generated(self):
+    def test_ebitda_is_required_by_uploaded_business_methodology(self):
         with patch.object(service, "PROJECTS_DIR", self.projects), \
              patch.object(manual_input_service, "PROJECTS_DIR", self.projects), \
              patch.object(service, "_sync_legacy_summary"):
             data = service.build_foundation("demo")
         ebitda = [f for f in data["fields"] if f["id"].startswith("finance.ebitda.")]
         self.assertEqual(len(ebitda), 4)
-        self.assertTrue(all(f["status"] == "disabled" and not f["required"] for f in ebitda))
+        self.assertTrue(all(f["status"] != "disabled" and f["required"] for f in ebitda))
         grid = next(b for b in data["drafts"]["2.3"]["blocks"] if b["type"] == "grid")
-        self.assertFalse(any("EBITDA" in row[0] for row in grid["rows"]))
-        self.assertEqual(data["stats"]["disabled_total"], 4)
+        self.assertTrue(any("EBITDA" in row[0] for row in grid["rows"]))
+        self.assertEqual(data["stats"]["disabled_total"], 0)
 
     def test_financial_runtime_field_edit_updates_reusable_metric_rule(self):
         overrides = Path(self.tmp.name) / "skill_overrides"

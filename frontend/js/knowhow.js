@@ -11,7 +11,9 @@ let KH_CURRENT = null;  // 当前选中小节 id，如 "2.3"
 let KH_CONTENT = null;  // {content, default_content, overridden}
 let KH_MODE = 'preview';
 let KH_DIRTY = false;
-let KH_COMPILE = null;  // 最近一次编译预览
+let KH_COMPILE = null;  // 兼容旧状态；编译成功后现在会立即应用
+let KH_COMPILE_ALL_RUNNING = false;
+let KH_COMPILE_ALL_PROGRESS = '';
 
 async function knowhowPageEnter() {
     if (!currentProjectId) {
@@ -50,7 +52,14 @@ function _khRenderList() {
         groups[s.chapter_n] ||= { title: s.chapter_title, items: [] };
         groups[s.chapter_n].items.push(s);
     });
-    box.innerHTML = Object.keys(groups).sort((a, b) => Number(a) - Number(b)).map(n => {
+    const configuredCount = KH_SECTIONS.filter(s => s.configured).length;
+    const toolbar = `<div style="padding:12px;border-bottom:1px solid var(--border-color, #e5e7eb)">
+        <button class="btn btn-primary btn-sm" id="khCompileAllBtn" onclick="khCompileAll()" ${KH_COMPILE_ALL_RUNNING ? 'disabled' : ''}>
+            ${KH_COMPILE_ALL_RUNNING ? '正在编译全部…' : `编译并应用全部小节（${configuredCount}）`}
+        </button>
+        ${KH_COMPILE_ALL_PROGRESS ? `<div class="text-muted text-sm" style="margin-top:8px">${_escHtmlAttr(KH_COMPILE_ALL_PROGRESS)}</div>` : ''}
+    </div>`;
+    box.innerHTML = toolbar + Object.keys(groups).sort((a, b) => Number(a) - Number(b)).map(n => {
         const g = groups[n];
         const item = s => `
             <div class="sk-item ${s.id === KH_CURRENT ? 'active' : ''}" onclick="khSelect('${s.id}')">
@@ -111,25 +120,86 @@ function _khRenderMain() {
         <div class="card-header sk-head">
             <h3>${_escHtmlAttr(s.id)} ${_escHtmlAttr(s.title)} ${statusBadge}</h3>
             <div class="flex gap-8">
+                <input id="khSingleUpload" type="file" accept=".docx" style="display:none" onchange="khImportSelected(this.files)">
+                <input id="khBulkUpload" type="file" accept=".docx" multiple style="display:none" onchange="khImportBulk(this.files)">
+                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('khSingleUpload').click()">上传本小节</button>
+                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('khBulkUpload').click()" title="可上传一份包含多个小节的大文档，或同时选择多份DOCX；系统自动识别并切分">批量上传并切分</button>
                 <div class="sk-seg">
                     <div class="sk-seg-item ${KH_MODE === 'preview' ? 'active' : ''}" onclick="khSetMode('preview')">预览</div>
                     <div class="sk-seg-item ${KH_MODE === 'edit' ? 'active' : ''}" onclick="khSetMode('edit')">编辑</div>
                 </div>
-                ${s.configured ? `<button class="btn btn-ghost btn-sm" id="khCompileBtn" onclick="khCompile()">${KH_MODE === 'edit' ? '保存并编译' : 'AI 编译三件套'}</button>` : ''}
+                ${s.configured ? `<button class="btn btn-ghost btn-sm" id="khCompileBtn" onclick="khCompile()">${KH_MODE === 'edit' ? '保存、编译并应用' : 'AI 编译并应用三件套'}</button>` : ''}
                 <button class="btn btn-primary btn-sm" id="khSaveBtn" onclick="khSave()" style="${KH_MODE === 'edit' ? '' : 'display:none'}">仅保存原文</button>
             </div>
         </div>
         <div class="card-body">
             ${KH_MODE === 'edit' ? `
                 <div class="text-muted text-sm" style="margin-bottom:8px">
-                    “仅保存原文”不会启动提取；“保存并编译”会生成三件套预览，确认应用后才更新执行规则。
+                    “仅保存原文”不会更新执行规则；“保存并编译”会生成并立即应用提取规则、生成 SKILL、审核 SKILL。
                 </div>
                 <textarea id="khEditor" class="sk-editor" oninput="khDirty()" spellcheck="false">${_escHtmlAttr(d.content)}</textarea>
             ` : `
                 <div class="sk-preview md-body">${skRenderMd(d.content)}</div>
             `}
         </div>
-    </div>${_khRenderCompilePreview()}`;
+    </div>`;
+}
+
+async function _khImport(files, sectionId) {
+    if (!files || !files.length) return null;
+    const form = new FormData();
+    Array.from(files).forEach(file => form.append('files', file));
+    form.append('section_id', sectionId || '');
+    return API.request(`/packs/${encodeURIComponent(KH_PACK_ID)}/knowhow/import`, {
+        method: 'POST', body: form,
+    });
+}
+
+async function khImportSelected(files) {
+    const input = document.getElementById('khSingleUpload');
+    try {
+        const result = await _khImport(files, KH_CURRENT);
+        const content = result?.imports?.[KH_CURRENT];
+        if (!content) throw new Error((result?.warnings || []).join('；') || '未能读取DOCX内容');
+        KH_CONTENT.content = content;
+        KH_MODE = 'edit';
+        KH_DIRTY = true;
+        KH_COMPILE = null;
+        _khRenderMain();
+        showToast('DOCX 已载入编辑器，请核对后保存并编译', 'success');
+    } catch (e) {
+        showToast('上传本小节失败：' + e.message, 'error');
+    } finally {
+        if (input) input.value = '';
+    }
+}
+
+async function khImportBulk(files) {
+    const input = document.getElementById('khBulkUpload');
+    try {
+        const result = await _khImport(files, '');
+        const imports = result?.imports || {};
+        const ids = Object.keys(imports).sort((a, b) => a.localeCompare(b, undefined, {numeric:true}));
+        if (!ids.length) throw new Error((result?.warnings || []).join('；') || '没有识别出官方小节');
+        const labels = ids.map(id => `${id} ${(KH_SECTIONS.find(s => s.id === id) || {}).title || ''}`).join('\n');
+        if (!confirm(`已识别 ${ids.length} 个小节：\n\n${labels}\n\n确认后将保存这些 Know-how 原文；执行规则仍需逐节编译并应用。`)) return;
+        for (const id of ids) {
+            await API.post(`/packs/${encodeURIComponent(KH_PACK_ID)}/skill/save`, {
+                rel: _khRelFor(id), content: imports[id],
+            });
+        }
+        KH_CURRENT = ids[0];
+        KH_MODE = 'preview';
+        KH_DIRTY = false;
+        KH_COMPILE = null;
+        await khLoadCurrent();
+        _khRenderList();
+        showToast(`已保存 ${ids.length} 个小节的 Know-how；请逐节核对并编译三件套`, 'success');
+    } catch (e) {
+        showToast('批量上传失败：' + e.message, 'error');
+    } finally {
+        if (input) input.value = '';
+    }
 }
 
 function _khRenderCompilePreview() {
@@ -166,13 +236,67 @@ async function khCompile() {
             KH_CONTENT.content = text; KH_CONTENT.overridden = true; KH_DIRTY = false;
         }
         KH_COMPILE = await API.recompileSection(KH_CURRENT, text);
+        if (!KH_COMPILE?.ok || !KH_COMPILE?.preview) {
+            const detail = (KH_COMPILE?.errors || []).join('；') || '编译结果未通过结构校验';
+            throw new Error(detail);
+        }
+        await API.applyRecompiledSection(KH_CURRENT, KH_COMPILE.preview);
+        KH_COMPILE = null;
         _khRenderMain();
-        showToast(KH_COMPILE.ok ? '三件套预览已生成，请核对后应用' : '编译结果未通过结构校验', KH_COMPILE.ok ? 'success' : 'warning');
+        showToast(`小节 ${KH_CURRENT} 的三件套已编译并应用`, 'success');
     } catch (e) {
         showToast('编译失败：' + e.message, 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '保存并编译'; }
+        if (btn) { btn.disabled = false; btn.textContent = KH_MODE === 'edit' ? '保存、编译并应用' : 'AI 编译并应用三件套'; }
     }
+}
+
+/** 逐节编译并立即应用全部已配置 Know-how；单节失败不阻断其余小节。 */
+async function khCompileAll() {
+    if (KH_COMPILE_ALL_RUNNING) return;
+    const sections = KH_SECTIONS.filter(s => s.configured);
+    if (!sections.length) { showToast('当前没有已配置的 Know-how 小节', 'warning'); return; }
+    if (KH_DIRTY && !confirm('当前小节有未保存修改。继续将先保存当前内容，再编译全部小节，是否继续？')) return;
+    KH_COMPILE_ALL_RUNNING = true;
+    const failures = [];
+    let applied = 0;
+    try {
+        const ta = document.getElementById('khEditor');
+        if (ta && KH_DIRTY) {
+            await API.post(`/packs/${encodeURIComponent(KH_PACK_ID)}/skill/save`,
+                { rel: _khRelFor(KH_CURRENT), content: ta.value });
+            KH_CONTENT.content = ta.value;
+            KH_CONTENT.overridden = true;
+            KH_DIRTY = false;
+        }
+        for (let i = 0; i < sections.length; i++) {
+            const s = sections[i];
+            KH_COMPILE_ALL_PROGRESS = `${i + 1}/${sections.length}：正在编译 ${s.id} ${s.title || ''}`;
+            _khRenderList();
+            try {
+                const doc = s.id === KH_CURRENT && KH_CONTENT
+                    ? KH_CONTENT
+                    : await API.get(`/packs/${encodeURIComponent(KH_PACK_ID)}/skill`, { rel: _khRelFor(s.id) });
+                const text = String(doc?.content || '');
+                if (!text.trim()) throw new Error('Know-how 原文为空');
+                const compiled = await API.recompileSection(s.id, text);
+                if (!compiled?.ok || !compiled?.preview) {
+                    throw new Error((compiled?.errors || []).join('；') || '编译未通过结构校验');
+                }
+                await API.applyRecompiledSection(s.id, compiled.preview);
+                applied += 1;
+            } catch (e) {
+                failures.push(`${s.id}：${e.message}`);
+            }
+        }
+    } finally {
+        KH_COMPILE_ALL_RUNNING = false;
+        KH_COMPILE_ALL_PROGRESS = failures.length
+            ? `已应用 ${applied}/${sections.length}；失败：${failures.join('；')}`
+            : `已编译并应用全部 ${applied} 个小节`;
+        _khRenderList();
+    }
+    showToast(KH_COMPILE_ALL_PROGRESS, failures.length ? 'warning' : 'success');
 }
 
 async function khApplyCompile() {

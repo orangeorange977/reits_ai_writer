@@ -464,6 +464,11 @@ const API = {
         return this.post(`/skills/data-foundation/extract?project_id=${pid}`, { force });
     },
 
+    async startSectionDataExtraction(sectionId, force = false) {
+        const pid = encodeURIComponent(this._currentProjectId());
+        return this.post(`/skills/data-foundation/extract?project_id=${pid}`, { force, section_id: sectionId });
+    },
+
     async getDataExtractionStatus() {
         return this.get('/skills/data-foundation/extract-status', { project_id: this._currentProjectId() });
     },

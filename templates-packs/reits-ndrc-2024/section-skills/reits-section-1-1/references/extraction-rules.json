@@ -2,8 +2,8 @@
   "section_id": "1.1",
   "source_methodology": "01 第一章第一节 项目概况（业务方法论模拟稿）.docx",
   "version": "V1.0",
-  "input_mode": "manual_inputs_plus_semantic_documents",
-  "sources": ["项目摘要（人工输入槽）", "项目概况整表（人工输入槽）", "项目不动产权属证书（语义材料角色）", "项目权属与申报说明（语义材料角色）"],
+  "input_mode": "manual_inputs_plus_business_field",
+  "sources": ["摘要表（人工输入槽）", "第一章项目概况整表（人工输入槽）", "项目类型（业务人员手工字段）"],
   "generation": {"mode": "deterministic", "copy_project_overview_table": true},
   "conflict_policy": "show_both_and_require_business_confirmation",
   "missing_policy": "keep_placeholder_never_use_example"
