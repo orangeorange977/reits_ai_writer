@@ -5,6 +5,7 @@ Skill 执行器 - 让 Kimi 按 reits-reading 各章 SKILL.md 的要求生成章�
 不去解析证明材料/扫描件——因为第一章绝大部分字段在 planning.md 里已经给全了。
 这样先验证"Kimi 能按 SKILL.md 把 planning 里的值填进章节结构"这个最核心的环节。
 """
+import base64
 import json
 import logging
 import re
@@ -283,6 +284,61 @@ def _section_blocks(sec: dict) -> list:
     return blocks
 
 
+def _load_diagram_renderer(pack_id: str = None):
+    """加载模板包内 diagrams/diagram_render.py 渲染器（每次 exec 新模块，改包内脚本即时生效）。"""
+    import importlib.util
+    p = pack_service.diagram_dir(pack_id) / "diagram_render.py"
+    if not p.exists():
+        return None
+    spec = importlib.util.spec_from_file_location("reits_diagram_render", str(p))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _materialize_diagram_blocks(sections, pack_id: str = None) -> int:
+    """把模型输出的 diagram 块（结构化框图数据）渲染成 PNG，物化为
+    “图块标记段落 + 图注段落”，下游编辑区/门禁/Word/预览复用现有图块机制，零改动。
+    返回物化成功的图数；单块渲染失败只丢弃该图并告警，不阻断生成。"""
+    cnt = 0
+    renderer = None
+    for sec in sections or []:
+        if not isinstance(sec, dict):
+            continue
+        blocks = sec.get("blocks")
+        if not isinstance(blocks, list):
+            continue
+        out = []
+        for blk in blocks:
+            if isinstance(blk, dict) and blk.get("type") == "diagram":
+                try:
+                    if renderer is None:
+                        renderer = _load_diagram_renderer(pack_id)
+                    if renderer is None:
+                        raise RuntimeError("模板包缺少 diagrams/diagram_render.py")
+                    png = renderer.render_diagram_png(blk)
+                    b64 = base64.b64encode(png).decode("ascii")
+                    xml_b64 = ""
+                    try:  # draw.io 可编辑源码：点击图块可拖动/改字；失败降级为不可编辑
+                        xml_b64 = base64.b64encode(
+                            renderer.render_diagram_drawio_xml(blk).encode("utf-8")
+                        ).decode("ascii")
+                    except Exception as xe:
+                        logger.warning(f"diagram 可编辑源码生成失败（不影响生成）：{xe}")
+                    out.append({"type": "p",
+                                "text": _DIAGRAM_OPEN + b64 + _DIAGRAM_SEP + xml_b64 + _DIAGRAM_CLOSE})
+                    cap = str(blk.get("caption") or "").strip()
+                    if cap:
+                        out.append({"type": "p", "text": cap})
+                    cnt += 1
+                except Exception as e:
+                    logger.warning(f"diagram 块渲染失败，该图已丢弃：{e}")
+                continue
+            out.append(blk)
+        sec["blocks"] = out
+    return cnt
+
+
 def _cell_html(s) -> str:
     """单元格文本转 HTML：值内 \n 显示为 <br>（与 Word 单元格内换行一致）。"""
     return _esc_html(s).replace("\n", "<br>")
@@ -339,7 +395,8 @@ def _block_to_html(blk, fn_counter):
         dm = _DIAGRAM_RE.fullmatch(text or "")
         if dm:
             png_b64, _, xml_b64 = dm.group(1).partition(_DIAGRAM_SEP)
-            html = (f'<div class="doc-diagram" contenteditable="false" '
+            hint = ' title="点击打开编辑（可拖动节点、修改文字、增删连线）"' if xml_b64 else ""
+            html = (f'<div class="doc-diagram" contenteditable="false"{hint} '
                     f'data-png="{png_b64}" data-xml="{xml_b64}">'
                     f'<img src="data:image/png;base64,{png_b64}" alt="框图"></div>')
         else:
@@ -1130,6 +1187,8 @@ def _output_contract(chapter_title: str) -> str:
         '        {"type": "grid", "caption": "表#  ……", "src": "……",\n'
         '         "headers": ["列1表头", "列2表头", "……（与SKILL.md表头一字不差、顺序一致）"],\n'
         '         "rows": [["单元格", "单元格", "……"], ["……"]]},\n'
+        '        {"type": "diagram", "caption": "图#  ……", "nodes": [{"id": "a", "text": "方框文字"}],\n'
+        '         "edges": [{"from": "a", "to": "b", "label": "50%"}], "groups": []},\n'
         '        {"type": "p", "text": "表格之后接着的正文……", "src": "……"}\n'
         '      ]\n'
         '    }\n'
@@ -1145,6 +1204,7 @@ def _output_contract(chapter_title: str) -> str:
         "   · kv：两列\"字段:值\"表（如表1）。label 与 SKILL.md 表格第一列**一字不差**。\n"
         "   · grid：多列表（列数≥3，如表2、表3~表10）。headers 与 SKILL.md 该表表头**一字不差、顺序一致**；"
         "rows 每行和 headers 等长。\n"
+        "   · diagram：关系框图（**仅当 SKILL.md 明确要求输出 diagram 块时才用**，schema 见规则11）。\n"
         "3. **表号一律写占位符“表#”**（如“表#  项目公司基本信息”），不要自己填数字——最终序号由系统自动排成“表{章号}-{序}”（如 表1-1、表1-2）。\n"
         "4. **单元格内需要分多行写的内容用 \\n 换行**（如开竣工时间分两行、权属起止时间+剩余年限分两行）；"
         "从材料中摘录的值若原文是分段的，**必须保留分段**：每一段之间用 \\n 分隔，不得拼成一整块。系统会在 Word 单元格内渲染成换行。\n"
@@ -1179,6 +1239,23 @@ def _output_contract(chapter_title: str) -> str:
         "   **绝不允许编造不存在的来源**——src 必须真实对应你实际参考过的材料；正文里的每个引注号都必须在 src 里有对应条目。\n"
         "10. 【不涉及不挂依据】块的内容是“不涉及。”“不涉及”“无此类情形”“不适用”这类短不涉及表述时，\n"
         "   不要标引注号〈n〉、src 字段留空——“不涉及”本身就是结论，无需任何依据（不要写“固定表述”凑依据）。\n"
+        "11. 【diagram 块 schema】仅当本章 SKILL.md 明确要求时才输出 diagram 块（系统会自动渲染成框图插入 Word）：\n"
+        '   {"type": "diagram", "caption": "图#  图名（序号一律写占位符“图#”，系统自动排成 图{章}-{序}）",\n'
+        '    "nodes": [{"id": "n1", "text": "方框文字（\\\\n 可多行）", "dashed": false, "shape": "ellipse"}],\n'
+        '    "edges": [{"from": "n1", "to": "n2", "label": "边标签如持股比例", "style": "dashed", "relation": "peer"}],\n'
+        '    "groups": [{"label": "分组名", "members": ["n1", "n2"], "label_side": "top 或 left", "place": "above"}],\n'
+        '    "legend": [{"style": "solid", "text": "业务关系"}, {"style": "dashed", "text": "资金流"}]}\n'
+        "   · nodes 可省略（系统会从 edges 两端自动收集）；dashed=true 画虚线框（底层资产等）；"
+        "shape=\"ellipse\" 画椭圆框（专项计划等）；\n"
+        "   · edges 默认是上下级持股/控制关系（箭头向下）；relation=\"peer\" 表示横向平级关系；"
+        "relation=\"flow\" 表示反向回流边（只画线不参与分层，与正向边自动画成平行双箭头）；"
+        "peer 边可加 \"side\": \"left\"/\"right\"，把不参与主链的孤立端点（如税务机关、外部债权人、募投项目）"
+        "固定挂在锚点左/右侧外，保证主链垂直居中不被挤偏；"
+        "style=\"dashed\" 画虚线（运营管理等非持股关系）；from/to 也可写分组 label（连线从分组框出发）；\n"
+        "   · groups 的 place=\"above\" 使分组位于其连线目标的上一层（如基金投资人分组在基金上层）；\n"
+        "   · legend 可选，写则在左上角画图例（solid/dashed 箭头+文字）；\n"
+        "   · 图里的机构名称、持股比例、关系**必须与正文股权链条及表格数据完全一致**，绝不编造；\n"
+        "   · diagram 块不写 src（图为系统据正文数据绘制，无需单独溯源）。\n"
     )
 
 
@@ -1518,6 +1595,15 @@ def run_chapter(n: int, subtitles: list = None, materials_path: str = None,
             logger.info(f"ch{n} 阅读台账：{data['read_stats'].get('message') or '未登记到材料读取'}")
     except Exception as e:
         logger.warning(f"ch{n} 阅读台账统计失败（不影响生成）：{e}")
+    # diagram 块物化：模型输出的结构化框图数据渲染成 PNG，落成“图块标记段落+图注”，
+    # 下游编辑区/门禁/Word/预览复用现有图块机制（失败不阻断生成）
+    try:
+        if isinstance(data, dict) and data.get("sections"):
+            nd = _materialize_diagram_blocks(data["sections"], pack_id)
+            if nd:
+                logger.info(f"ch{n} 物化 AI 示意图 {nd} 张")
+    except Exception as e:
+        logger.warning(f"ch{n} 示意图物化失败（不影响生成）：{e}")
 
     try:
         _save_json(n, data, project_id)

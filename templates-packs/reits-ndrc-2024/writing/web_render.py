@@ -1038,6 +1038,10 @@ def _insert_section_blocks_after(heading_para, blocks, fn_state, collected, doc)
                     _add_diagram_picture(p, png)
             else:
                 _add_para_runs(p, text, fn_state, collected)
+                # 图注段（“图# …/图2-1 …”）居中、无首行缩进，与表题版式一致
+                if _para_is_figure_caption(p):
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    p.paragraph_format.first_line_indent = Inches(0)
         elif t == "kv":
             if b.get("caption"):
                 anchor_el = _add_caption_para_after(anchor_el, parent, b["caption"])
@@ -1118,6 +1122,51 @@ def _renumber_all_table_captions(doc, chapter_n=None, start_idx=None, end_idx=No
         if lo <= i < hi and _para_is_caption_before_table(items, i):
             counter += 1
             _set_caption_number(items[i], counter, chapter_n)
+    return counter
+
+
+# 图注编号占位：图# / 图2 / 图2-1 等，规则同表题；“图表”“如图所示”不会命中
+_FIG_CAP_LEAD_RE = re.compile(r"^图(?:[#＃]|[0-9]+(?:[-－][0-9]+)*|[A-Za-z])")
+
+
+def _para_is_figure_caption(b):
+    """b 是不是图注段：以“图X”开头且整段短（图注一般不超过 40 字，
+    避免把“图1所示……”这类正文引用句误认为图注）。"""
+    if not isinstance(b, Paragraph):
+        return False
+    t = b.text.strip()
+    if not t or len(t) > 40:
+        return False
+    return bool(_FIG_CAP_LEAD_RE.match(t))
+
+
+def _set_figure_caption_number(para, n, chapter_n=None):
+    """把图注段开头的“图X”改成“图{章}-{n}”，保留该段原有字体/格式。"""
+    if not para.runs:
+        return
+    full = "".join(r.text for r in para.runs)
+    stripped = full.lstrip()
+    m = _FIG_CAP_LEAD_RE.match(stripped)
+    if not m:
+        return
+    lead_ws = full[:len(full) - len(stripped)]
+    cap = f"图{chapter_n}-{n}" if chapter_n else f"图{n}"
+    para.runs[0].text = lead_ws + cap + stripped[m.end():]
+    for r in para.runs[1:]:
+        r.text = ""
+
+
+def _renumber_all_figure_captions(doc, chapter_n=None, start_idx=None, end_idx=None):
+    """图注按出现顺序重排为 图{章}-1、图{章}-2…（每章各自从 1 起排，
+    如“图#  项目主要法律关系图”→“图2-1  项目主要法律关系图”）。"""
+    items = list(_iter_block_items(doc))
+    lo = start_idx if start_idx is not None else 0
+    hi = end_idx if end_idx is not None else len(items)
+    counter = 0
+    for i in range(lo, hi):
+        if _para_is_figure_caption(items[i]):
+            counter += 1
+            _set_figure_caption_number(items[i], counter, chapter_n)
     return counter
 
 
@@ -1268,6 +1317,7 @@ def _fill_chapter(doc, sections, chapter_title, next_chapter_title, chapter_n, f
     lo, hi = _chapter_range_idx(items_now, chapter_title, next_chapter_title)
     if lo is not None:
         _renumber_all_table_captions(doc, chapter_n, lo, hi)
+        _renumber_all_figure_captions(doc, chapter_n, lo, hi)
         _chapter_table_fixups(items_now, lo, hi)
     return True
 
@@ -1286,6 +1336,7 @@ def render_into_template(sections, template_path, out_path,
     found = _fill_chapter(doc, sections, chapter_title, next_chapter_title, chapter_n, fn_state, collected_fn)
     if not found:
         _renumber_all_table_captions(doc)  # 定位不到本章：退回旧的全篇顺序编号，不带章号
+        _renumber_all_figure_captions(doc)
     doc.save(str(out_path))
     _inject_footnotes(out_path, collected_fn)  # 追加真正的脚注到 footnotes.xml
     return out_path

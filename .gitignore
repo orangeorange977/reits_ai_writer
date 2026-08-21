@@ -22,6 +22,8 @@ server_*.log
 .tmp_*
 .deploy_*.py
 .run_*.py
+.chk_*.py
+.regen_*.py
 
 # 运行期数据库文件
 backend/database/*.db
